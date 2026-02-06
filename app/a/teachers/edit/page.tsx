@@ -1,0 +1,123 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import type { Teacher } from "@/lib/types/index";
+import { findTeacherById, loadCurrentTeacherId, upsertTeacher } from "@/lib/storage/teachers";
+import { todayYmdLocal } from "@/lib/utils/date";
+import { normalizePhoneDigits } from "@/lib/utils/phone";
+
+export default function AdminTeacherEditPage() {
+  const router = useRouter();
+
+  const [teacher, setTeacher] = useState<Teacher | null>(null);
+  const [name, setName] = useState("");
+  const [phone, setPhone] = useState("");
+  const [email, setEmail] = useState("");
+  const [workStartDate, setWorkStartDate] = useState(() => todayYmdLocal());
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      const id = loadCurrentTeacherId();
+      if (!id) return;
+      const t = findTeacherById(id);
+      setTeacher(t);
+      if (!t) return;
+      setName(t.name ?? "");
+      setPhone(t.phone ?? "");
+      setEmail(t.email ?? "");
+      setWorkStartDate(t.workStartDate ?? todayYmdLocal());
+    }, 0);
+    return () => clearTimeout(timer);
+  }, []);
+
+  function onSave() {
+    if (!teacher) return;
+    setError("");
+    const nm = name.trim();
+    const ph = normalizePhoneDigits(phone);
+    const em = email.trim();
+    if (!nm) return setError("이름을 입력해주세요.");
+    if (!ph) return setError("전화번호를 입력해주세요.");
+    if (!em) return setError("이메일을 입력해주세요.");
+    if (!workStartDate) return setError("업무 시작일을 입력해주세요.");
+
+    upsertTeacher({
+      ...teacher,
+      name: nm,
+      phone: ph,
+      email: em,
+      workStartDate,
+    });
+    router.push("/a/teachers");
+  }
+
+  const inputStyle = {
+    width: "100%",
+    height: 40,
+    padding: 10,
+    border: "1px solid #ccc",
+    borderRadius: 8,
+    marginTop: 6,
+  } as const;
+
+  if (!teacher) {
+    return (
+      <main style={{ padding: 20, maxWidth: 860, margin: "0 auto" }}>
+        <button className="btn" onClick={() => router.push("/a/teachers")}>
+          관리자 페이지
+        </button>
+        <div style={{ marginTop: 8, textAlign: "center" }} className="page-title">
+          선생님 정보 수정
+        </div>
+        <div style={{ marginTop: 10, color: "#666" }}>선생님을 찾지 못했습니다.</div>
+      </main>
+    );
+  }
+
+  return (
+    <main style={{ padding: 20, maxWidth: 860, margin: "0 auto" }}>
+      <div>
+        <button className="btn" onClick={() => router.push("/a/teachers")}>
+          관리자 페이지
+        </button>
+        <div style={{ marginTop: 8, textAlign: "center" }} className="page-title">
+          선생님 정보 수정
+        </div>
+      </div>
+
+      <section style={{ marginTop: 14, border: "1px solid #eee", borderRadius: 10, padding: 12, background: "#fff" }}>
+        <div style={{ display: "grid", gap: 10 }}>
+          <div>
+            <div style={{ fontWeight: 700 }}>이름 *</div>
+            <input value={name} onChange={(e) => setName(e.target.value)} style={inputStyle} />
+          </div>
+          <div>
+            <div style={{ fontWeight: 700 }}>전화번호 *</div>
+            <input value={phone} onChange={(e) => setPhone(e.target.value)} style={inputStyle} />
+          </div>
+          <div>
+            <div style={{ fontWeight: 700 }}>이메일 *</div>
+            <input value={email} onChange={(e) => setEmail(e.target.value)} style={inputStyle} />
+          </div>
+          <div>
+            <div style={{ fontWeight: 700 }}>업무 시작일 *</div>
+            <input type="date" value={workStartDate} onChange={(e) => setWorkStartDate(e.target.value)} style={inputStyle} />
+          </div>
+        </div>
+      </section>
+
+      {error ? <div style={{ marginTop: 10, color: "#dc2626" }}>{error}</div> : null}
+
+      <div style={{ marginTop: 12, display: "flex", justifyContent: "flex-end", gap: 8 }}>
+        <button className="btn" onClick={() => router.push("/a/teachers")}>
+          취소
+        </button>
+        <button className="btn btn-bold" onClick={onSave}>
+          저장
+        </button>
+      </div>
+    </main>
+  );
+}

@@ -1,0 +1,454 @@
+// v1/lib/ui/session/sessionEffective.ts
+"use client";
+
+import type { ScheduleRule, Student } from "@/lib/types/index";
+import { findStudentByToken } from "@/lib/storage/students";
+
+/**
+ * ✅ 단일화 규칙(고정)
+ * - 원천 데이터: student + sessions + metaMap
+ * - baseDatesISO: buildBaseDatesISO(student) 또는 buildBaseDatesISOByToken(token)만 사용
+ * - 날짜 계산: computeEffectiveISO()만 사용
+ * - 배지 계산: buildBadges()만 사용
+ * - 저장: upsertMeta()만 사용 (직접 localStorage set 금지)
+ *
+ * ✅ carry 규칙(확정)
+ * - i회차 carry는 "i회차부터" 바로 반영됨
+ * - 즉, i회차 base 참조는 (1..i carry 합)만큼 앞으로 당겨짐(스킵)
+ *
+ * ✅ override 규칙(확정)
+ * - overrideDate가 있으면 그 일시가 최우선
+ * - 시간은 HH:MM 입력, 저장 시 초는 00초로 기록
+ *
+ * ✅ 사유 규칙(확정)
+ * - 결석(absent) 또는 carry>0 또는 변경(overrideDate)일 때 reason은 필수
+ */
+
+// -------------------- Meta types --------------------
+
+export type SessionState = "planned" | "present" | "absent";
+
+export type SessionMeta = {
+  status?: SessionState;
+
+  carry?: number;
+
+  overrideDate?: string;
+  overrideHour?: number | null;
+  overrideMinute?: number | null;
+
+  reason?: string;
+  record?: string;
+};
+
+export function getStatusStyle(status?: SessionState): { bg: string; text: string; border: string } {
+  if (status === "present") return { bg: "#2563eb", text: "#ffffff", border: "#2563eb" };
+  if (status === "absent") return { bg: "#dc2626", text: "#ffffff", border: "#dc2626" };
+  return { bg: "#64748b", text: "#ffffff", border: "#64748b" };
+}
+
+// -------------------- utils --------------------
+
+function safeInt(n: unknown, fallback = 0) {
+  const x = typeof n === "number" ? n : Number(n);
+  if (!Number.isFinite(x)) return fallback;
+  const m = Math.floor(x);
+  if (m < 0) return fallback;
+  return m;
+}
+
+function safeHour(n: unknown): number | null {
+  const x = typeof n === "number" ? n : Number(n);
+  if (!Number.isFinite(x)) return null;
+  const h = Math.floor(x);
+  if (h < 0 || h > 23) return null;
+  return h;
+}
+
+function safeMinute(n: unknown): number | null {
+  const x = typeof n === "number" ? n : Number(n);
+  if (!Number.isFinite(x)) return null;
+  const m = Math.floor(x);
+  if (m < 0 || m > 59) return null;
+  return m;
+}
+
+// -------------------- meta map (localStorage) --------------------
+
+export function metaMapKey(token: string) {
+  return `tutorweb_metaMap_v1:${token}`;
+}
+
+function writeMetaMap(token: string, metaMap: Record<number, SessionMeta>) {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(metaMapKey(token), JSON.stringify(metaMap));
+  window.dispatchEvent(new CustomEvent("tutorweb:metaMapUpdated", { detail: { token } }));
+}
+
+export function readMetaMap(token: string): Record<number, SessionMeta> {
+  if (typeof window === "undefined") return {};
+  if (!token) return {};
+  try {
+    const raw = localStorage.getItem(metaMapKey(token));
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+
+    const out: Record<number, SessionMeta> = {};
+    for (const [k, v] of Object.entries(parsed)) {
+      const idx = Number(k);
+      if (!Number.isFinite(idx)) continue;
+
+      const meta = toMeta(v);
+
+      const merged: SessionMeta = {};
+      merged.status = isSessionState(meta?.status) ? meta?.status : undefined;
+      merged.carry = safeInt(meta?.carry ?? 0, 0);
+      merged.overrideDate = typeof meta?.overrideDate === "string" ? meta.overrideDate : "";
+      merged.overrideHour =
+        meta?.overrideHour === null || meta?.overrideHour === undefined ? null : safeHour(meta.overrideHour);
+      merged.overrideMinute =
+        meta?.overrideMinute === null || meta?.overrideMinute === undefined ? null : safeMinute(meta.overrideMinute);
+      merged.reason = typeof meta?.reason === "string" ? meta.reason : "";
+      merged.record = typeof meta?.record === "string" ? meta.record : "";
+
+      out[idx] = merged;
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
+export function upsertMeta(token: string, index: number, patch: Partial<SessionMeta>): SessionMeta {
+  const current = readMetaMap(token);
+  const prev = current[index] ?? {};
+  const next: SessionMeta = { ...prev, ...patch };
+
+  next.carry = safeInt(next.carry ?? 0, 0);
+  next.overrideDate = typeof next.overrideDate === "string" ? next.overrideDate : "";
+  next.overrideHour = next.overrideHour === null || next.overrideHour === undefined ? null : safeHour(next.overrideHour);
+  next.overrideMinute =
+    next.overrideMinute === null || next.overrideMinute === undefined ? null : safeMinute(next.overrideMinute);
+  next.reason = typeof next.reason === "string" ? next.reason : "";
+  next.record = typeof next.record === "string" ? next.record : "";
+
+  current[index] = next;
+  writeMetaMap(token, current);
+  return next;
+}
+
+// -------------------- baseDatesISO --------------------
+
+/**
+ * ✅ 원천: Student.startDate + scheduleRules 로 "정확한" baseDatesISO 생성
+ * - sessions.displayAt 기반은 12개 이후 extrapolation 때문에 월/수/금 패턴이 깨질 수 있어 사용하지 않음
+ */
+
+function weekdayKSTFromYMD(ymd: string): number | null {
+  // ymd = "YYYY-MM-DD"
+  // Intl로 Asia/Seoul 기준 요일을 구한다 (환경 timezone과 무관하게)
+  try {
+    const dt = new Date(`${ymd}T00:00:00Z`);
+    if (!Number.isFinite(dt.getTime())) return null;
+
+    const wk = new Intl.DateTimeFormat("en-US", {
+      weekday: "short",
+      timeZone: "Asia/Seoul",
+    }).format(dt);
+
+    // Sun Mon Tue Wed Thu Fri Sat
+    const map: Record<string, number> = {
+      Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6,
+    };
+    return map[wk] ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function ymdAddDays(ymd: string, days: number): string | null {
+  try {
+    const dt = new Date(`${ymd}T00:00:00Z`);
+    if (!Number.isFinite(dt.getTime())) return null;
+    const next = new Date(dt.getTime() + days * 24 * 60 * 60 * 1000);
+    if (!Number.isFinite(next.getTime())) return null;
+
+    const parts = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Seoul",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).formatToParts(next);
+
+    const y = parts.find((p) => p.type === "year")?.value ?? "1970";
+    const m = parts.find((p) => p.type === "month")?.value ?? "01";
+    const d = parts.find((p) => p.type === "day")?.value ?? "01";
+    return `${y}-${m}-${d}`;
+  } catch {
+    return null;
+  }
+}
+
+function isoFromKST(ymd: string, hour: number, minute: number): string | null {
+  // KST(+09:00)로 Date를 만들고 ISO(UTC)로 변환해 저장
+  try {
+    const hh = String(hour).padStart(2, "0");
+    const mm = String(minute).padStart(2, "0");
+    const dt = new Date(`${ymd}T${hh}:${mm}:00+09:00`);
+    if (!Number.isFinite(dt.getTime())) return null;
+    return dt.toISOString();
+  } catch {
+    return null;
+  }
+}
+
+function normalizeRules(rules: ScheduleRule[]): ScheduleRule[] {
+  const list = Array.isArray(rules) ? rules : [];
+  const filtered = list.filter((r) =>
+    typeof r.weekday === "number" && typeof r.hour === "number" && typeof r.minute === "number"
+  );
+  return [...filtered].sort((a, b) => {
+    if (a.weekday !== b.weekday) return a.weekday - b.weekday;
+    if (a.hour !== b.hour) return a.hour - b.hour;
+    return a.minute - b.minute;
+  });
+}
+
+function ymdFromISO_KST(iso: string): string | null {
+  try {
+    const dt = new Date(iso);
+    if (!Number.isFinite(dt.getTime())) return null;
+    const parts = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Seoul",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).formatToParts(dt);
+    const y = parts.find((p) => p.type === "year")?.value ?? "1970";
+    const m = parts.find((p) => p.type === "month")?.value ?? "01";
+    const d = parts.find((p) => p.type === "day")?.value ?? "01";
+    return `${y}-${m}-${d}`;
+  } catch {
+    return null;
+  }
+}
+
+function buildDatesFromRules(startYMD: string, rules: ScheduleRule[], count: number): string[] {
+  if (!startYMD) return [];
+  if (rules.length === 0) return [];
+  const sorted = normalizeRules(rules);
+
+  const out: string[] = [];
+  let curYMD: string | null = startYMD;
+
+  for (let guard = 0; guard < 2000 && out.length < count; guard++) {
+    if (!curYMD) break;
+
+    const wd = weekdayKSTFromYMD(curYMD);
+    if (wd !== null) {
+      for (const r of sorted) {
+        if (r.weekday !== wd) continue;
+        const iso = isoFromKST(curYMD, r.hour, r.minute);
+        if (iso) out.push(iso);
+        if (out.length >= count) break;
+      }
+    }
+
+    curYMD = ymdAddDays(curYMD, 1);
+  }
+
+  return out;
+}
+
+function buildDatesAfterISO(lastISO: string, rules: ScheduleRule[], count: number): string[] {
+  if (!lastISO) return [];
+  if (rules.length === 0) return [];
+  const sorted = normalizeRules(rules);
+  const lastTime = new Date(lastISO).getTime();
+  const startYMD = ymdFromISO_KST(lastISO);
+  if (!startYMD) return [];
+
+  const out: string[] = [];
+  let curYMD: string | null = startYMD;
+
+  for (let guard = 0; guard < 2000 && out.length < count; guard++) {
+    if (!curYMD) break;
+    const wd = weekdayKSTFromYMD(curYMD);
+    if (wd !== null) {
+      for (const r of sorted) {
+        if (r.weekday !== wd) continue;
+        const iso = isoFromKST(curYMD, r.hour, r.minute);
+        if (iso) {
+          const t = new Date(iso).getTime();
+          if (t > lastTime) out.push(iso);
+        }
+        if (out.length >= count) break;
+      }
+    }
+    curYMD = ymdAddDays(curYMD, 1);
+  }
+
+  return out;
+}
+
+function buildBaseDatesISOFromRules(student: Student, count: number): string[] {
+  const startYMD = student.startDate; // "YYYY-MM-DD"
+  if (!startYMD) return [];
+  const baseRules = normalizeRules(student.scheduleRules ?? []);
+  if (baseRules.length === 0) return [];
+
+  const rawChanges = Array.isArray(student.scheduleChangeEvents) ? student.scheduleChangeEvents : [];
+  const changes = rawChanges
+    .filter((c) => Number.isFinite(c.startIndex) && c.startIndex >= 1 && Array.isArray(c.newRules))
+    .sort((a, b) => a.startIndex - b.startIndex);
+
+  if (changes.length === 0) return buildDatesFromRules(startYMD, baseRules, count);
+
+  const out: string[] = [];
+  let lastISO: string | null = null;
+  let currentRules = baseRules;
+  let currentStart = 1;
+
+  for (const ch of changes) {
+    if (ch.startIndex <= currentStart) {
+      currentRules = normalizeRules(ch.newRules ?? []);
+      currentStart = ch.startIndex;
+      continue;
+    }
+
+    const segCount = Math.min(ch.startIndex - currentStart, count - out.length);
+    if (segCount > 0) {
+      const segment: string[] = lastISO
+        ? buildDatesAfterISO(lastISO, currentRules, segCount)
+        : buildDatesFromRules(startYMD, currentRules, segCount);
+      out.push(...segment);
+      lastISO = segment[segment.length - 1] ?? lastISO;
+    }
+
+    currentRules = normalizeRules(ch.newRules ?? []);
+    currentStart = ch.startIndex;
+    if (out.length >= count) break;
+  }
+
+  if (out.length < count) {
+    const segCount = count - out.length;
+    const segment: string[] = lastISO
+      ? buildDatesAfterISO(lastISO, currentRules, segCount)
+      : buildDatesFromRules(startYMD, currentRules, segCount);
+    out.push(...segment);
+  }
+
+  return out;
+}
+
+/**
+ * ✅ 이제 baseDatesISO는 sessions.displayAt이 아니라 규칙 기반으로 만든다.
+ * - planCount만 생성하면 carry 때문에 더 뒤가 필요할 수 있으니, "여유분"을 함께 만든다.
+ */
+export function buildBaseDatesISO(student: Student, extra = 60): string[] {
+  const pc = Math.max(0, safeInt(student.planCount ?? 0, 0));
+  const need = pc + Math.max(0, extra);
+  return buildBaseDatesISOFromRules(student, need);
+}
+
+export function buildBaseDatesISOByToken(token: string, extra = 60): string[] {
+  const st = findStudentByToken(token);
+  if (!st) return [];
+  return buildBaseDatesISO(st, extra);
+}
+
+function toMeta(v: unknown): Partial<SessionMeta> | null {
+  if (!v || typeof v !== "object") return null;
+  return v as Partial<SessionMeta>;
+}
+
+function isSessionState(v: unknown): v is SessionState {
+  return v === "present" || v === "absent" || v === "planned";
+}
+
+
+// -------------------- computeEffectiveISO --------------------
+function carrySumUntil(metaMap: Record<number, SessionMeta>, index: number): number {
+  let sum = 0;
+  for (let i = 1; i <= index; i++) sum += safeInt(metaMap[i]?.carry ?? 0, 0);
+  return sum;
+}
+
+
+/**
+ * baseDatesISO가 부족해서 baseIdx가 넘어가면,
+ * "마지막 두 세션의 간격"으로 뒤 날짜를 이어서 만들어줍니다.
+ * (마지막 간격을 모르면 7일로 가정)
+ */
+function getBaseISOWithExtrapolation(baseDatesISO: string[], baseIdx: number): string | null {
+  if (baseIdx < 0) return null;
+  if (baseIdx < baseDatesISO.length) return baseDatesISO[baseIdx] ?? null;
+
+  // baseDatesISO가 1개도 없으면 계산 불가
+  if (baseDatesISO.length === 0) return null;
+
+  // 마지막 날짜
+  const lastISO = baseDatesISO[baseDatesISO.length - 1];
+  const lastDT = new Date(lastISO);
+  if (!Number.isFinite(lastDT.getTime())) return null;
+
+  // 간격(기본 7일)
+  let stepMs = 7 * 24 * 60 * 60 * 1000;
+
+  if (baseDatesISO.length >= 2) {
+    const prevISO = baseDatesISO[baseDatesISO.length - 2];
+    const prevDT = new Date(prevISO);
+    if (Number.isFinite(prevDT.getTime())) {
+      const diff = lastDT.getTime() - prevDT.getTime();
+      // 너무 이상한 값이면(0 이하 등) fallback
+      if (diff > 0) stepMs = diff;
+    }
+  }
+
+  const extra = baseIdx - (baseDatesISO.length - 1);
+  const next = new Date(lastDT.getTime() + stepMs * extra);
+  if (!Number.isFinite(next.getTime())) return null;
+  return next.toISOString();
+}
+
+export function computeEffectiveISO(args: {
+  token: string;
+  index: number; // 1-based
+  baseDatesISO: string[];
+  metaMap: Record<number, SessionMeta>;
+}): { effectiveISO: string | null; meta: SessionMeta; baseISO: string | null } {
+  const { index, baseDatesISO, metaMap } = args;
+  const meta = metaMap[index] ?? {};
+
+  const skip = carrySumUntil(metaMap, index);
+  const baseIdx = index - 1 + skip;
+
+  const baseISO = getBaseISOWithExtrapolation(baseDatesISO, baseIdx);
+
+  // ✅ override 최우선
+  if (meta.overrideDate) {
+    const h = meta.overrideHour ?? 0;
+    const m = meta.overrideMinute ?? 0;
+
+    // KST(+09:00) 기준으로 ISO 생성 (브라우저/환경 timezone 영향 제거)
+    const iso = isoFromKST(meta.overrideDate, h, m);
+    if (iso) {
+      return { effectiveISO: iso, meta, baseISO };
+    }
+  }
+
+  return { effectiveISO: baseISO, meta, baseISO };
+}
+
+// -------------------- badges --------------------
+
+export function buildBadges(meta: SessionMeta): string[] {
+  const out: string[] = [];
+
+  // ✅ 출결은 배지에서 제외 (UI에서 별도 칩으로 강하게 표시)
+  const carry = safeInt(meta.carry ?? 0, 0);
+  if (carry > 0) out.push(`이월+${carry}`);
+  if (meta.overrideDate) out.push("변경");
+
+  return out;
+}

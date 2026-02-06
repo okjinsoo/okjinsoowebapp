@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import BrandHomeButton from "@/lib/ui/common/BrandHomeButton";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -24,10 +25,29 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-      >
-        {children}
+      <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
+        <div style={{ height: 56 }} />
+        <div
+          style={{
+            position: "fixed",
+            top: 8,
+            left: "50%",
+            transform: "translateX(-50%)",
+            zIndex: 50,
+          }}
+        >
+          <BrandHomeButton />
+        </div>
+        <div
+          style={{
+            maxWidth: 980,
+            width: "100%",
+            margin: "0 auto",
+            padding: "0 16px 24px",
+          }}
+        >
+          {children}
+        </div>
       </body>
     </html>
   );

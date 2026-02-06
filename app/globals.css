@@ -1,7 +1,7 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
+  --background: #fefefe;
   --foreground: #171717;
 }
 
@@ -23,4 +23,175 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
+  font-size: 15px;
+}
+
+h1 {
+  font-size: 30px !important;
+  font-weight: 800;
+}
+
+.text-xs {
+  font-size: 12px !important;
+}
+
+.text-sm,
+.text-base,
+.text-lg,
+.text-xl,
+.text-2xl,
+.text-3xl,
+.text-4xl {
+  font-size: 15px !important;
+}
+
+.text-muted {
+  color: #6b7280;
+  font-size: 12px !important;
+}
+
+.text-dim {
+  color: #6b7280;
+  font-size: 15px !important;
+}
+
+ .page-title {
+  font-size: 30px !important;
+  font-weight: 800;
+ }
+
+ .card-title {
+  font-size: 17px !important;
+  font-weight: 800;
+ }
+
+*[style*="color: #666"] {
+  font-size: 12px !important;
+}
+
+button {
+  font-size: 13px !important;
+  padding: 4px 8px !important;
+  border-radius: 8px !important;
+  border: 1px solid #d1d5db !important;
+}
+
+.brand-home-btn {
+  font-size: 35px !important;
+  font-weight: 700 !important;
+  line-height: 1.1 !important;
+  padding: 0 !important;
+  border: none !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  color: #6b7280 !important;
+}
+
+.brand-home-btn:hover {
+  color: #4b5563 !important;
+  background: transparent !important;
+}
+
+.btn {
+  background: transparent;
+  color: #111827;
+  font-weight: 400;
+}
+
+.btn:hover {
+  background: #f3f4f6;
+}
+
+.btn-white {
+  background: #ffffff;
+  color: #111827;
+}
+
+.btn-white:hover {
+  background: #f3f4f6;
+}
+
+.btn-gray {
+  background: #d1d5db;
+  color: #111827;
+  font-weight: 600;
+}
+
+.btn-gray:hover {
+  background: #bfc5cd;
+}
+
+.btn-bold {
+  font-weight: 600;
+}
+
+.btn-red {
+  background: #ef4444;
+  color: #ffffff;
+  font-weight: 600;
+}
+
+.btn-red:hover {
+  background: #dc2626;
+}
+
+.btn-orange {
+  background: #f97316;
+  color: #ffffff;
+  font-weight: 600;
+}
+
+.btn-orange:hover {
+  background: #ea580c;
+}
+
+.btn-green {
+  background: #059669;
+  color: #ffffff;
+  font-weight: 600;
+}
+
+.btn-green:hover {
+  background: #047857;
+}
+
+.btn-blue {
+  background: #3b82f6;
+  color: #ffffff;
+  font-weight: 600;
+}
+
+.btn-blue:hover {
+  background: #2563eb;
+}
+
+.btn-black {
+  background: #1f2937 !important;
+  color: #ffffff !important;
+  font-weight: 600;
+}
+
+.btn-black:hover {
+  background: #374151 !important;
+}
+
+.btn-square {
+  width: 28px;
+  height: 28px;
+  padding: 0 !important;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+input:not([type="checkbox"]):not([type="radio"]),
+select {
+  font-size: 15px;
+  height: 40px;
+}
+
+textarea {
+  font-size: 15px;
+  min-height: 40px;
 }
