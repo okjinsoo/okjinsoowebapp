@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "next/navigation";
 import {
   AUTH_EVENT,
   buildGoogleAuthUrl,
@@ -20,12 +19,17 @@ import {
 } from "@/lib/auth/roleAuth";
 
 export default function HomePage() {
-  const searchParams = useSearchParams();
   const [session, setSession] = useState<AuthSession | null>(null);
   const [role, setRole] = useState<UserRole>("guest");
   const [roleLoading, setRoleLoading] = useState(false);
+  const [redirectFrom, setRedirectFrom] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    const from = new URLSearchParams(window.location.search).get("next");
+    setRedirectFrom((from ?? "").trim());
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -100,7 +104,6 @@ export default function HomePage() {
   }
 
   const loggedIn = Boolean(session) && !isSessionExpired(session);
-  const redirectFrom = (searchParams.get("next") ?? "").trim();
 
   return (
     <main
