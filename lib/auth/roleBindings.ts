@@ -150,7 +150,9 @@ export async function syncRoleBindingEmails(args: {
   const previous = new Set(args.previousEmails.map(normalizeEmail).filter(Boolean));
   const next = new Set(args.nextEmails.map(normalizeEmail).filter(Boolean));
 
-  const toUpsert = Array.from(next).filter((email) => !previous.has(email));
+  // 전체 upsert로 유지하면, 기존 데이터(마이그레이션 이전에 이미 있던 학생/선생님)도
+  // 저장 동작 한 번만으로 role_bindings를 복구할 수 있다.
+  const toUpsert = Array.from(next);
   const toDelete = Array.from(previous).filter((email) => !next.has(email));
 
   await Promise.all([
