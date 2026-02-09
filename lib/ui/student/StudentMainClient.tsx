@@ -2,12 +2,18 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { AUTH_EVENT, loadAuthSession } from "@/lib/auth/supabaseAuth";
+import { pullSharedSnapshotAndHydrate } from "@/lib/storage/sharedSnapshot";
 import { loadStudents } from "@/lib/storage/students";
 import { loadTeachers, loadCurrentTeacherId, TEACHERS_EVENT } from "@/lib/storage/teachers";
 import type { Student, Teacher } from "@/lib/types/index";
 import StudentHubCore from "@/lib/ui/student/StudentHubCore";
 import RoleGateCard from "@/lib/ui/common/RoleGateCard";
 import { GATE_EVENT, loadCurrentStudentToken } from "@/lib/ui/common/roleGateStorage";
+
+function normalizeEmail(email: string | null | undefined): string {
+  return (email ?? "").trim().toLowerCase();
+}
 
 export default function StudentMainClient({ role }: { role: "a" | "t" | "s" }) {
   const [hydrated, setHydrated] = useState(false);
@@ -17,32 +23,87 @@ export default function StudentMainClient({ role }: { role: "a" | "t" | "s" }) {
   const [teacherId, setTeacherId] = useState<string | null>(null);
 
   useEffect(() => {
-    const id = setTimeout(() => {
-      setStudents(loadStudents());
-      setTeachers(loadTeachers());
-      setStudentToken(loadCurrentStudentToken());
-      setTeacherId(loadCurrentTeacherId());
+    let cancelled = false;
+
+    async function bootstrap() {
+      if (role === "s") {
+        try {
+          await pullSharedSnapshotAndHydrate();
+        } catch (err) {
+          console.error("공유 스냅샷 불러오기 실패(student):", err);
+        }
+      }
+
+      if (cancelled) return;
+
+      const nextStudents = loadStudents();
+      const nextTeachers = loadTeachers();
+      setStudents(nextStudents);
+      setTeachers(nextTeachers);
+
+      if (role === "s") {
+        const loginEmail = normalizeEmail(loadAuthSession()?.email);
+        const matchedStudent = nextStudents.find(
+          (student) => normalizeEmail(student.googleEmail) === loginEmail
+        );
+        setStudentToken(matchedStudent?.token ?? null);
+        setTeacherId(matchedStudent?.teacherId ?? null);
+      } else {
+        setStudentToken(loadCurrentStudentToken());
+        setTeacherId(loadCurrentTeacherId());
+      }
       setHydrated(true);
-    }, 0);
-    return () => clearTimeout(id);
-  }, []);
+    }
+
+    void bootstrap();
+    return () => {
+      cancelled = true;
+    };
+  }, [role]);
 
   useEffect(() => {
-    const onGate = () => {
-      setStudents(loadStudents());
-      setTeachers(loadTeachers());
-      setStudentToken(loadCurrentStudentToken());
-      setTeacherId(loadCurrentTeacherId());
+    const onGate = async () => {
+      if (role === "s") {
+        try {
+          await pullSharedSnapshotAndHydrate();
+        } catch (err) {
+          console.error("공유 스냅샷 새로고침 실패(student):", err);
+        }
+      }
+
+      const nextStudents = loadStudents();
+      const nextTeachers = loadTeachers();
+      setStudents(nextStudents);
+      setTeachers(nextTeachers);
+
+      if (role === "s") {
+        const loginEmail = normalizeEmail(loadAuthSession()?.email);
+        const matchedStudent = nextStudents.find(
+          (student) => normalizeEmail(student.googleEmail) === loginEmail
+        );
+        setStudentToken(matchedStudent?.token ?? null);
+        setTeacherId(matchedStudent?.teacherId ?? null);
+      } else {
+        setStudentToken(loadCurrentStudentToken());
+        setTeacherId(loadCurrentTeacherId());
+      }
     };
-    window.addEventListener(GATE_EVENT, onGate);
-    window.addEventListener("tutorweb:studentsUpdated", onGate);
-    window.addEventListener(TEACHERS_EVENT, onGate);
+
+    const requestGateRefresh = () => {
+      void onGate();
+    };
+
+    window.addEventListener(GATE_EVENT, requestGateRefresh);
+    window.addEventListener(AUTH_EVENT, requestGateRefresh);
+    window.addEventListener("tutorweb:studentsUpdated", requestGateRefresh);
+    window.addEventListener(TEACHERS_EVENT, requestGateRefresh);
     return () => {
-      window.removeEventListener(GATE_EVENT, onGate);
-      window.removeEventListener("tutorweb:studentsUpdated", onGate);
-      window.removeEventListener(TEACHERS_EVENT, onGate);
+      window.removeEventListener(GATE_EVENT, requestGateRefresh);
+      window.removeEventListener(AUTH_EVENT, requestGateRefresh);
+      window.removeEventListener("tutorweb:studentsUpdated", requestGateRefresh);
+      window.removeEventListener(TEACHERS_EVENT, requestGateRefresh);
     };
-  }, []);
+  }, [role]);
 
   if (!hydrated) {
     return (

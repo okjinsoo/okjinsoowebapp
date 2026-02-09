@@ -1,13 +1,14 @@
 // app/t/tmain/TeacherMainClient.tsx
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Student, Teacher } from "@/lib/types/index";
 import { loadStudents } from "@/lib/storage/students";
 import { sessionsByStudent } from "@/lib/storage/sessions";
 import { loadConsultationsByStudent } from "@/lib/storage/consultations";
 import { AUTH_EVENT, loadAuthSession } from "@/lib/auth/supabaseAuth";
+import { pullSharedSnapshotAndHydrate } from "@/lib/storage/sharedSnapshot";
 import {
   clearCurrentTeacherId,
   loadTeachers,
@@ -87,75 +88,79 @@ export default function TeacherMainClient({ initialRole = "t" }: { initialRole?:
   const [isHydrated, setIsHydrated] = useState(false);
   const [teacherId, setTeacherId] = useState<string | null>(null);
 
-  useEffect(() => {
-    const id = setTimeout(() => {
-      const nextTeachers = loadTeachers();
-      setStudents(loadStudents());
-      setTeachers(nextTeachers);
-      if (initialRole === "t") {
-        const matchedTeacherId = teacherIdFromLoginEmail(nextTeachers);
-        if (matchedTeacherId) {
-          saveCurrentTeacherId(matchedTeacherId);
-          setTeacherId(matchedTeacherId);
-        } else {
-          clearCurrentTeacherId();
-          setTeacherId(null);
-        }
+  const applyTeacherSelection = useCallback((nextTeachers: Teacher[]) => {
+    if (initialRole === "t") {
+      const matchedTeacherId = teacherIdFromLoginEmail(nextTeachers);
+      if (matchedTeacherId) {
+        saveCurrentTeacherId(matchedTeacherId);
+        setTeacherId(matchedTeacherId);
+      } else {
+        clearCurrentTeacherId();
+        setTeacherId(null);
       }
-    }, 0);
-    return () => clearTimeout(id);
+      return;
+    }
+    setTeacherId(loadCurrentTeacherId());
   }, [initialRole]);
 
   useEffect(() => {
-    const id = setTimeout(() => {
+    let cancelled = false;
+
+    async function bootstrap() {
+      if (initialRole === "t") {
+        try {
+          await pullSharedSnapshotAndHydrate();
+        } catch (err) {
+          console.error("공유 스냅샷 불러오기 실패(teacher):", err);
+        }
+      }
+
+      if (cancelled) return;
+      const nextTeachers = loadTeachers();
+      const nextStudents = loadStudents();
+      setTeachers(nextTeachers);
+      setStudents(nextStudents);
+      applyTeacherSelection(nextTeachers);
       setIsHydrated(true);
-      if (initialRole === "t") {
-        const matchedTeacherId = teacherIdFromLoginEmail(loadTeachers());
-        if (matchedTeacherId) {
-          saveCurrentTeacherId(matchedTeacherId);
-          setTeacherId(matchedTeacherId);
-        } else {
-          clearCurrentTeacherId();
-          setTeacherId(null);
-        }
-        return;
-      }
-      setTeacherId(loadCurrentTeacherId());
-    }, 0);
-    return () => clearTimeout(id);
-  }, [initialRole]);
+    }
+
+    void bootstrap();
+    return () => {
+      cancelled = true;
+    };
+  }, [initialRole, applyTeacherSelection]);
 
   useEffect(() => {
-    const onGate = () => {
+    const onGate = async () => {
+      if (initialRole === "t") {
+        try {
+          await pullSharedSnapshotAndHydrate();
+        } catch (err) {
+          console.error("공유 스냅샷 새로고침 실패(teacher):", err);
+        }
+      }
+
       const nextTeachers = loadTeachers();
       setStudents(loadStudents());
       setTeachers(nextTeachers);
-
-      if (initialRole === "t") {
-        const matchedTeacherId = teacherIdFromLoginEmail(nextTeachers);
-        if (matchedTeacherId) {
-          saveCurrentTeacherId(matchedTeacherId);
-          setTeacherId(matchedTeacherId);
-        } else {
-          clearCurrentTeacherId();
-          setTeacherId(null);
-        }
-        return;
-      }
-
-      setTeacherId(loadCurrentTeacherId());
+      applyTeacherSelection(nextTeachers);
     };
-    window.addEventListener(GATE_EVENT, onGate);
-    window.addEventListener(AUTH_EVENT, onGate);
-    window.addEventListener("tutorweb:studentsUpdated", onGate);
-    window.addEventListener(TEACHERS_EVENT, onGate);
+
+    const requestGateRefresh = () => {
+      void onGate();
+    };
+
+    window.addEventListener(GATE_EVENT, requestGateRefresh);
+    window.addEventListener(AUTH_EVENT, requestGateRefresh);
+    window.addEventListener("tutorweb:studentsUpdated", requestGateRefresh);
+    window.addEventListener(TEACHERS_EVENT, requestGateRefresh);
     return () => {
-      window.removeEventListener(GATE_EVENT, onGate);
-      window.removeEventListener(AUTH_EVENT, onGate);
-      window.removeEventListener("tutorweb:studentsUpdated", onGate);
-      window.removeEventListener(TEACHERS_EVENT, onGate);
+      window.removeEventListener(GATE_EVENT, requestGateRefresh);
+      window.removeEventListener(AUTH_EVENT, requestGateRefresh);
+      window.removeEventListener("tutorweb:studentsUpdated", requestGateRefresh);
+      window.removeEventListener(TEACHERS_EVENT, requestGateRefresh);
     };
-  }, [initialRole]);
+  }, [initialRole, applyTeacherSelection]);
 
   const hasTeacher = isHydrated && !!teacherId;
 
@@ -315,7 +320,11 @@ export default function TeacherMainClient({ initialRole = "t" }: { initialRole?:
             background: "#fff",
           }}
         >
-          <div className="text-muted">선생님을 선택하면 학생 리스트가 표시됩니다.</div>
+          <div className="text-muted">
+            {initialRole === "t"
+              ? "로그인 이메일과 일치하는 선생님 정보를 찾지 못했습니다. 관리자에서 선생님 이메일이 정확히 등록되어 있는지 확인해주세요."
+              : "선생님을 선택하면 학생 리스트가 표시됩니다."}
+          </div>
         </section>
       )}
 

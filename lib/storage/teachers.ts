@@ -1,6 +1,7 @@
 // lib/storage/teachers.ts
 // A안: 선생님(Teacher) 목록을 localStorage 에 저장합니다.
 import { syncRoleBindingEmails } from "@/lib/auth/roleBindings";
+import { pushSharedSnapshot, readLocalStudents } from "@/lib/storage/sharedSnapshot";
 import type { Teacher } from "@/lib/types/index";
 
 const KEY = "tutorweb_teachers_v1";
@@ -62,6 +63,15 @@ function syncTeacherRoleBindings(previous: Teacher[], next: Teacher[]): void {
   });
 }
 
+function syncSharedSnapshot(nextTeachers: Teacher[]): void {
+  void pushSharedSnapshot({
+    teachers: nextTeachers,
+    students: readLocalStudents(),
+  }).catch((err) => {
+    console.error("공유 스냅샷 동기화 실패(teachers):", err);
+  });
+}
+
 export function loadTeachers(): Teacher[] {
   if (typeof window === "undefined") return [];
   return safeParse<Teacher[]>(localStorage.getItem(KEY), []);
@@ -73,6 +83,7 @@ export function saveTeachers(list: Teacher[]): void {
   localStorage.setItem(KEY, JSON.stringify(list));
   dispatchTeachersUpdated();
   syncTeacherRoleBindings(previous, list);
+  syncSharedSnapshot(list);
 }
 
 export function upsertTeacher(t: Teacher): Teacher[] {
@@ -100,4 +111,5 @@ export function clearTeachers(): void {
   localStorage.removeItem(KEY);
   dispatchTeachersUpdated();
   syncTeacherRoleBindings(previous, []);
+  syncSharedSnapshot([]);
 }

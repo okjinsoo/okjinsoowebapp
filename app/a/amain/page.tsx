@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { syncRoleBindingEmails } from "@/lib/auth/roleBindings";
 import { getSupabaseConfig, loadAuthSession } from "@/lib/auth/supabaseAuth";
+import { pushSharedSnapshot } from "@/lib/storage/sharedSnapshot";
 import { loadStudents } from "@/lib/storage/students";
 import { loadTeachers, saveCurrentTeacherId, TEACHERS_EVENT } from "@/lib/storage/teachers";
 import { sessionsByStudent } from "@/lib/storage/sessions";
@@ -317,10 +318,11 @@ export default function AdminMainPage() {
           role: "student",
           accessToken: session.accessToken,
         }),
+        pushSharedSnapshot({ teachers, students }),
       ]);
 
       setSyncResult(
-        `성공: 선생님 ${teacherEmails.length}개, 학생 ${studentEmails.length}개 이메일을 role_bindings에 동기화했어요.`
+        `성공: 선생님 ${teacherEmails.length}개, 학생 ${studentEmails.length}개 이메일을 role_bindings에 동기화했고, 학생/선생님 목록도 공유 스냅샷으로 올렸어요.`
       );
     } catch (err) {
       const msg = err instanceof Error ? err.message : "알 수 없는 오류";

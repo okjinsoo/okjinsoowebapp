@@ -1,5 +1,6 @@
 // lib/storage/students.ts
 import { syncRoleBindingEmails } from "@/lib/auth/roleBindings";
+import { pushSharedSnapshot, readLocalTeachers } from "@/lib/storage/sharedSnapshot";
 import type { Student, StudentStatus } from "@/lib/types/index";
 
 const KEY = "tutorweb_students_v1";
@@ -29,6 +30,15 @@ function syncStudentRoleBindings(previous: Student[], next: Student[]): void {
   });
 }
 
+function syncSharedSnapshot(nextStudents: Student[]): void {
+  void pushSharedSnapshot({
+    teachers: readLocalTeachers(),
+    students: nextStudents,
+  }).catch((err) => {
+    console.error("공유 스냅샷 동기화 실패(students):", err);
+  });
+}
+
 export function loadStudents(): Student[] {
   if (typeof window === "undefined") return [];
   return safeParse<Student[]>(localStorage.getItem(KEY), []);
@@ -40,6 +50,7 @@ export function saveStudents(list: Student[]): void {
   localStorage.setItem(KEY, JSON.stringify(list));
   window.dispatchEvent(new CustomEvent("tutorweb:studentsUpdated"));
   syncStudentRoleBindings(previous, list);
+  syncSharedSnapshot(list);
 }
 
 export function upsertStudent(student: Student): Student[] {
@@ -75,4 +86,5 @@ export function clearStudents(): void {
   const previous = loadStudents();
   localStorage.removeItem(KEY);
   syncStudentRoleBindings(previous, []);
+  syncSharedSnapshot([]);
 }

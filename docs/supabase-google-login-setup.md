@@ -24,7 +24,8 @@
 1. Supabase 프로젝트 > `SQL Editor` 이동
 2. 저장소 파일 `db/migrations/002_role_bindings.sql` 내용을 붙여넣고 `Run`
 3. 이어서 `db/migrations/003_role_bindings_hardening.sql`도 붙여넣고 `Run`
-4. `Table Editor`에서 `role_bindings` 테이블 생성 확인
+4. 이어서 `db/migrations/004_shared_snapshot.sql`도 붙여넣고 `Run`
+5. `Table Editor`에서 `role_bindings`, `app_state_snapshots` 테이블 생성 확인
 
 이 테이블은 로그인 이메일과 권한(`student`/`teacher`)을 연결합니다.
 
@@ -67,6 +68,8 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=YOUR_SUPABASE_ANON_KEY
 - 관리자 기본 이메일은 코드에 고정: `lib/auth/roleAuth.ts`
 - 선생님 추가/수정/삭제 시 `role_bindings`가 자동 동기화됩니다.
 - 학생 추가/수정/삭제 시 `role_bindings`가 자동 동기화됩니다.
+- 선생님/학생 목록(localStorage)은 `app_state_snapshots`로도 동기화됩니다.
+  - 다른 브라우저/계정에서 로그인해도 목록을 불러올 수 있습니다.
 
 ## 8) 로컬 테스트
 
