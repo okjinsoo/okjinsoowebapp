@@ -5,11 +5,22 @@ import { useEffect, useState } from "react";
 import { AUTH_EVENT, loadAuthSession } from "@/lib/auth/supabaseAuth";
 import { pullSharedSnapshotAndHydrate } from "@/lib/storage/sharedSnapshot";
 import { loadStudents } from "@/lib/storage/students";
-import { loadTeachers, loadCurrentTeacherId, TEACHERS_EVENT } from "@/lib/storage/teachers";
+import {
+  clearCurrentTeacherId,
+  loadTeachers,
+  loadCurrentTeacherId,
+  saveCurrentTeacherId,
+  TEACHERS_EVENT,
+} from "@/lib/storage/teachers";
 import type { Student, Teacher } from "@/lib/types/index";
 import StudentHubCore from "@/lib/ui/student/StudentHubCore";
 import RoleGateCard from "@/lib/ui/common/RoleGateCard";
-import { GATE_EVENT, loadCurrentStudentToken } from "@/lib/ui/common/roleGateStorage";
+import {
+  clearCurrentStudentToken,
+  GATE_EVENT,
+  loadCurrentStudentToken,
+  saveCurrentStudentToken,
+} from "@/lib/ui/common/roleGateStorage";
 
 function normalizeEmail(email: string | null | undefined): string {
   return (email ?? "").trim().toLowerCase();
@@ -46,8 +57,17 @@ export default function StudentMainClient({ role }: { role: "a" | "t" | "s" }) {
         const matchedStudent = nextStudents.find(
           (student) => normalizeEmail(student.googleEmail) === loginEmail
         );
-        setStudentToken(matchedStudent?.token ?? null);
-        setTeacherId(matchedStudent?.teacherId ?? null);
+        const matchedToken = matchedStudent?.token ?? null;
+        const matchedTeacherId = matchedStudent?.teacherId ?? null;
+
+        setStudentToken(matchedToken);
+        setTeacherId(matchedTeacherId);
+
+        if (matchedToken) saveCurrentStudentToken(matchedToken);
+        else clearCurrentStudentToken();
+
+        if (matchedTeacherId) saveCurrentTeacherId(matchedTeacherId);
+        else clearCurrentTeacherId();
       } else {
         setStudentToken(loadCurrentStudentToken());
         setTeacherId(loadCurrentTeacherId());
@@ -81,8 +101,17 @@ export default function StudentMainClient({ role }: { role: "a" | "t" | "s" }) {
         const matchedStudent = nextStudents.find(
           (student) => normalizeEmail(student.googleEmail) === loginEmail
         );
-        setStudentToken(matchedStudent?.token ?? null);
-        setTeacherId(matchedStudent?.teacherId ?? null);
+        const matchedToken = matchedStudent?.token ?? null;
+        const matchedTeacherId = matchedStudent?.teacherId ?? null;
+
+        setStudentToken(matchedToken);
+        setTeacherId(matchedTeacherId);
+
+        if (matchedToken) saveCurrentStudentToken(matchedToken);
+        else clearCurrentStudentToken();
+
+        if (matchedTeacherId) saveCurrentTeacherId(matchedTeacherId);
+        else clearCurrentTeacherId();
       } else {
         setStudentToken(loadCurrentStudentToken());
         setTeacherId(loadCurrentTeacherId());

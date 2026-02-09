@@ -2,12 +2,28 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { AUTH_EVENT, loadAuthSession } from "@/lib/auth/supabaseAuth";
+import { pullSharedSnapshotAndHydrate } from "@/lib/storage/sharedSnapshot";
 import { loadStudents } from "@/lib/storage/students";
-import { loadTeachers, loadCurrentTeacherId } from "@/lib/storage/teachers";
+import {
+  clearCurrentTeacherId,
+  loadTeachers,
+  loadCurrentTeacherId,
+  saveCurrentTeacherId,
+} from "@/lib/storage/teachers";
 import type { Student, Teacher } from "@/lib/types/index";
 import StudentSessionListCore from "@/lib/ui/student/StudentSessionListCore";
 import RoleGateCard from "@/lib/ui/common/RoleGateCard";
-import { GATE_EVENT, loadCurrentStudentToken } from "@/lib/ui/common/roleGateStorage";
+import {
+  clearCurrentStudentToken,
+  GATE_EVENT,
+  loadCurrentStudentToken,
+  saveCurrentStudentToken,
+} from "@/lib/ui/common/roleGateStorage";
+
+function normalizeEmail(email: string | null | undefined): string {
+  return (email ?? "").trim().toLowerCase();
+}
 
 export default function StudentMainSessionListBase({ role }: { role: "a" | "t" | "s" }) {
   const [token, setToken] = useState<string | null>(null);
@@ -16,29 +32,102 @@ export default function StudentMainSessionListBase({ role }: { role: "a" | "t" |
   const [teacherId, setTeacherId] = useState<string | null>(null);
 
   useEffect(() => {
-    const id = setTimeout(() => {
-      setToken(loadCurrentStudentToken());
-      setStudents(loadStudents());
-      setTeachers(loadTeachers());
-      setTeacherId(loadCurrentTeacherId());
-    }, 0);
-    return () => clearTimeout(id);
-  }, []);
+    let cancelled = false;
+
+    async function bootstrap() {
+      if (role === "s") {
+        try {
+          await pullSharedSnapshotAndHydrate();
+        } catch (err) {
+          console.error("공유 스냅샷 불러오기 실패(student session list):", err);
+        }
+      }
+
+      if (cancelled) return;
+
+      const nextStudents = loadStudents();
+      const nextTeachers = loadTeachers();
+      setStudents(nextStudents);
+      setTeachers(nextTeachers);
+
+      if (role === "s") {
+        const loginEmail = normalizeEmail(loadAuthSession()?.email);
+        const matchedStudent = nextStudents.find(
+          (student) => normalizeEmail(student.googleEmail) === loginEmail
+        );
+        const matchedToken = matchedStudent?.token ?? null;
+        const matchedTeacherId = matchedStudent?.teacherId ?? null;
+
+        setToken(matchedToken);
+        setTeacherId(matchedTeacherId);
+
+        if (matchedToken) saveCurrentStudentToken(matchedToken);
+        else clearCurrentStudentToken();
+
+        if (matchedTeacherId) saveCurrentTeacherId(matchedTeacherId);
+        else clearCurrentTeacherId();
+      } else {
+        setToken(loadCurrentStudentToken());
+        setTeacherId(loadCurrentTeacherId());
+      }
+    }
+
+    void bootstrap();
+    return () => {
+      cancelled = true;
+    };
+  }, [role]);
 
   useEffect(() => {
-    const onGate = () => {
-      setToken(loadCurrentStudentToken());
-      setStudents(loadStudents());
-      setTeachers(loadTeachers());
-      setTeacherId(loadCurrentTeacherId());
+    const onGate = async () => {
+      if (role === "s") {
+        try {
+          await pullSharedSnapshotAndHydrate();
+        } catch (err) {
+          console.error("공유 스냅샷 새로고침 실패(student session list):", err);
+        }
+      }
+
+      const nextStudents = loadStudents();
+      const nextTeachers = loadTeachers();
+      setStudents(nextStudents);
+      setTeachers(nextTeachers);
+
+      if (role === "s") {
+        const loginEmail = normalizeEmail(loadAuthSession()?.email);
+        const matchedStudent = nextStudents.find(
+          (student) => normalizeEmail(student.googleEmail) === loginEmail
+        );
+        const matchedToken = matchedStudent?.token ?? null;
+        const matchedTeacherId = matchedStudent?.teacherId ?? null;
+
+        setToken(matchedToken);
+        setTeacherId(matchedTeacherId);
+
+        if (matchedToken) saveCurrentStudentToken(matchedToken);
+        else clearCurrentStudentToken();
+
+        if (matchedTeacherId) saveCurrentTeacherId(matchedTeacherId);
+        else clearCurrentTeacherId();
+      } else {
+        setToken(loadCurrentStudentToken());
+        setTeacherId(loadCurrentTeacherId());
+      }
     };
-    window.addEventListener(GATE_EVENT, onGate);
-    window.addEventListener("tutorweb:studentsUpdated", onGate);
+
+    const requestGateRefresh = () => {
+      void onGate();
+    };
+
+    window.addEventListener(GATE_EVENT, requestGateRefresh);
+    window.addEventListener(AUTH_EVENT, requestGateRefresh);
+    window.addEventListener("tutorweb:studentsUpdated", requestGateRefresh);
     return () => {
-      window.removeEventListener(GATE_EVENT, onGate);
-      window.removeEventListener("tutorweb:studentsUpdated", onGate);
+      window.removeEventListener(GATE_EVENT, requestGateRefresh);
+      window.removeEventListener(AUTH_EVENT, requestGateRefresh);
+      window.removeEventListener("tutorweb:studentsUpdated", requestGateRefresh);
     };
-  }, []);
+  }, [role]);
 
   return (
     <main>
