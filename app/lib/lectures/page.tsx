@@ -26,6 +26,18 @@ type Draft = { title: string; lectureUrl: string; problem0: string } | null;
 
 const DRAG_MIME = "application/x-lecture-node";
 
+function parseDragPayload(raw: string | null, fallback: DragPayload | null): DragPayload | null {
+  if (!raw) return fallback;
+  try {
+    const parsed = JSON.parse(raw) as Partial<DragPayload>;
+    if (typeof parsed.parentFolderId !== "string") return fallback;
+    if (typeof parsed.nodeId !== "string") return fallback;
+    return { parentFolderId: parsed.parentFolderId, nodeId: parsed.nodeId };
+  } catch {
+    return fallback;
+  }
+}
+
 function cloneTree(t: LectureTree): LectureTree {
   return JSON.parse(JSON.stringify(t)) as LectureTree;
 }
@@ -334,8 +346,7 @@ export default function LecturesPage() {
     if (!editMode || !tree) return;
     e.preventDefault();
 
-    const raw = e.dataTransfer.getData(DRAG_MIME);
-    const payload = raw ? (JSON.parse(raw) as DragPayload) : dragging;
+    const payload = parseDragPayload(e.dataTransfer.getData(DRAG_MIME), dragging);
     if (!payload) return;
 
     // 같은 parent 폴더에서만 이동 허용
@@ -363,8 +374,7 @@ export default function LecturesPage() {
     if (!editMode || !tree) return;
     e.preventDefault();
 
-    const raw = e.dataTransfer.getData(DRAG_MIME);
-    const payload = raw ? (JSON.parse(raw) as DragPayload) : dragging;
+    const payload = parseDragPayload(e.dataTransfer.getData(DRAG_MIME), dragging);
     if (!payload) return;
 
     if (payload.parentFolderId !== parentFolderId) return;

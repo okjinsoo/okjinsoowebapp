@@ -24,7 +24,7 @@ import type { ConsultTag } from "@/lib/ui/session/consultationMap";
 import type { ConsultationRecord } from "@/lib/types/index";
 import { ConsultBadge, ConsultButton } from "@/lib/ui/common/ConsultParts";
 import ConsultModal, { ConsultFormState } from "@/lib/ui/common/ConsultModal";
-import { todayYmdLocal, ymdFromISO_KST } from "@/lib/utils/date";
+import { todayYmdKST, ymdFromISO_KST } from "@/lib/utils/date";
 
 type Props = {
   role: "a" | "t" | "s";
@@ -78,7 +78,7 @@ function applyPauseStateFromConsultations(student: NonNullable<ReturnType<typeof
     .at(-1);
 
   if (latestPause?.finalResult === "pause_confirm" && latestPause.pauseEffectiveDate) {
-    const today = todayYmdLocal();
+    const today = todayYmdKST();
     const pauseStatus = computePauseLifecycle(today, latestPause.pauseEffectiveDate) === "paused" ? "paused" : "confirmed";
     upsertStudent({
       ...student,
@@ -105,7 +105,11 @@ export default function StudentSessionListCore({ role, token, prefix, hideTokenI
   // ✅ metaMap 배선 단일화
   const metaMap = useMetaMap(token);
 
-  const student = useMemo(() => findStudentByToken(token) ?? null, [token]);
+  const [studentTick, setStudentTick] = useState(0);
+  const student = useMemo(() => {
+    void studentTick;
+    return findStudentByToken(token) ?? null;
+  }, [token, studentTick]);
   const [showAllUpcoming, setShowAllUpcoming] = useState(false);
   const [showAllPast, setShowAllPast] = useState(false);
   const [consultOpen, setConsultOpen] = useState(false);
@@ -117,7 +121,7 @@ export default function StudentSessionListCore({ role, token, prefix, hideTokenI
     content: "",
     adminConsultDate: "",
     extensionResult: "",
-    extensionPaymentDate: todayYmdLocal(),
+    extensionPaymentDate: todayYmdKST(),
     extensionAddedCount: 12,
     extensionPaymentConfirmed: false,
     finalNote: "",
@@ -136,8 +140,13 @@ export default function StudentSessionListCore({ role, token, prefix, hideTokenI
 
   useEffect(() => {
     const onConsult = () => setConsultTick((x) => x + 1);
+    const onStudents = () => setStudentTick((x) => x + 1);
     window.addEventListener("tutorweb:consultationsUpdated", onConsult);
-    return () => window.removeEventListener("tutorweb:consultationsUpdated", onConsult);
+    window.addEventListener("tutorweb:studentsUpdated", onStudents);
+    return () => {
+      window.removeEventListener("tutorweb:consultationsUpdated", onConsult);
+      window.removeEventListener("tutorweb:studentsUpdated", onStudents);
+    };
   }, []);
 
 
@@ -303,7 +312,7 @@ export default function StudentSessionListCore({ role, token, prefix, hideTokenI
   }, [student, consultForm.purpose, consultForm.finalResult, consultForm.pauseEffectiveDate, sessions, token, baseDatesISO, metaMap, displayRecords]);
 
   const ymdFromISO = (iso: string) => {
-    if (!iso) return todayYmdLocal();
+    if (!iso) return todayYmdKST();
     const parts = new Intl.DateTimeFormat("en-CA", {
       timeZone: "Asia/Seoul",
       year: "numeric",
@@ -328,7 +337,7 @@ export default function StudentSessionListCore({ role, token, prefix, hideTokenI
           content: record.content ?? "",
           adminConsultDate: record.adminConsultDate ?? "",
           extensionResult: record.extensionResult ?? "",
-          extensionPaymentDate: record.extensionPaymentDate ?? todayYmdLocal(),
+          extensionPaymentDate: record.extensionPaymentDate ?? todayYmdKST(),
           extensionAddedCount: Math.max(1, Math.floor(Number(record.extensionAddedCount) || 12)),
           extensionPaymentConfirmed: Boolean(record.extensionPaymentConfirmed),
           finalNote: record.finalNote ?? "",
@@ -350,7 +359,7 @@ export default function StudentSessionListCore({ role, token, prefix, hideTokenI
       content: "",
       adminConsultDate: "",
       extensionResult: "",
-      extensionPaymentDate: todayYmdLocal(),
+      extensionPaymentDate: todayYmdKST(),
       extensionAddedCount: 12,
       extensionPaymentConfirmed: false,
       finalNote: "",
@@ -384,7 +393,7 @@ export default function StudentSessionListCore({ role, token, prefix, hideTokenI
 
     if (isAdmin && formForSave.purpose === "pause_request") {
       if (formForSave.finalResult === "pause_confirm" && formForSave.pauseEffectiveDate) {
-        const today = todayYmdLocal();
+        const today = todayYmdKST();
         const pauseStatus = computePauseLifecycle(today, formForSave.pauseEffectiveDate) === "paused" ? "paused" : "confirmed";
         upsertStudent({
           ...student,

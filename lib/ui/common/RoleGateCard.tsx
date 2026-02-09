@@ -2,7 +2,7 @@
 "use client";
 
 import type { Student, Teacher } from "@/lib/types/index";
-import { usePathname, useSearchParams } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { saveCurrentRole, saveCurrentStudentToken } from "@/lib/ui/common/roleGateStorage";
 import { saveCurrentTeacherId } from "@/lib/storage/teachers";
 import { dispatchGateUpdated } from "@/lib/ui/common/roleGateStorage";
@@ -44,8 +44,6 @@ export default function RoleGateCard({
   onStudentChange,
 }: Props) {
   const pathname = usePathname();
-  const searchParams = useSearchParams();
-
   const selectStyle = {
     height: 40,
     padding: 10,
@@ -73,7 +71,10 @@ export default function RoleGateCard({
               const next = e.target.value as Role;
               saveCurrentRole(next);
               const nextPath = replaceRolePath(pathname || "/", next);
-              const q = searchParams?.toString();
+              const q =
+                typeof window !== "undefined"
+                  ? window.location.search.replace(/^\?/, "")
+                  : "";
               window.location.href = q ? `${nextPath}?${q}` : nextPath;
             }}
             style={selectStyle}

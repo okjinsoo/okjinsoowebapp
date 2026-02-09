@@ -22,6 +22,7 @@ import { buildDisplayRecords, computeRefundRatio } from "@/lib/factories/lessonS
 import { computePauseLifecycle } from "@/lib/factories/studentStatusFactory";
 import { ConsultBadge, ConsultButton } from "@/lib/ui/common/ConsultParts";
 import ConsultModal, { ConsultFormState } from "@/lib/ui/common/ConsultModal";
+import { todayYmdKST } from "@/lib/utils/date";
 
 type Props = {
   role: "a" | "t" | "s";
@@ -32,14 +33,6 @@ type Props = {
 function isNonNegInt(n: unknown): boolean {
   const x = typeof n === "number" ? n : Number(n);
   return Number.isFinite(x) && Math.floor(x) === x && x >= 0;
-}
-
-function ymdTodayLocal(): string {
-  const d = new Date();
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
-  return `${yyyy}-${mm}-${dd}`;
 }
 
 export default function SessionTopBarCore({ role, token, index }: Props) {
@@ -67,14 +60,16 @@ export default function SessionTopBarCore({ role, token, index }: Props) {
 
   const [consultOpen, setConsultOpen] = useState(false);
   const [consultEditingId, setConsultEditingId] = useState<string | null>(null);
+  const [studentTick, setStudentTick] = useState(0);
+  const [consultTick, setConsultTick] = useState(0);
   const [consultForm, setConsultForm] = useState<ConsultFormState>({
-    date: ymdTodayLocal(),
+    date: todayYmdKST(),
     purpose: "general",
     target: "student",
     content: "",
     adminConsultDate: "",
     extensionResult: "",
-    extensionPaymentDate: ymdTodayLocal(),
+    extensionPaymentDate: todayYmdKST(),
     extensionAddedCount: 12,
     extensionPaymentConfirmed: false,
     finalNote: "",
@@ -97,11 +92,28 @@ export default function SessionTopBarCore({ role, token, index }: Props) {
   const [draftReason, setDraftReason] = useState<string>("");
   const [draftRecord, setDraftRecord] = useState<string>("");
 
+  useEffect(() => {
+    const onStudents = () => setStudentTick((x) => x + 1);
+    const onConsultations = () => setConsultTick((x) => x + 1);
+    window.addEventListener("tutorweb:studentsUpdated", onStudents);
+    window.addEventListener("tutorweb:consultationsUpdated", onConsultations);
+    return () => {
+      window.removeEventListener("tutorweb:studentsUpdated", onStudents);
+      window.removeEventListener("tutorweb:consultationsUpdated", onConsultations);
+    };
+  }, []);
+
   const baseDatesISO = useMemo(() => buildBaseDatesISOByToken(token, 60), [token]);
 
-  const student = useMemo(() => findStudentByToken(token) ?? null, [token]);
+  const student = useMemo(() => {
+    void studentTick;
+    return findStudentByToken(token) ?? null;
+  }, [token, studentTick]);
   const sessions = useMemo(() => (student ? sessionsByStudent(student.id) : []), [student]);
-  const consultRecords = useMemo(() => (student ? loadConsultationsByStudent(student.id) : []), [student]);
+  const consultRecords = useMemo(() => {
+    void consultTick;
+    return student ? loadConsultationsByStudent(student.id) : [];
+  }, [student, consultTick]);
 
   const { effectiveISO, meta } = useMemo(() => {
     return computeEffectiveISO({
@@ -252,7 +264,7 @@ export default function SessionTopBarCore({ role, token, index }: Props) {
   };
 
   const ymdFromISO = (iso: string | null | undefined) => {
-    if (!iso) return ymdTodayLocal();
+    if (!iso) return todayYmdKST();
     const parts = new Intl.DateTimeFormat("en-CA", {
       timeZone: "Asia/Seoul",
       year: "numeric",
@@ -277,7 +289,7 @@ export default function SessionTopBarCore({ role, token, index }: Props) {
           content: record.content ?? "",
           adminConsultDate: record.adminConsultDate ?? "",
           extensionResult: record.extensionResult ?? "",
-          extensionPaymentDate: record.extensionPaymentDate ?? ymdTodayLocal(),
+          extensionPaymentDate: record.extensionPaymentDate ?? todayYmdKST(),
           extensionAddedCount: Math.max(1, Math.floor(Number(record.extensionAddedCount) || 12)),
           extensionPaymentConfirmed: Boolean(record.extensionPaymentConfirmed),
           finalNote: record.finalNote ?? "",
@@ -299,7 +311,7 @@ export default function SessionTopBarCore({ role, token, index }: Props) {
       content: "",
       adminConsultDate: "",
       extensionResult: "",
-      extensionPaymentDate: ymdTodayLocal(),
+      extensionPaymentDate: todayYmdKST(),
       extensionAddedCount: 12,
       extensionPaymentConfirmed: false,
       finalNote: "",
@@ -325,11 +337,12 @@ export default function SessionTopBarCore({ role, token, index }: Props) {
       makeId: () => Math.random().toString(36).slice(2),
     });
     saveConsultationsByStudent(student.id, updated);
+    setConsultTick((x) => x + 1);
     setConsultOpen(false);
 
     if (isAdmin && consultForm.purpose === "pause_request") {
       if (consultForm.finalResult === "pause_confirm" && consultForm.pauseEffectiveDate) {
-        const today = ymdTodayLocal();
+        const today = todayYmdKST();
         const pauseStatus = computePauseLifecycle(today, consultForm.pauseEffectiveDate) === "paused" ? "paused" : "confirmed";
         upsertStudent({
           ...student,
@@ -353,6 +366,7 @@ export default function SessionTopBarCore({ role, token, index }: Props) {
     const list = loadConsultationsByStudent(student.id);
     const updated = list.filter((r) => r.id !== consultEditingId);
     saveConsultationsByStudent(student.id, updated);
+    setConsultTick((x) => x + 1);
     setConsultOpen(false);
   };
 
@@ -418,7 +432,7 @@ export default function SessionTopBarCore({ role, token, index }: Props) {
     }
 
     // ✅ 켜는 순간: 날짜만 오늘로 세팅(없을 때만), 시간은 일부러 비워둠
-    setDraftOverrideDate((prev) => (prev ? prev : ymdTodayLocal()));
+    setDraftOverrideDate((prev) => (prev ? prev : todayYmdKST()));
     setDraftOverrideHour(null);
     setDraftOverrideMinute(null);
   };

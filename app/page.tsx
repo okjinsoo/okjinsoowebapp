@@ -1,65 +1,210 @@
-import Image from "next/image";
+"use client";
 
-export default function Home() {
+import Link from "next/link";
+import { useEffect, useMemo, useState } from "react";
+import {
+  AUTH_EVENT,
+  buildGoogleAuthUrl,
+  clearAuthSession,
+  getSupabaseConfig,
+  isSessionExpired,
+  loadAuthSession,
+  type AuthSession,
+} from "@/lib/auth/supabaseAuth";
+
+export default function HomePage() {
+  const [session, setSession] = useState<AuthSession | null>(null);
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    const sync = () => {
+      const next = loadAuthSession();
+      if (next && isSessionExpired(next)) {
+        clearAuthSession();
+        setSession(null);
+        return;
+      }
+      setSession(next);
+    };
+
+    sync();
+    window.addEventListener(AUTH_EVENT, sync);
+    return () => window.removeEventListener(AUTH_EVENT, sync);
+  }, []);
+
+  const loginReady = useMemo(() => Boolean(getSupabaseConfig()), []);
+
+  function onClickGoogleLogin() {
+    setError("");
+    if (!loginReady) {
+      setError("환경변수가 비어 있어요. .env 설정을 먼저 해주세요.");
+      return;
+    }
+
+    setBusy(true);
+    const redirectTo = `${window.location.origin}/auth/callback`;
+    const url = buildGoogleAuthUrl(redirectTo);
+    if (!url) {
+      setBusy(false);
+      setError("로그인 URL을 만들지 못했어요.");
+      return;
+    }
+    window.location.href = url;
+  }
+
+  function onClickLogout() {
+    clearAuthSession();
+    setSession(null);
+  }
+
+  const loggedIn = Boolean(session) && !isSessionExpired(session);
+
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <main
+      style={{
+        minHeight: "calc(100vh - 56px)",
+        display: "grid",
+        placeItems: "center",
+        padding: 16,
+        background:
+          "linear-gradient(135deg, #f7f7f2 0%, #eef7ff 45%, #f8f1ff 100%)",
+      }}
+    >
+      <section
+        style={{
+          width: "100%",
+          maxWidth: 720,
+          borderRadius: 18,
+          background: "#fff",
+          border: "1px solid #e5e7eb",
+          padding: 24,
+          boxShadow: "0 10px 30px rgba(15, 23, 42, 0.08)",
+        }}
+      >
+        <div style={{ fontSize: 13, color: "#475569", fontWeight: 700 }}>
+          OKJIN MATH
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+        <h1 style={{ marginTop: 8, fontSize: 28, fontWeight: 900, lineHeight: 1.25 }}>
+          옥진수학에 오신 것을 환영합니다.
+        </h1>
+        <p style={{ marginTop: 10, color: "#475569", lineHeight: 1.6 }}>
+          이 페이지는 웹앱의 시작 화면입니다.
+          <br />
+          로그인은 구글 계정으로만 진행합니다.
+        </p>
+
+        <div
+          style={{
+            marginTop: 20,
+            border: "1px solid #e5e7eb",
+            borderRadius: 12,
+            background: "#f8fafc",
+            padding: 14,
+          }}
+        >
+          {!loggedIn ? (
+            <>
+              <button
+                type="button"
+                onClick={onClickGoogleLogin}
+                disabled={busy}
+                style={{
+                  width: "100%",
+                  height: 48,
+                  borderRadius: 10,
+                  border: "1px solid #111827",
+                  background: "#111827",
+                  color: "#fff",
+                  fontWeight: 800,
+                  cursor: "pointer",
+                }}
+              >
+                {busy ? "구글 로그인 화면으로 이동 중..." : "구글로 로그인하기"}
+              </button>
+              <div style={{ marginTop: 8, fontSize: 12, color: "#64748b" }}>
+                처음 세팅이라면 `.env` 설정이 먼저 필요합니다.
+              </div>
+            </>
+          ) : (
+            <>
+              <div style={{ fontWeight: 700 }}>
+                로그인 완료: <span style={{ color: "#2563eb" }}>{session?.email ?? "-"}</span>
+              </div>
+              <div style={{ marginTop: 8, display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <Link
+                  href="/a/amain"
+                  style={{
+                    padding: "10px 12px",
+                    border: "1px solid #1d4ed8",
+                    borderRadius: 10,
+                    color: "#1d4ed8",
+                    fontWeight: 800,
+                    textDecoration: "none",
+                    background: "#eff6ff",
+                  }}
+                >
+                  관리자 화면으로 이동
+                </Link>
+                <Link
+                  href="/t/tmain"
+                  style={{
+                    padding: "10px 12px",
+                    border: "1px solid #0f766e",
+                    borderRadius: 10,
+                    color: "#0f766e",
+                    fontWeight: 800,
+                    textDecoration: "none",
+                    background: "#f0fdfa",
+                  }}
+                >
+                  선생님 화면으로 이동
+                </Link>
+                <button
+                  type="button"
+                  onClick={onClickLogout}
+                  style={{
+                    padding: "10px 12px",
+                    border: "1px solid #cbd5e1",
+                    borderRadius: 10,
+                    background: "#fff",
+                    fontWeight: 700,
+                    cursor: "pointer",
+                  }}
+                >
+                  로그아웃
+                </button>
+              </div>
+            </>
+          )}
+
+          {error ? (
+            <div
+              style={{
+                marginTop: 10,
+                borderRadius: 8,
+                border: "1px solid #fecaca",
+                background: "#fef2f2",
+                color: "#b91c1c",
+                padding: "8px 10px",
+                fontSize: 13,
+              }}
+            >
+              {error}
+            </div>
+          ) : null}
         </div>
-      </main>
-    </div>
+
+        <div style={{ marginTop: 16, fontSize: 13, color: "#64748b", lineHeight: 1.6 }}>
+          다음 단계:
+          <br />
+          1) Supabase/Google 키 설정
+          <br />
+          2) Vercel 환경변수 등록
+          <br />
+          3) 배포 후 실제 로그인 테스트
+        </div>
+      </section>
+    </main>
   );
 }
