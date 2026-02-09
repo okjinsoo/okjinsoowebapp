@@ -7,9 +7,12 @@ import type { Student, Teacher } from "@/lib/types/index";
 import { loadStudents } from "@/lib/storage/students";
 import { sessionsByStudent } from "@/lib/storage/sessions";
 import { loadConsultationsByStudent } from "@/lib/storage/consultations";
+import { AUTH_EVENT, loadAuthSession } from "@/lib/auth/supabaseAuth";
 import {
+  clearCurrentTeacherId,
   loadTeachers,
   loadCurrentTeacherId,
+  saveCurrentTeacherId,
   TEACHERS_EVENT,
 } from "@/lib/storage/teachers";
 import TodaySessionsCard, { type TodaySessionRow } from "@/lib/ui/teacher/TodaySessionsCard";
@@ -65,6 +68,16 @@ function isPausedOrOverdueExtension(st: Student) {
   return status === "paused" || status === "overdue_extension";
 }
 
+function normalizeEmail(email: string | null | undefined): string {
+  return (email ?? "").trim().toLowerCase();
+}
+
+function teacherIdFromLoginEmail(teachers: Teacher[]): string | null {
+  const loginEmail = normalizeEmail(loadAuthSession()?.email);
+  if (!loginEmail) return null;
+  return teachers.find((teacher) => normalizeEmail(teacher.email) === loginEmail)?.id ?? null;
+}
+
 export default function TeacherMainClient({ initialRole = "t" }: { initialRole?: "a" | "t" }) {
   const router = useRouter();
 
@@ -76,35 +89,73 @@ export default function TeacherMainClient({ initialRole = "t" }: { initialRole?:
 
   useEffect(() => {
     const id = setTimeout(() => {
+      const nextTeachers = loadTeachers();
       setStudents(loadStudents());
-      setTeachers(loadTeachers());
+      setTeachers(nextTeachers);
+      if (initialRole === "t") {
+        const matchedTeacherId = teacherIdFromLoginEmail(nextTeachers);
+        if (matchedTeacherId) {
+          saveCurrentTeacherId(matchedTeacherId);
+          setTeacherId(matchedTeacherId);
+        } else {
+          clearCurrentTeacherId();
+          setTeacherId(null);
+        }
+      }
     }, 0);
     return () => clearTimeout(id);
-  }, []);
+  }, [initialRole]);
 
   useEffect(() => {
     const id = setTimeout(() => {
       setIsHydrated(true);
+      if (initialRole === "t") {
+        const matchedTeacherId = teacherIdFromLoginEmail(loadTeachers());
+        if (matchedTeacherId) {
+          saveCurrentTeacherId(matchedTeacherId);
+          setTeacherId(matchedTeacherId);
+        } else {
+          clearCurrentTeacherId();
+          setTeacherId(null);
+        }
+        return;
+      }
       setTeacherId(loadCurrentTeacherId());
     }, 0);
     return () => clearTimeout(id);
-  }, []);
+  }, [initialRole]);
 
   useEffect(() => {
     const onGate = () => {
+      const nextTeachers = loadTeachers();
       setStudents(loadStudents());
-      setTeachers(loadTeachers());
+      setTeachers(nextTeachers);
+
+      if (initialRole === "t") {
+        const matchedTeacherId = teacherIdFromLoginEmail(nextTeachers);
+        if (matchedTeacherId) {
+          saveCurrentTeacherId(matchedTeacherId);
+          setTeacherId(matchedTeacherId);
+        } else {
+          clearCurrentTeacherId();
+          setTeacherId(null);
+        }
+        return;
+      }
+
       setTeacherId(loadCurrentTeacherId());
     };
     window.addEventListener(GATE_EVENT, onGate);
+    window.addEventListener(AUTH_EVENT, onGate);
     window.addEventListener("tutorweb:studentsUpdated", onGate);
     window.addEventListener(TEACHERS_EVENT, onGate);
     return () => {
       window.removeEventListener(GATE_EVENT, onGate);
+      window.removeEventListener(AUTH_EVENT, onGate);
       window.removeEventListener("tutorweb:studentsUpdated", onGate);
       window.removeEventListener(TEACHERS_EVENT, onGate);
     };
-  }, []);
+  }, [initialRole]);
 
   const hasTeacher = isHydrated && !!teacherId;
 
