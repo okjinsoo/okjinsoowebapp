@@ -1,5 +1,6 @@
 // lib/storage/teachers.ts
 // A안: 선생님(Teacher) 목록을 localStorage 에 저장합니다.
+import { syncRoleBindingEmails } from "@/lib/auth/roleBindings";
 import type { Teacher } from "@/lib/types/index";
 
 const KEY = "tutorweb_teachers_v1";
@@ -45,6 +46,22 @@ function safeParse<T>(raw: string | null, fallback: T): T {
   }
 }
 
+function extractTeacherEmails(list: Teacher[]): string[] {
+  return list
+    .map((teacher) => (teacher.email ?? "").trim())
+    .filter((email) => Boolean(email));
+}
+
+function syncTeacherRoleBindings(previous: Teacher[], next: Teacher[]): void {
+  void syncRoleBindingEmails({
+    previousEmails: extractTeacherEmails(previous),
+    nextEmails: extractTeacherEmails(next),
+    role: "teacher",
+  }).catch((err) => {
+    console.error("선생님 권한 동기화 실패:", err);
+  });
+}
+
 export function loadTeachers(): Teacher[] {
   if (typeof window === "undefined") return [];
   return safeParse<Teacher[]>(localStorage.getItem(KEY), []);
@@ -52,8 +69,10 @@ export function loadTeachers(): Teacher[] {
 
 export function saveTeachers(list: Teacher[]): void {
   if (typeof window === "undefined") return;
+  const previous = loadTeachers();
   localStorage.setItem(KEY, JSON.stringify(list));
   dispatchTeachersUpdated();
+  syncTeacherRoleBindings(previous, list);
 }
 
 export function upsertTeacher(t: Teacher): Teacher[] {
@@ -77,6 +96,8 @@ export function findTeacherById(teacherId: string): Teacher | null {
 
 export function clearTeachers(): void {
   if (typeof window === "undefined") return;
+  const previous = loadTeachers();
   localStorage.removeItem(KEY);
   dispatchTeachersUpdated();
+  syncTeacherRoleBindings(previous, []);
 }

@@ -1,5 +1,4 @@
-import { loadStudents } from "@/lib/storage/students";
-import { loadTeachers } from "@/lib/storage/teachers";
+import { fetchRoleBinding } from "@/lib/auth/roleBindings";
 
 export type UserRole = "guest" | "student" | "teacher" | "admin";
 export type RequiredRole = "student" | "teacher" | "admin";
@@ -11,41 +10,29 @@ function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
 }
 
-function parseEmailSet(raw: string): Set<string> {
-  const set = new Set<string>();
-  const parts = raw.split(/[,\n;]+/);
-  for (const item of parts) {
-    const email = normalizeEmail(item);
-    if (!email) continue;
-    set.add(email);
-  }
-  return set;
-}
-
 export function getAdminEmailSet(): Set<string> {
-  const set = new Set(FIXED_ADMIN_EMAILS.map(normalizeEmail));
-  const extra = parseEmailSet(process.env.NEXT_PUBLIC_ADMIN_EMAILS ?? "");
-  for (const email of extra) set.add(email);
-  return set;
+  return new Set(FIXED_ADMIN_EMAILS.map(normalizeEmail));
 }
 
-function isTeacherEmail(email: string): boolean {
-  const list = loadTeachers();
-  return list.some((t) => normalizeEmail(t.email ?? "") === email);
-}
-
-function isStudentEmail(email: string): boolean {
-  const list = loadStudents();
-  return list.some((s) => normalizeEmail(s.googleEmail ?? "") === email);
-}
-
-export function getUserRole(email: string | null | undefined): UserRole {
+export async function resolveUserRole(args: {
+  email: string | null | undefined;
+  accessToken: string | null | undefined;
+}): Promise<UserRole> {
+  const { email, accessToken } = args;
   const normalized = normalizeEmail(email ?? "");
   if (!normalized) return "guest";
 
   if (getAdminEmailSet().has(normalized)) return "admin";
-  if (isTeacherEmail(normalized)) return "teacher";
-  if (isStudentEmail(normalized)) return "student";
+  if (!accessToken) return "guest";
+
+  try {
+    const role = await fetchRoleBinding({ email: normalized, accessToken });
+    if (role === "teacher" || role === "student") {
+      return role;
+    }
+  } catch {
+    return "guest";
+  }
   return "guest";
 }
 

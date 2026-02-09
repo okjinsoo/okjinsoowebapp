@@ -1,4 +1,5 @@
 // lib/storage/students.ts
+import { syncRoleBindingEmails } from "@/lib/auth/roleBindings";
 import type { Student, StudentStatus } from "@/lib/types/index";
 
 const KEY = "tutorweb_students_v1";
@@ -12,6 +13,22 @@ function safeParse<T>(raw: string | null, fallback: T): T {
   }
 }
 
+function extractStudentEmails(list: Student[]): string[] {
+  return list
+    .map((student) => (student.googleEmail ?? "").trim())
+    .filter((email) => Boolean(email));
+}
+
+function syncStudentRoleBindings(previous: Student[], next: Student[]): void {
+  void syncRoleBindingEmails({
+    previousEmails: extractStudentEmails(previous),
+    nextEmails: extractStudentEmails(next),
+    role: "student",
+  }).catch((err) => {
+    console.error("학생 권한 동기화 실패:", err);
+  });
+}
+
 export function loadStudents(): Student[] {
   if (typeof window === "undefined") return [];
   return safeParse<Student[]>(localStorage.getItem(KEY), []);
@@ -19,8 +36,10 @@ export function loadStudents(): Student[] {
 
 export function saveStudents(list: Student[]): void {
   if (typeof window === "undefined") return;
+  const previous = loadStudents();
   localStorage.setItem(KEY, JSON.stringify(list));
   window.dispatchEvent(new CustomEvent("tutorweb:studentsUpdated"));
+  syncStudentRoleBindings(previous, list);
 }
 
 export function upsertStudent(student: Student): Student[] {
@@ -53,5 +72,7 @@ export function findStudentByToken(token: string): Student | null {
 /** (선택) 디버그용: 스토리지 초기화 */
 export function clearStudents(): void {
   if (typeof window === "undefined") return;
+  const previous = loadStudents();
   localStorage.removeItem(KEY);
+  syncStudentRoleBindings(previous, []);
 }

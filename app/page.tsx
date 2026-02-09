@@ -14,30 +14,62 @@ import {
 } from "@/lib/auth/supabaseAuth";
 import {
   canAccessRole,
-  getUserRole,
+  resolveUserRole,
   roleLabel,
+  type UserRole,
 } from "@/lib/auth/roleAuth";
 
 export default function HomePage() {
   const searchParams = useSearchParams();
   const [session, setSession] = useState<AuthSession | null>(null);
+  const [role, setRole] = useState<UserRole>("guest");
+  const [roleLoading, setRoleLoading] = useState(false);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    const sync = () => {
+    let cancelled = false;
+    let requestId = 0;
+
+    const sync = async () => {
+      const currentRequestId = ++requestId;
       const next = loadAuthSession();
       if (next && isSessionExpired(next)) {
         clearAuthSession();
+        if (cancelled || currentRequestId !== requestId) return;
         setSession(null);
+        setRole("guest");
+        setRoleLoading(false);
         return;
       }
+
       setSession(next);
+      if (!next) {
+        setRole("guest");
+        setRoleLoading(false);
+        return;
+      }
+
+      setRoleLoading(true);
+      const nextRole = await resolveUserRole({
+        email: next.email,
+        accessToken: next.accessToken,
+      });
+      if (cancelled || currentRequestId !== requestId) return;
+      setRole(nextRole);
+      setRoleLoading(false);
     };
 
-    sync();
-    window.addEventListener(AUTH_EVENT, sync);
-    return () => window.removeEventListener(AUTH_EVENT, sync);
+    const requestSync = () => {
+      void sync();
+    };
+
+    requestSync();
+    window.addEventListener(AUTH_EVENT, requestSync);
+    return () => {
+      cancelled = true;
+      window.removeEventListener(AUTH_EVENT, requestSync);
+    };
   }, []);
 
   const loginReady = useMemo(() => Boolean(getSupabaseConfig()), []);
@@ -63,10 +95,11 @@ export default function HomePage() {
   function onClickLogout() {
     clearAuthSession();
     setSession(null);
+    setRole("guest");
+    setRoleLoading(false);
   }
 
   const loggedIn = Boolean(session) && !isSessionExpired(session);
-  const role = getUserRole(session?.email);
   const redirectFrom = (searchParams.get("next") ?? "").trim();
 
   return (
@@ -141,10 +174,10 @@ export default function HomePage() {
                 로그인 완료: <span style={{ color: "#2563eb" }}>{session?.email ?? "-"}</span>
               </div>
               <div style={{ marginTop: 6, fontSize: 13, color: "#475569" }}>
-                현재 권한: <b>{roleLabel(role)}</b>
+                현재 권한: <b>{roleLoading ? "확인 중..." : roleLabel(role)}</b>
               </div>
               <div style={{ marginTop: 8, display: "flex", gap: 8, flexWrap: "wrap" }}>
-                {canAccessRole(role, "admin") ? (
+                {!roleLoading && canAccessRole(role, "admin") ? (
                   <Link
                     href="/a/amain"
                     style={{
@@ -160,7 +193,7 @@ export default function HomePage() {
                     관리자 화면으로 이동
                   </Link>
                 ) : null}
-                {canAccessRole(role, "teacher") ? (
+                {!roleLoading && canAccessRole(role, "teacher") ? (
                   <Link
                     href="/t/tmain"
                     style={{
@@ -176,7 +209,7 @@ export default function HomePage() {
                     선생님 화면으로 이동
                   </Link>
                 ) : null}
-                {canAccessRole(role, "student") ? (
+                {!roleLoading && canAccessRole(role, "student") ? (
                   <Link
                     href="/s/smain"
                     style={{
@@ -240,7 +273,7 @@ export default function HomePage() {
               이전 요청 경로 <code>{redirectFrom}</code> 는 현재 권한으로 접근할 수 없었습니다.
             </div>
           ) : null}
-          {loggedIn && role === "guest" ? (
+          {loggedIn && !roleLoading && role === "guest" ? (
             <div
               style={{
                 marginTop: 10,

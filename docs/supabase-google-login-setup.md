@@ -1,12 +1,15 @@
 # Supabase + Google 로그인 설정 가이드
 
-이 문서는 초보자 기준으로, "옥진수학 웹앱에서 구글 로그인"을 붙이는 순서를 설명합니다.
+이 문서는 초보자 기준으로, "옥진수학 웹앱에서 구글 로그인 + 권한 분기"를 붙이는 순서를 설명합니다.
 
 ## 1) 먼저 이해할 것
 
 - 로그인 버튼을 누르면 Google 화면으로 이동합니다.
 - Google에서 로그인 성공하면 다시 우리 앱(`/auth/callback`)으로 돌아옵니다.
 - 돌아온 뒤 토큰을 저장하고 홈(`/`)으로 이동합니다.
+- 권한은 아래 규칙으로 결정됩니다.
+  - 관리자: 코드에 고정된 이메일(`rapah0310@gmail.com`)
+  - 선생님/학생: Supabase `role_bindings` 테이블
 
 ## 2) Supabase 프로젝트 만들기
 
@@ -16,7 +19,16 @@
 - `Project URL` (예: `https://YOUR_PROJECT_REF.supabase.co`)
 - `anon public key`
 
-## 3) Google OAuth 앱 만들기
+## 3) role_bindings 테이블 만들기 (중요)
+
+1. Supabase 프로젝트 > `SQL Editor` 이동
+2. 저장소 파일 `db/migrations/002_role_bindings.sql` 내용을 그대로 붙여넣기
+3. `Run` 실행
+4. `Table Editor`에서 `role_bindings` 테이블 생성 확인
+
+이 테이블은 로그인 이메일과 권한(`student`/`teacher`)을 연결합니다.
+
+## 4) Google OAuth 앱 만들기
 
 1. [Google Cloud Console](https://console.cloud.google.com/) 접속
 2. 프로젝트 생성
@@ -25,13 +37,13 @@
 5. `Authorized redirect URI`에 아래 주소 추가
 - `https://<YOUR_PROJECT_REF>.supabase.co/auth/v1/callback`
 
-## 4) Supabase에서 Google Provider 켜기
+## 5) Supabase에서 Google Provider 켜기
 
 1. Supabase 프로젝트 > `Authentication > Providers > Google`
 2. Google에서 만든 `Client ID`, `Client Secret` 입력
 3. `Save`
 
-## 5) Supabase URL 설정
+## 6) Supabase URL 설정
 
 Supabase 프로젝트 > `Authentication > URL Configuration`
 
@@ -43,7 +55,7 @@ Supabase 프로젝트 > `Authentication > URL Configuration`
 - `http://localhost:3000/auth/callback`
 - `https://<YOUR_VERCEL_DOMAIN>/auth/callback`
 
-## 6) 로컬 환경변수 설정
+## 7) 로컬 환경변수 설정
 
 루트 폴더에 `.env.local` 파일을 만들고 다음 값 넣기:
 
@@ -52,12 +64,11 @@ NEXT_PUBLIC_SUPABASE_URL=https://YOUR_PROJECT_REF.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=YOUR_SUPABASE_ANON_KEY
 ```
 
-- 관리자 기본 이메일은 코드에 고정되어 있습니다: `rapah0310@gmail.com`
-- 학생 권한은 `학생 등록`의 `googleEmail`과 로그인 이메일이 같을 때 자동 부여됩니다.
-- 선생님 권한은 `선생님 등록`의 `email`과 로그인 이메일이 같을 때 자동 부여됩니다.
-- 추가 관리자 이메일이 필요하면 `.env.local`에 `NEXT_PUBLIC_ADMIN_EMAILS`를 쉼표로 추가할 수 있습니다.
+- 관리자 기본 이메일은 코드에 고정: `lib/auth/roleAuth.ts`
+- 선생님 추가/수정/삭제 시 `role_bindings`가 자동 동기화됩니다.
+- 학생 추가/수정/삭제 시 `role_bindings`가 자동 동기화됩니다.
 
-## 7) 로컬 테스트
+## 8) 로컬 테스트
 
 ```bash
 npm run dev
@@ -65,24 +76,23 @@ npm run dev
 
 1. 홈(`/`) 접속
 2. `구글로 로그인하기` 클릭
-3. 로그인 후 다시 홈으로 오면 성공
+3. 로그인 후 홈에서 권한 배지 확인
+4. 관리자에서 선생님/학생 이메일을 변경한 뒤, 다시 홈에서 이동 버튼(`관리자/선생님/학생`) 확인
 
-## 8) Vercel 배포 시 설정
+## 9) Vercel 배포 시 설정
 
 Vercel 프로젝트 > `Settings > Environment Variables`
 
 - `NEXT_PUBLIC_SUPABASE_URL`
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-- (선택) `NEXT_PUBLIC_ADMIN_EMAILS`
 
 배포 후에도 반드시 Supabase `Redirect URLs`에 배포 도메인이 들어가 있어야 합니다.
 
-## 9) 지금 구현의 범위
+## 10) 지금 구현의 범위
 
-- 현재는 "로그인 시작/복귀/사용자 이메일 확인"까지 구현되어 있습니다.
-- 이메일 기반 권한 분기(관리자/선생님/학생) + 경로 보호(`/a`,`/t`,`/s`)가 적용되어 있습니다.
+- 구글 로그인 시작/복귀/세션 저장
+- 이메일 기반 권한 분기(관리자/선생님/학생)
+- 경로 보호(`/a`,`/t`,`/s`)
 - 권한 소스:
-  - 관리자: 고정 이메일 + 선택 환경변수
-  - 선생님: 등록된 선생님 `email`
-  - 학생: 등록된 학생 `googleEmail`
-- 네트워크 제한 때문에 Supabase SDK 설치는 못 했고, REST 방식으로 연결했습니다.
+  - 관리자: 고정 이메일(`rapah0310@gmail.com`)
+  - 선생님/학생: Supabase `role_bindings` 테이블

@@ -12,7 +12,7 @@ import {
 } from "@/lib/auth/supabaseAuth";
 import {
   canAccessRole,
-  getUserRole,
+  resolveUserRole,
   roleLabel,
   type RequiredRole,
   type UserRole,
@@ -32,14 +32,23 @@ export default function RoleRouteGuard({ requiredRole, children }: Props) {
   const [reason, setReason] = useState<"login" | "role">("login");
 
   useEffect(() => {
-    function sync() {
+    let cancelled = false;
+    let requestId = 0;
+
+    async function sync() {
+      const currentRequestId = ++requestId;
       const rawSession = loadAuthSession();
       if (rawSession && isSessionExpired(rawSession)) {
         clearAuthSession();
       }
 
       const session = loadAuthSession();
-      const nextRole = getUserRole(session?.email);
+      const nextRole = await resolveUserRole({
+        email: session?.email,
+        accessToken: session?.accessToken,
+      });
+      if (cancelled || currentRequestId !== requestId) return;
+
       const allowed = canAccessRole(nextRole, requiredRole);
 
       setRole(nextRole);
@@ -54,19 +63,24 @@ export default function RoleRouteGuard({ requiredRole, children }: Props) {
         e.key === "tutorweb_students_v1" ||
         e.key === "tutorweb_teachers_v1"
       ) {
-        sync();
+        void sync();
       }
     }
 
-    sync();
-    window.addEventListener(AUTH_EVENT, sync);
-    window.addEventListener("tutorweb:studentsUpdated", sync);
-    window.addEventListener(TEACHERS_EVENT, sync);
+    const requestSync = () => {
+      void sync();
+    };
+
+    requestSync();
+    window.addEventListener(AUTH_EVENT, requestSync);
+    window.addEventListener("tutorweb:studentsUpdated", requestSync);
+    window.addEventListener(TEACHERS_EVENT, requestSync);
     window.addEventListener("storage", onStorage);
     return () => {
-      window.removeEventListener(AUTH_EVENT, sync);
-      window.removeEventListener("tutorweb:studentsUpdated", sync);
-      window.removeEventListener(TEACHERS_EVENT, sync);
+      cancelled = true;
+      window.removeEventListener(AUTH_EVENT, requestSync);
+      window.removeEventListener("tutorweb:studentsUpdated", requestSync);
+      window.removeEventListener(TEACHERS_EVENT, requestSync);
       window.removeEventListener("storage", onStorage);
     };
   }, [requiredRole]);
