@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { syncRoleBindingEmails } from "@/lib/auth/roleBindings";
+import { getSupabaseConfig, loadAuthSession } from "@/lib/auth/supabaseAuth";
 import { loadStudents } from "@/lib/storage/students";
 import { loadTeachers, saveCurrentTeacherId, TEACHERS_EVENT } from "@/lib/storage/teachers";
 import { sessionsByStudent } from "@/lib/storage/sessions";
@@ -92,6 +94,8 @@ export default function AdminMainPage() {
   const [mounted, setMounted] = useState(false);
   const [students, setStudents] = useState(() => loadStudents());
   const [teachers, setTeachers] = useState(() => loadTeachers());
+  const [syncingRoles, setSyncingRoles] = useState(false);
+  const [syncResult, setSyncResult] = useState("");
 
   useEffect(() => {
     const id = setTimeout(() => {
@@ -275,6 +279,57 @@ export default function AdminMainPage() {
     });
   }, [mounted, students, teachers, statusCards]);
 
+  async function onClickRoleSyncTest() {
+    setSyncResult("");
+
+    const cfg = getSupabaseConfig();
+    if (!cfg) {
+      setSyncResult("실패: Supabase 환경변수(NEXT_PUBLIC_SUPABASE_URL/ANON_KEY)가 비어 있어요.");
+      return;
+    }
+
+    const session = loadAuthSession();
+    if (!session?.accessToken) {
+      setSyncResult("실패: 로그인 토큰이 없어요. 홈에서 다시 로그인 후 시도해주세요.");
+      return;
+    }
+
+    const teacherEmails = teachers
+      .map((t) => (t.email ?? "").trim().toLowerCase())
+      .filter(Boolean);
+    const studentEmails = students
+      .map((s) => (s.googleEmail ?? "").trim().toLowerCase())
+      .filter(Boolean);
+
+    try {
+      setSyncingRoles(true);
+
+      await Promise.all([
+        syncRoleBindingEmails({
+          previousEmails: [],
+          nextEmails: teacherEmails,
+          role: "teacher",
+          accessToken: session.accessToken,
+        }),
+        syncRoleBindingEmails({
+          previousEmails: [],
+          nextEmails: studentEmails,
+          role: "student",
+          accessToken: session.accessToken,
+        }),
+      ]);
+
+      setSyncResult(
+        `성공: 선생님 ${teacherEmails.length}개, 학생 ${studentEmails.length}개 이메일을 role_bindings에 동기화했어요.`
+      );
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "알 수 없는 오류";
+      setSyncResult(`실패: ${msg}`);
+    } finally {
+      setSyncingRoles(false);
+    }
+  }
+
   return (
     <main style={{ padding: 20, maxWidth: 860, margin: "0 auto" }}>
       <h1 className="page-title">관리자 메인</h1>
@@ -286,6 +341,28 @@ export default function AdminMainPage() {
           선생님 관리
         </button>
       </div>
+
+      <section
+        style={{
+          marginTop: 12,
+          border: "1px solid #e5e7eb",
+          borderRadius: 12,
+          padding: 12,
+          background: "#f8fafc",
+        }}
+      >
+        <div style={{ fontWeight: 800, marginBottom: 8 }}>권한 동기화 테스트</div>
+        <button
+          onClick={onClickRoleSyncTest}
+          disabled={syncingRoles}
+          style={{ padding: "10px 12px", fontWeight: 800 }}
+        >
+          {syncingRoles ? "동기화 중..." : "role_bindings 강제 동기화 실행"}
+        </button>
+        <div style={{ marginTop: 8, color: "#334155", fontSize: 13, lineHeight: 1.5 }}>
+          {syncResult || "네트워크 탭 대신, 이 버튼으로 성공/실패 메시지를 바로 확인할 수 있어요."}
+        </div>
+      </section>
 
       <section
         style={{ marginTop: 16, border: "1px solid #eee", borderRadius: 12, padding: 14, background: "#fff" }}
