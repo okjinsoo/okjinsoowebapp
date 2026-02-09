@@ -15,7 +15,6 @@ import {
 import {
   canAccessRole,
   getUserRole,
-  isRoleConfigReady,
   roleLabel,
 } from "@/lib/auth/roleAuth";
 
@@ -68,7 +67,6 @@ export default function HomePage() {
 
   const loggedIn = Boolean(session) && !isSessionExpired(session);
   const role = getUserRole(session?.email);
-  const roleConfigReady = isRoleConfigReady();
   const redirectFrom = (searchParams.get("next") ?? "").trim();
 
   return (
@@ -178,20 +176,22 @@ export default function HomePage() {
                     선생님 화면으로 이동
                   </Link>
                 ) : null}
-                <Link
-                  href="/s/smain"
-                  style={{
-                    padding: "10px 12px",
-                    border: "1px solid #7c3aed",
-                    borderRadius: 10,
-                    color: "#7c3aed",
-                    fontWeight: 800,
-                    textDecoration: "none",
-                    background: "#faf5ff",
-                  }}
-                >
-                  학생 화면으로 이동
-                </Link>
+                {canAccessRole(role, "student") ? (
+                  <Link
+                    href="/s/smain"
+                    style={{
+                      padding: "10px 12px",
+                      border: "1px solid #7c3aed",
+                      borderRadius: 10,
+                      color: "#7c3aed",
+                      fontWeight: 800,
+                      textDecoration: "none",
+                      background: "#faf5ff",
+                    }}
+                  >
+                    학생 화면으로 이동
+                  </Link>
+                ) : null}
                 <button
                   type="button"
                   onClick={onClickLogout}
@@ -240,21 +240,20 @@ export default function HomePage() {
               이전 요청 경로 <code>{redirectFrom}</code> 는 현재 권한으로 접근할 수 없었습니다.
             </div>
           ) : null}
-          {loggedIn && !roleConfigReady ? (
+          {loggedIn && role === "guest" ? (
             <div
               style={{
                 marginTop: 10,
                 borderRadius: 8,
-                border: "1px solid #bfdbfe",
-                background: "#eff6ff",
-                color: "#1e3a8a",
+                border: "1px solid #fecaca",
+                background: "#fef2f2",
+                color: "#991b1b",
                 padding: "8px 10px",
                 fontSize: 13,
               }}
             >
-              권한 이메일 목록이 아직 비어 있습니다. 배포/운영 전에는
-              <code> NEXT_PUBLIC_ADMIN_EMAILS </code> 와
-              <code> NEXT_PUBLIC_TEACHER_EMAILS </code> 를 반드시 설정해주세요.
+              이 계정 이메일은 아직 학생/선생님/관리자로 등록되어 있지 않습니다.
+              등록 후 다시 로그인하면 자동으로 권한이 반영됩니다.
             </div>
           ) : null}
         </div>

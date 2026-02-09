@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
+import { TEACHERS_EVENT } from "@/lib/storage/teachers";
 import {
   AUTH_EVENT,
   AUTH_STORAGE_KEY,
@@ -47,14 +48,25 @@ export default function RoleRouteGuard({ requiredRole, children }: Props) {
     }
 
     function onStorage(e: StorageEvent) {
-      if (e.key === AUTH_STORAGE_KEY) sync();
+      if (
+        e.key === null ||
+        e.key === AUTH_STORAGE_KEY ||
+        e.key === "tutorweb_students_v1" ||
+        e.key === "tutorweb_teachers_v1"
+      ) {
+        sync();
+      }
     }
 
     sync();
     window.addEventListener(AUTH_EVENT, sync);
+    window.addEventListener("tutorweb:studentsUpdated", sync);
+    window.addEventListener(TEACHERS_EVENT, sync);
     window.addEventListener("storage", onStorage);
     return () => {
       window.removeEventListener(AUTH_EVENT, sync);
+      window.removeEventListener("tutorweb:studentsUpdated", sync);
+      window.removeEventListener(TEACHERS_EVENT, sync);
       window.removeEventListener("storage", onStorage);
     };
   }, [requiredRole]);
