@@ -22,8 +22,8 @@
 ## 3) role_bindings 테이블 만들기 (중요)
 
 1. Supabase 프로젝트 > `SQL Editor` 이동
-2. 저장소 파일 `db/migrations/002_role_bindings.sql` 내용을 그대로 붙여넣기
-3. `Run` 실행
+2. 저장소 파일 `db/migrations/002_role_bindings.sql` 내용을 붙여넣고 `Run`
+3. 이어서 `db/migrations/003_role_bindings_hardening.sql`도 붙여넣고 `Run`
 4. `Table Editor`에서 `role_bindings` 테이블 생성 확인
 
 이 테이블은 로그인 이메일과 권한(`student`/`teacher`)을 연결합니다.
