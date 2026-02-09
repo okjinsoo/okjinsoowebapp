@@ -336,10 +336,18 @@ export default function AdminMainPage() {
     <main style={{ padding: 20, maxWidth: 860, margin: "0 auto" }}>
       <h1 className="page-title">관리자 메인</h1>
       <div style={{ marginTop: 12, display: "flex", gap: 10, flexWrap: "wrap" }}>
-        <button onClick={() => router.push("/a/students")} style={{ padding: "10px 14px", fontWeight: 800 }}>
+        <button
+          className="btn btn-blue"
+          onClick={() => router.push("/a/students")}
+          style={{ padding: "10px 14px", fontWeight: 800 }}
+        >
           학생 관리
         </button>
-        <button onClick={() => router.push("/a/teachers")} style={{ padding: "10px 14px", fontWeight: 800 }}>
+        <button
+          className="btn btn-green"
+          onClick={() => router.push("/a/teachers")}
+          style={{ padding: "10px 14px", fontWeight: 800 }}
+        >
           선생님 관리
         </button>
       </div>
