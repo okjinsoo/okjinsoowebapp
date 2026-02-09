@@ -4,8 +4,11 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Teacher } from "@/lib/types/index";
+import { findTeacherByLoginEmail } from "@/lib/auth/loginSelection";
+import { pullSharedSnapshotAndHydrate } from "@/lib/storage/sharedSnapshot";
 import {
   loadTeachers,
+  saveCurrentTeacherId,
   loadCurrentTeacherId,
 } from "@/lib/storage/teachers";
 import StudentNewClient from "@/lib/ui/student/StudentNewClient";
@@ -18,18 +21,33 @@ export default function TeacherStudentNewPageClient({ basePath = "/t/tmain" }: {
   const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
-    const id = setTimeout(() => {
-      setTeachers(loadTeachers());
-      setHydrated(true);
-    }, 0);
-    return () => clearTimeout(id);
-  }, []);
+    let cancelled = false;
 
-  useEffect(() => {
-    const id = setTimeout(() => {
-      setTeacherId(loadCurrentTeacherId());
-    }, 0);
-    return () => clearTimeout(id);
+    async function bootstrap() {
+      try {
+        await pullSharedSnapshotAndHydrate();
+      } catch (err) {
+        console.error("공유 스냅샷 불러오기 실패(teacher new):", err);
+      }
+      if (cancelled) return;
+
+      const nextTeachers = loadTeachers();
+      setTeachers(nextTeachers);
+
+      const matchedTeacherId = findTeacherByLoginEmail(nextTeachers)?.id ?? null;
+      if (matchedTeacherId) {
+        saveCurrentTeacherId(matchedTeacherId);
+        setTeacherId(matchedTeacherId);
+      } else {
+        setTeacherId(loadCurrentTeacherId());
+      }
+      setHydrated(true);
+    }
+
+    void bootstrap();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const teacherName = useMemo(() => {

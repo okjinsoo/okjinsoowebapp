@@ -15,6 +15,8 @@ export function loadCurrentRole(): Role | null {
 
 export function saveCurrentRole(role: Role) {
   if (typeof window === "undefined") return;
+  const prev = localStorage.getItem(ROLE_KEY);
+  if (prev === role) return;
   localStorage.setItem(ROLE_KEY, role);
   dispatchGateUpdated();
 }
@@ -27,12 +29,17 @@ export function loadCurrentStudentToken(): string | null {
 
 export function saveCurrentStudentToken(token: string) {
   if (typeof window === "undefined") return;
+  const next = token.trim();
+  const prev = (localStorage.getItem(STUDENT_KEY) ?? "").trim();
+  if (prev === next) return;
   localStorage.setItem(STUDENT_KEY, token);
   dispatchGateUpdated();
 }
 
 export function clearCurrentStudentToken() {
   if (typeof window === "undefined") return;
+  const prev = localStorage.getItem(STUDENT_KEY);
+  if (!prev) return;
   localStorage.removeItem(STUDENT_KEY);
   dispatchGateUpdated();
 }

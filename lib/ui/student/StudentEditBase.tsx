@@ -2,6 +2,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { resolveSelectionForRole } from "@/lib/auth/loginSelection";
+import { pullSharedSnapshotAndHydrate } from "@/lib/storage/sharedSnapshot";
+import { loadStudents } from "@/lib/storage/students";
 import { loadTeachers } from "@/lib/storage/teachers";
 import type { Teacher } from "@/lib/types/index";
 import StudentEditClient from "@/lib/ui/student/StudentEditClient";
@@ -19,12 +22,40 @@ export default function StudentEditBase({ role }: { role: "a" | "t" | "s" }) {
   const [teachers, setTeachers] = useState<Teacher[]>([]);
 
   useEffect(() => {
-    const id = setTimeout(() => {
-      setToken(loadCurrentStudentToken());
-      setTeachers(loadTeachers());
-    }, 0);
-    return () => clearTimeout(id);
-  }, []);
+    let cancelled = false;
+
+    async function bootstrap() {
+      if (role !== "a") {
+        try {
+          await pullSharedSnapshotAndHydrate();
+        } catch (err) {
+          console.error("공유 스냅샷 불러오기 실패(student edit):", err);
+        }
+      }
+      if (cancelled) return;
+
+      const nextTeachers = loadTeachers();
+      setTeachers(nextTeachers);
+
+      if (role === "t") {
+        const selection = resolveSelectionForRole({
+          role,
+          teachers: nextTeachers,
+          students: loadStudents(),
+          savedTeacherId: null,
+          savedStudentToken: loadCurrentStudentToken(),
+        });
+        setToken(selection.studentToken);
+      } else {
+        setToken(loadCurrentStudentToken());
+      }
+    }
+
+    void bootstrap();
+    return () => {
+      cancelled = true;
+    };
+  }, [role]);
 
   if (role === "s") {
     return (

@@ -2,7 +2,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { AUTH_EVENT, loadAuthSession } from "@/lib/auth/supabaseAuth";
+import { AUTH_EVENT } from "@/lib/auth/supabaseAuth";
+import { resolveSelectionForRole } from "@/lib/auth/loginSelection";
 import { pullSharedSnapshotAndHydrate } from "@/lib/storage/sharedSnapshot";
 import { loadStudents } from "@/lib/storage/students";
 import {
@@ -21,10 +22,6 @@ import {
   saveCurrentStudentToken,
 } from "@/lib/ui/common/roleGateStorage";
 
-function normalizeEmail(email: string | null | undefined): string {
-  return (email ?? "").trim().toLowerCase();
-}
-
 export default function StudentMainSessionListBase({ role }: { role: "a" | "t" | "s" }) {
   const [token, setToken] = useState<string | null>(null);
   const [students, setStudents] = useState<Student[]>([]);
@@ -35,7 +32,7 @@ export default function StudentMainSessionListBase({ role }: { role: "a" | "t" |
     let cancelled = false;
 
     async function bootstrap() {
-      if (role === "s") {
+      if (role !== "a") {
         try {
           await pullSharedSnapshotAndHydrate();
         } catch (err) {
@@ -50,26 +47,22 @@ export default function StudentMainSessionListBase({ role }: { role: "a" | "t" |
       setStudents(nextStudents);
       setTeachers(nextTeachers);
 
-      if (role === "s") {
-        const loginEmail = normalizeEmail(loadAuthSession()?.email);
-        const matchedStudent = nextStudents.find(
-          (student) => normalizeEmail(student.googleEmail) === loginEmail
-        );
-        const matchedToken = matchedStudent?.token ?? null;
-        const matchedTeacherId = matchedStudent?.teacherId ?? null;
+      const selection = resolveSelectionForRole({
+        role,
+        teachers: nextTeachers,
+        students: nextStudents,
+        savedTeacherId: loadCurrentTeacherId(),
+        savedStudentToken: loadCurrentStudentToken(),
+      });
 
-        setToken(matchedToken);
-        setTeacherId(matchedTeacherId);
+      setToken(selection.studentToken);
+      setTeacherId(selection.teacherId);
 
-        if (matchedToken) saveCurrentStudentToken(matchedToken);
-        else clearCurrentStudentToken();
+      if (selection.studentToken) saveCurrentStudentToken(selection.studentToken);
+      else clearCurrentStudentToken();
 
-        if (matchedTeacherId) saveCurrentTeacherId(matchedTeacherId);
-        else clearCurrentTeacherId();
-      } else {
-        setToken(loadCurrentStudentToken());
-        setTeacherId(loadCurrentTeacherId());
-      }
+      if (selection.teacherId) saveCurrentTeacherId(selection.teacherId);
+      else clearCurrentTeacherId();
     }
 
     void bootstrap();
@@ -80,7 +73,7 @@ export default function StudentMainSessionListBase({ role }: { role: "a" | "t" |
 
   useEffect(() => {
     const onGate = async () => {
-      if (role === "s") {
+      if (role !== "a") {
         try {
           await pullSharedSnapshotAndHydrate();
         } catch (err) {
@@ -93,26 +86,22 @@ export default function StudentMainSessionListBase({ role }: { role: "a" | "t" |
       setStudents(nextStudents);
       setTeachers(nextTeachers);
 
-      if (role === "s") {
-        const loginEmail = normalizeEmail(loadAuthSession()?.email);
-        const matchedStudent = nextStudents.find(
-          (student) => normalizeEmail(student.googleEmail) === loginEmail
-        );
-        const matchedToken = matchedStudent?.token ?? null;
-        const matchedTeacherId = matchedStudent?.teacherId ?? null;
+      const selection = resolveSelectionForRole({
+        role,
+        teachers: nextTeachers,
+        students: nextStudents,
+        savedTeacherId: loadCurrentTeacherId(),
+        savedStudentToken: loadCurrentStudentToken(),
+      });
 
-        setToken(matchedToken);
-        setTeacherId(matchedTeacherId);
+      setToken(selection.studentToken);
+      setTeacherId(selection.teacherId);
 
-        if (matchedToken) saveCurrentStudentToken(matchedToken);
-        else clearCurrentStudentToken();
+      if (selection.studentToken) saveCurrentStudentToken(selection.studentToken);
+      else clearCurrentStudentToken();
 
-        if (matchedTeacherId) saveCurrentTeacherId(matchedTeacherId);
-        else clearCurrentTeacherId();
-      } else {
-        setToken(loadCurrentStudentToken());
-        setTeacherId(loadCurrentTeacherId());
-      }
+      if (selection.teacherId) saveCurrentTeacherId(selection.teacherId);
+      else clearCurrentTeacherId();
     };
 
     const requestGateRefresh = () => {
@@ -122,10 +111,12 @@ export default function StudentMainSessionListBase({ role }: { role: "a" | "t" |
     window.addEventListener(GATE_EVENT, requestGateRefresh);
     window.addEventListener(AUTH_EVENT, requestGateRefresh);
     window.addEventListener("tutorweb:studentsUpdated", requestGateRefresh);
+    window.addEventListener("tutorweb:teachersUpdated", requestGateRefresh);
     return () => {
       window.removeEventListener(GATE_EVENT, requestGateRefresh);
       window.removeEventListener(AUTH_EVENT, requestGateRefresh);
       window.removeEventListener("tutorweb:studentsUpdated", requestGateRefresh);
+      window.removeEventListener("tutorweb:teachersUpdated", requestGateRefresh);
     };
   }, [role]);
 

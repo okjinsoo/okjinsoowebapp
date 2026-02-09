@@ -4,10 +4,11 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Student, Teacher } from "@/lib/types/index";
+import { findTeacherByLoginEmail } from "@/lib/auth/loginSelection";
 import { loadStudents } from "@/lib/storage/students";
 import { sessionsByStudent } from "@/lib/storage/sessions";
 import { loadConsultationsByStudent } from "@/lib/storage/consultations";
-import { AUTH_EVENT, loadAuthSession } from "@/lib/auth/supabaseAuth";
+import { AUTH_EVENT } from "@/lib/auth/supabaseAuth";
 import { pullSharedSnapshotAndHydrate } from "@/lib/storage/sharedSnapshot";
 import {
   clearCurrentTeacherId,
@@ -69,16 +70,6 @@ function isPausedOrOverdueExtension(st: Student) {
   return status === "paused" || status === "overdue_extension";
 }
 
-function normalizeEmail(email: string | null | undefined): string {
-  return (email ?? "").trim().toLowerCase();
-}
-
-function teacherIdFromLoginEmail(teachers: Teacher[]): string | null {
-  const loginEmail = normalizeEmail(loadAuthSession()?.email);
-  if (!loginEmail) return null;
-  return teachers.find((teacher) => normalizeEmail(teacher.email) === loginEmail)?.id ?? null;
-}
-
 export default function TeacherMainClient({ initialRole = "t" }: { initialRole?: "a" | "t" }) {
   const router = useRouter();
 
@@ -90,7 +81,7 @@ export default function TeacherMainClient({ initialRole = "t" }: { initialRole?:
 
   const applyTeacherSelection = useCallback((nextTeachers: Teacher[]) => {
     if (initialRole === "t") {
-      const matchedTeacherId = teacherIdFromLoginEmail(nextTeachers);
+      const matchedTeacherId = findTeacherByLoginEmail(nextTeachers)?.id ?? null;
       if (matchedTeacherId) {
         saveCurrentTeacherId(matchedTeacherId);
         setTeacherId(matchedTeacherId);
