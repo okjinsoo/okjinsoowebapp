@@ -13,8 +13,8 @@
 1. [Supabase](https://supabase.com/)에 로그인
 2. `New project` 생성
 3. 프로젝트 생성 완료 후 `Project Settings > API`에서 아래 2개를 복사
-- `Project URL` https://kwgghzllbihxyevqzowa.supabase.co
-- `anon public key` eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt3Z2doemxsYmloeHlldnF6b3dhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA2NTE2OTksImV4cCI6MjA4NjIyNzY5OX0.r1wOmXC6pRmDdUhZS1z3A9b29UEVbc8bB4cU7Tcvwfg
+- `Project URL` (예: `https://YOUR_PROJECT_REF.supabase.co`)
+- `anon public key`
 
 ## 3) Google OAuth 앱 만들기
 
@@ -50,7 +50,13 @@ Supabase 프로젝트 > `Authentication > URL Configuration`
 ```bash
 NEXT_PUBLIC_SUPABASE_URL=https://YOUR_PROJECT_REF.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=YOUR_SUPABASE_ANON_KEY
+NEXT_PUBLIC_ADMIN_EMAILS=owner@gmail.com
+NEXT_PUBLIC_TEACHER_EMAILS=teacher1@gmail.com,teacher2@gmail.com
 ```
+
+- `NEXT_PUBLIC_ADMIN_EMAILS`: 관리자 권한으로 로그인 허용할 이메일 목록
+- `NEXT_PUBLIC_TEACHER_EMAILS`: 선생님 권한으로 로그인 허용할 이메일 목록
+- 위 2개 목록에 없는 이메일은 자동으로 학생 권한으로 처리됩니다.
 
 ## 7) 로컬 테스트
 
@@ -68,11 +74,13 @@ Vercel 프로젝트 > `Settings > Environment Variables`
 
 - `NEXT_PUBLIC_SUPABASE_URL`
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+- `NEXT_PUBLIC_ADMIN_EMAILS`
+- `NEXT_PUBLIC_TEACHER_EMAILS`
 
 배포 후에도 반드시 Supabase `Redirect URLs`에 배포 도메인이 들어가 있어야 합니다.
 
 ## 9) 지금 구현의 범위
 
 - 현재는 "로그인 시작/복귀/사용자 이메일 확인"까지 구현되어 있습니다.
-- 권한(관리자/선생님/학생)별 페이지 보호는 다음 단계에서 추가하면 됩니다.
+- 이메일 기반 권한 분기(관리자/선생님/학생) + 경로 보호(`/a`,`/t`,`/s`)가 적용되어 있습니다.
 - 네트워크 제한 때문에 Supabase SDK 설치는 못 했고, REST 방식으로 연결했습니다.

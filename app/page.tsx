@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   AUTH_EVENT,
   buildGoogleAuthUrl,
@@ -11,8 +12,15 @@ import {
   loadAuthSession,
   type AuthSession,
 } from "@/lib/auth/supabaseAuth";
+import {
+  canAccessRole,
+  getUserRole,
+  isRoleConfigReady,
+  roleLabel,
+} from "@/lib/auth/roleAuth";
 
 export default function HomePage() {
+  const searchParams = useSearchParams();
   const [session, setSession] = useState<AuthSession | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -59,6 +67,9 @@ export default function HomePage() {
   }
 
   const loggedIn = Boolean(session) && !isSessionExpired(session);
+  const role = getUserRole(session?.email);
+  const roleConfigReady = isRoleConfigReady();
+  const redirectFrom = (searchParams.get("next") ?? "").trim();
 
   return (
     <main
@@ -131,34 +142,55 @@ export default function HomePage() {
               <div style={{ fontWeight: 700 }}>
                 로그인 완료: <span style={{ color: "#2563eb" }}>{session?.email ?? "-"}</span>
               </div>
+              <div style={{ marginTop: 6, fontSize: 13, color: "#475569" }}>
+                현재 권한: <b>{roleLabel(role)}</b>
+              </div>
               <div style={{ marginTop: 8, display: "flex", gap: 8, flexWrap: "wrap" }}>
+                {canAccessRole(role, "admin") ? (
+                  <Link
+                    href="/a/amain"
+                    style={{
+                      padding: "10px 12px",
+                      border: "1px solid #1d4ed8",
+                      borderRadius: 10,
+                      color: "#1d4ed8",
+                      fontWeight: 800,
+                      textDecoration: "none",
+                      background: "#eff6ff",
+                    }}
+                  >
+                    관리자 화면으로 이동
+                  </Link>
+                ) : null}
+                {canAccessRole(role, "teacher") ? (
+                  <Link
+                    href="/t/tmain"
+                    style={{
+                      padding: "10px 12px",
+                      border: "1px solid #0f766e",
+                      borderRadius: 10,
+                      color: "#0f766e",
+                      fontWeight: 800,
+                      textDecoration: "none",
+                      background: "#f0fdfa",
+                    }}
+                  >
+                    선생님 화면으로 이동
+                  </Link>
+                ) : null}
                 <Link
-                  href="/a/amain"
+                  href="/s/smain"
                   style={{
                     padding: "10px 12px",
-                    border: "1px solid #1d4ed8",
+                    border: "1px solid #7c3aed",
                     borderRadius: 10,
-                    color: "#1d4ed8",
+                    color: "#7c3aed",
                     fontWeight: 800,
                     textDecoration: "none",
-                    background: "#eff6ff",
+                    background: "#faf5ff",
                   }}
                 >
-                  관리자 화면으로 이동
-                </Link>
-                <Link
-                  href="/t/tmain"
-                  style={{
-                    padding: "10px 12px",
-                    border: "1px solid #0f766e",
-                    borderRadius: 10,
-                    color: "#0f766e",
-                    fontWeight: 800,
-                    textDecoration: "none",
-                    background: "#f0fdfa",
-                  }}
-                >
-                  선생님 화면으로 이동
+                  학생 화면으로 이동
                 </Link>
                 <button
                   type="button"
@@ -191,6 +223,38 @@ export default function HomePage() {
               }}
             >
               {error}
+            </div>
+          ) : null}
+          {redirectFrom ? (
+            <div
+              style={{
+                marginTop: 10,
+                borderRadius: 8,
+                border: "1px solid #fde68a",
+                background: "#fffbeb",
+                color: "#92400e",
+                padding: "8px 10px",
+                fontSize: 13,
+              }}
+            >
+              이전 요청 경로 <code>{redirectFrom}</code> 는 현재 권한으로 접근할 수 없었습니다.
+            </div>
+          ) : null}
+          {loggedIn && !roleConfigReady ? (
+            <div
+              style={{
+                marginTop: 10,
+                borderRadius: 8,
+                border: "1px solid #bfdbfe",
+                background: "#eff6ff",
+                color: "#1e3a8a",
+                padding: "8px 10px",
+                fontSize: 13,
+              }}
+            >
+              권한 이메일 목록이 아직 비어 있습니다. 배포/운영 전에는
+              <code> NEXT_PUBLIC_ADMIN_EMAILS </code> 와
+              <code> NEXT_PUBLIC_TEACHER_EMAILS </code> 를 반드시 설정해주세요.
             </div>
           ) : null}
         </div>
