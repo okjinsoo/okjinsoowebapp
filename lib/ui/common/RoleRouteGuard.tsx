@@ -6,9 +6,7 @@ import { TEACHERS_EVENT } from "@/lib/storage/teachers";
 import {
   AUTH_EVENT,
   AUTH_STORAGE_KEY,
-  clearAuthSession,
-  isSessionExpired,
-  loadAuthSession,
+  ensureAuthSession,
 } from "@/lib/auth/supabaseAuth";
 import {
   canAccessRole,
@@ -37,12 +35,7 @@ export default function RoleRouteGuard({ requiredRole, children }: Props) {
 
     async function sync() {
       const currentRequestId = ++requestId;
-      const rawSession = loadAuthSession();
-      if (rawSession && isSessionExpired(rawSession)) {
-        clearAuthSession();
-      }
-
-      const session = loadAuthSession();
+      const session = await ensureAuthSession();
       const nextRole = await resolveUserRole({
         email: session?.email,
         accessToken: session?.accessToken,

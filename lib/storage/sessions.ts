@@ -1,4 +1,5 @@
 // lib/storage/sessions.ts
+import { pushSharedSnapshot, readLocalStudents, readLocalTeachers } from "@/lib/storage/sharedSnapshot";
 import type { Session } from "@/lib/types/index";
 
 const KEY = "tutorweb_sessions_v1";
@@ -17,10 +18,21 @@ export function loadSessions(): Session[] {
   return safeParse<Session[]>(localStorage.getItem(KEY), []);
 }
 
+function syncSharedSnapshot(nextSessions: Session[]): void {
+  void pushSharedSnapshot({
+    teachers: readLocalTeachers(),
+    students: readLocalStudents(),
+    sessions: nextSessions,
+  }).catch((err) => {
+    console.error("공유 스냅샷 동기화 실패(sessions):", err);
+  });
+}
+
 export function saveSessions(list: Session[]): void {
   if (typeof window === "undefined") return;
   localStorage.setItem(KEY, JSON.stringify(list));
   window.dispatchEvent(new CustomEvent("tutorweb:sessionsUpdated"));
+  syncSharedSnapshot(list);
 }
 
 export function upsertSession(session: Session): Session[] {
@@ -101,4 +113,5 @@ export function loadSessionItemsMap(
 export function clearSessions(): void {
   if (typeof window === "undefined") return;
   localStorage.removeItem(KEY);
+  syncSharedSnapshot([]);
 }

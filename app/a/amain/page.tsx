@@ -3,11 +3,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { syncRoleBindingEmails } from "@/lib/auth/roleBindings";
-import { getSupabaseConfig, loadAuthSession } from "@/lib/auth/supabaseAuth";
+import { ensureAuthSession, getSupabaseConfig } from "@/lib/auth/supabaseAuth";
 import { pushSharedSnapshot } from "@/lib/storage/sharedSnapshot";
 import { loadStudents } from "@/lib/storage/students";
 import { loadTeachers, saveCurrentTeacherId, TEACHERS_EVENT } from "@/lib/storage/teachers";
-import { sessionsByStudent } from "@/lib/storage/sessions";
+import { loadSessions, sessionsByStudent } from "@/lib/storage/sessions";
 import { loadConsultationsByStudent } from "@/lib/storage/consultations";
 import { saveCurrentStudentToken } from "@/lib/ui/common/roleGateStorage";
 import {
@@ -289,9 +289,9 @@ export default function AdminMainPage() {
       return;
     }
 
-    const session = loadAuthSession();
+    const session = await ensureAuthSession();
     if (!session?.accessToken) {
-      setSyncResult("실패: 로그인 토큰이 없어요. 홈에서 다시 로그인 후 시도해주세요.");
+      setSyncResult("실패: 로그인 토큰이 만료됐어요. 홈에서 다시 로그인 후 다시 눌러주세요.");
       return;
     }
 
@@ -301,11 +301,12 @@ export default function AdminMainPage() {
     const studentEmails = students
       .map((s) => (s.googleEmail ?? "").trim().toLowerCase())
       .filter(Boolean);
+    const sessions = loadSessions();
 
     try {
       setSyncingRoles(true);
 
-      await Promise.all([
+      const [, , snapshotResult] = await Promise.all([
         syncRoleBindingEmails({
           previousEmails: [],
           nextEmails: teacherEmails,
@@ -318,12 +319,18 @@ export default function AdminMainPage() {
           role: "student",
           accessToken: session.accessToken,
         }),
-        pushSharedSnapshot({ teachers, students }),
+        pushSharedSnapshot({ teachers, students, sessions }),
       ]);
 
-      setSyncResult(
-        `성공: 선생님 ${teacherEmails.length}개, 학생 ${studentEmails.length}개 이메일을 role_bindings에 동기화했고, 학생/선생님 목록도 공유 스냅샷으로 올렸어요.`
-      );
+      if (snapshotResult.sessionsSynced) {
+        setSyncResult(
+          `성공: 선생님 ${teacherEmails.length}개, 학생 ${studentEmails.length}개 이메일을 role_bindings에 동기화했고, 회차 ${sessions.length}개를 포함해 공유 스냅샷으로 올렸어요.`
+        );
+      } else {
+        setSyncResult(
+          "부분 성공: role_bindings는 동기화됐지만, DB에 sessions 컬럼이 없어 회차 공유는 건너뛰었습니다. Supabase SQL Editor에서 005 SQL을 실행한 뒤 다시 눌러주세요."
+        );
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : "알 수 없는 오류";
       setSyncResult(`실패: ${msg}`);

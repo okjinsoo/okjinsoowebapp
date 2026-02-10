@@ -1,4 +1,4 @@
-import { getSupabaseConfig, loadAuthSession } from "@/lib/auth/supabaseAuth";
+import { ensureAuthSession, getSupabaseConfig, loadAuthSession } from "@/lib/auth/supabaseAuth";
 
 export type RoleBindingRole = "student" | "teacher";
 
@@ -10,10 +10,17 @@ function normalizeEmail(email: string | null | undefined): string {
   return (email ?? "").trim().toLowerCase();
 }
 
-function getAccessToken(explicitToken?: string | null | undefined): string | null {
+async function getAccessToken(explicitToken?: string | null | undefined): Promise<string | null> {
   const direct = (explicitToken ?? "").trim();
-  if (direct) return direct;
-  return loadAuthSession()?.accessToken ?? null;
+  const current = loadAuthSession();
+
+  // 외부에서 전달된 별도 토큰(세션 토큰과 다름)이면 그대로 사용
+  if (direct && direct !== (current?.accessToken ?? "")) return direct;
+
+  const ensured = await ensureAuthSession();
+  if (ensured?.accessToken) return ensured.accessToken;
+
+  return direct || null;
 }
 
 type HeadersArgs = {
@@ -43,7 +50,7 @@ export async function fetchRoleBinding(args: {
   const normalizedEmail = normalizeEmail(args.email);
   if (!normalizedEmail) return null;
 
-  const accessToken = getAccessToken(args.accessToken);
+  const accessToken = await getAccessToken(args.accessToken);
   if (!accessToken) return null;
 
   const cfg = getSupabaseConfig();
@@ -78,7 +85,7 @@ export async function upsertRoleBinding(args: {
   const normalizedEmail = normalizeEmail(args.email);
   if (!normalizedEmail) return;
 
-  const accessToken = getAccessToken(args.accessToken);
+  const accessToken = await getAccessToken(args.accessToken);
   if (!accessToken) return;
 
   const cfg = getSupabaseConfig();
@@ -118,7 +125,7 @@ export async function deleteRoleBinding(args: {
   const normalizedEmail = normalizeEmail(args.email);
   if (!normalizedEmail) return;
 
-  const accessToken = getAccessToken(args.accessToken);
+  const accessToken = await getAccessToken(args.accessToken);
   if (!accessToken) return;
 
   const cfg = getSupabaseConfig();

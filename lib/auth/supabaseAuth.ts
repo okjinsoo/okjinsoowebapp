@@ -25,6 +25,19 @@ type SupabaseConfig = {
   anonKey: string;
 };
 
+type RefreshTokenResponse = {
+  access_token?: string;
+  refresh_token?: string | null;
+  expires_in?: number;
+  user?: {
+    id?: string;
+    email?: string;
+  };
+};
+
+const REFRESH_SKEW_MS = 60 * 1000;
+let refreshInFlight: Promise<AuthSession | null> | null = null;
+
 export function getSupabaseConfig(): SupabaseConfig | null {
   const url = (process.env.NEXT_PUBLIC_SUPABASE_URL ?? "").trim();
   const anonKey = (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "").trim();
@@ -122,6 +135,87 @@ export function isSessionExpired(session: AuthSession | null): boolean {
   if (!session) return true;
   if (session.expiresAt === null) return false;
   return Date.now() >= session.expiresAt;
+}
+
+function shouldRefreshSession(session: AuthSession): boolean {
+  if (session.expiresAt === null) return false;
+  return Date.now() + REFRESH_SKEW_MS >= session.expiresAt;
+}
+
+async function refreshAuthSessionOnce(session: AuthSession): Promise<AuthSession | null> {
+  const cfg = getSupabaseConfig();
+  if (!cfg || !session.refreshToken) return null;
+
+  const url = new URL("/auth/v1/token", cfg.url);
+  url.searchParams.set("grant_type", "refresh_token");
+
+  const res = await fetch(url.toString(), {
+    method: "POST",
+    headers: {
+      apikey: cfg.anonKey,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      refresh_token: session.refreshToken,
+    }),
+  });
+
+  if (!res.ok) return null;
+
+  const body = (await res.json()) as RefreshTokenResponse;
+  const accessToken = typeof body.access_token === "string" ? body.access_token : "";
+  if (!accessToken) return null;
+
+  const expiresInRaw = Number(body.expires_in ?? "");
+  const expiresIn = Number.isFinite(expiresInRaw) ? Math.max(0, Math.floor(expiresInRaw)) : null;
+
+  const next: AuthSession = {
+    accessToken,
+    refreshToken:
+      typeof body.refresh_token === "string" && body.refresh_token.trim()
+        ? body.refresh_token
+        : session.refreshToken,
+    expiresAt: expiresIn === null ? null : Date.now() + expiresIn * 1000,
+    userId: typeof body.user?.id === "string" ? body.user.id : session.userId,
+    email: typeof body.user?.email === "string" ? body.user.email : session.email,
+    provider: "google",
+  };
+
+  saveAuthSession(next);
+  return next;
+}
+
+export async function ensureAuthSession(): Promise<AuthSession | null> {
+  const session = loadAuthSession();
+  if (!session) return null;
+  if (!shouldRefreshSession(session)) return session;
+
+  if (!session.refreshToken) {
+    clearAuthSession();
+    return null;
+  }
+
+  if (!refreshInFlight) {
+    refreshInFlight = (async () => {
+      try {
+        const refreshed = await refreshAuthSessionOnce(session);
+        if (!refreshed) {
+          clearAuthSession();
+          return null;
+        }
+        return refreshed;
+      } finally {
+        refreshInFlight = null;
+      }
+    })();
+  }
+
+  return refreshInFlight;
+}
+
+export async function getValidAccessToken(): Promise<string | null> {
+  const session = await ensureAuthSession();
+  return session?.accessToken ?? null;
 }
 
 export function dispatchAuthUpdated(): void {

@@ -6,9 +6,8 @@ import {
   AUTH_EVENT,
   buildGoogleAuthUrl,
   clearAuthSession,
+  ensureAuthSession,
   getSupabaseConfig,
-  isSessionExpired,
-  loadAuthSession,
   type AuthSession,
 } from "@/lib/auth/supabaseAuth";
 import {
@@ -37,15 +36,8 @@ export default function HomePage() {
 
     const sync = async () => {
       const currentRequestId = ++requestId;
-      const next = loadAuthSession();
-      if (next && isSessionExpired(next)) {
-        clearAuthSession();
-        if (cancelled || currentRequestId !== requestId) return;
-        setSession(null);
-        setRole("guest");
-        setRoleLoading(false);
-        return;
-      }
+      const next = await ensureAuthSession();
+      if (cancelled || currentRequestId !== requestId) return;
 
       setSession(next);
       if (!next) {
@@ -103,7 +95,7 @@ export default function HomePage() {
     setRoleLoading(false);
   }
 
-  const loggedIn = Boolean(session) && !isSessionExpired(session);
+  const loggedIn = Boolean(session);
 
   return (
     <main

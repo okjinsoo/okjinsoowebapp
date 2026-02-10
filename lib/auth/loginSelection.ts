@@ -56,9 +56,19 @@ export function resolveSelectionForRole(args: {
 
   if (role === "s") {
     const matchedStudent = findStudentByLoginEmail(students);
+    if (matchedStudent) {
+      return {
+        teacherId: matchedStudent.teacherId ?? null,
+        studentToken: matchedStudent.token ?? null,
+      };
+    }
+
+    const savedStudent = savedStudentToken
+      ? students.find((student) => student.token === savedStudentToken)
+      : null;
     return {
-      teacherId: matchedStudent?.teacherId ?? null,
-      studentToken: matchedStudent?.token ?? null,
+      teacherId: savedStudent?.teacherId ?? null,
+      studentToken: savedStudent?.token ?? null,
     };
   }
 
