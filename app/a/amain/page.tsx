@@ -322,14 +322,15 @@ export default function AdminMainPage() {
         pushSharedSnapshot({ teachers, students, sessions }),
       ]);
 
-      if (snapshotResult.sessionsSynced) {
+      if (snapshotResult.sessionsSynced && snapshotResult.stateKvSynced) {
         setSyncResult(
-          `성공: 선생님 ${teacherEmails.length}개, 학생 ${studentEmails.length}개 이메일을 role_bindings에 동기화했고, 회차 ${sessions.length}개를 포함해 공유 스냅샷으로 올렸어요.`
+          `성공: 선생님 ${teacherEmails.length}개, 학생 ${studentEmails.length}개 이메일을 role_bindings에 동기화했고, 회차 ${sessions.length}개와 학습 상태를 포함해 공유 스냅샷으로 올렸어요.`
         );
       } else {
-        setSyncResult(
-          "부분 성공: role_bindings는 동기화됐지만, DB에 sessions 컬럼이 없어 회차 공유는 건너뛰었습니다. Supabase SQL Editor에서 005 SQL을 실행한 뒤 다시 눌러주세요."
-        );
+        const missing: string[] = [];
+        if (!snapshotResult.sessionsSynced) missing.push("sessions(005)");
+        if (!snapshotResult.stateKvSynced) missing.push("state_kv(006)");
+        setSyncResult(`부분 성공: role_bindings는 동기화됐지만, DB 컬럼 ${missing.join(", ")} 이 없어 일부 공유를 건너뛰었습니다. SQL 마이그레이션 실행 후 다시 눌러주세요.`);
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : "알 수 없는 오류";

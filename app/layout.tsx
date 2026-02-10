@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import BrandHomeButton from "@/lib/ui/common/BrandHomeButton";
+import SharedSnapshotAgent from "@/lib/ui/common/SharedSnapshotAgent";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -15,6 +16,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className="antialiased">
+        <SharedSnapshotAgent />
         <div style={{ height: 56 }} />
         <div
           style={{
