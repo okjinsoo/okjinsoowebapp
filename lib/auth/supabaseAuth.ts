@@ -193,7 +193,11 @@ export async function ensureAuthSession(): Promise<AuthSession | null> {
   if (!shouldRefreshSession(session)) return session;
 
   if (Date.now() - lastRefreshFailureAt < REFRESH_FAILURE_COOLDOWN_MS) {
-    return session;
+    if (session.expiresAt === null || Date.now() < session.expiresAt) {
+      return session;
+    }
+    clearAuthSession();
+    return null;
   }
 
   if (!session.refreshToken) {

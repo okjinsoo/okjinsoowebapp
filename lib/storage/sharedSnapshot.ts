@@ -77,13 +77,33 @@ function dispatchLocalSnapshotUpdated(args?: { includeSessions?: boolean }) {
 
 function applyLocalSnapshot(args: { teachers: Teacher[]; students: Student[]; sessions?: Session[] }) {
   if (typeof window === "undefined") return;
-  localStorage.setItem(TEACHERS_KEY, JSON.stringify(args.teachers));
-  localStorage.setItem(STUDENTS_KEY, JSON.stringify(args.students));
+  let changed = false;
+  let sessionsChanged = false;
+
+  const teachersRaw = JSON.stringify(args.teachers);
+  if (localStorage.getItem(TEACHERS_KEY) !== teachersRaw) {
+    localStorage.setItem(TEACHERS_KEY, teachersRaw);
+    changed = true;
+  }
+
+  const studentsRaw = JSON.stringify(args.students);
+  if (localStorage.getItem(STUDENTS_KEY) !== studentsRaw) {
+    localStorage.setItem(STUDENTS_KEY, studentsRaw);
+    changed = true;
+  }
+
   const includeSessions = Array.isArray(args.sessions);
   if (includeSessions) {
-    localStorage.setItem(SESSIONS_KEY, JSON.stringify(args.sessions ?? []));
+    const sessionsRaw = JSON.stringify(args.sessions ?? []);
+    if (localStorage.getItem(SESSIONS_KEY) !== sessionsRaw) {
+      localStorage.setItem(SESSIONS_KEY, sessionsRaw);
+      sessionsChanged = true;
+    }
   }
-  dispatchLocalSnapshotUpdated({ includeSessions });
+
+  if (changed || sessionsChanged) {
+    dispatchLocalSnapshotUpdated({ includeSessions: sessionsChanged });
+  }
 }
 
 function isMissingColumnError(detail: string, column: string): boolean {
