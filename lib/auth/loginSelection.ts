@@ -74,7 +74,12 @@ export function resolveSelectionForRole(args: {
 
   if (role === "t") {
     const matchedTeacher = findTeacherByLoginEmail(teachers);
-    if (!matchedTeacher) {
+    const savedTeacher = savedTeacherId
+      ? teachers.find((teacher) => teacher.id === savedTeacherId)
+      : null;
+    const activeTeacher = matchedTeacher ?? savedTeacher;
+
+    if (!activeTeacher) {
       return {
         teacherId: null,
         studentToken: null,
@@ -82,10 +87,10 @@ export function resolveSelectionForRole(args: {
     }
 
     return {
-      teacherId: matchedTeacher.id,
+      teacherId: activeTeacher.id,
       studentToken: pickTeacherStudentToken({
         students,
-        teacherId: matchedTeacher.id,
+        teacherId: activeTeacher.id,
         preferredToken: savedStudentToken,
       }),
     };
