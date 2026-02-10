@@ -36,7 +36,9 @@ type RefreshTokenResponse = {
 };
 
 const REFRESH_SKEW_MS = 60 * 1000;
+const REFRESH_FAILURE_COOLDOWN_MS = 30 * 1000;
 let refreshInFlight: Promise<AuthSession | null> | null = null;
+let lastRefreshFailureAt = 0;
 
 export function getSupabaseConfig(): SupabaseConfig | null {
   const url = (process.env.NEXT_PUBLIC_SUPABASE_URL ?? "").trim();
@@ -190,6 +192,10 @@ export async function ensureAuthSession(): Promise<AuthSession | null> {
   if (!session) return null;
   if (!shouldRefreshSession(session)) return session;
 
+  if (Date.now() - lastRefreshFailureAt < REFRESH_FAILURE_COOLDOWN_MS) {
+    return session;
+  }
+
   if (!session.refreshToken) {
     clearAuthSession();
     return null;
@@ -200,9 +206,14 @@ export async function ensureAuthSession(): Promise<AuthSession | null> {
       try {
         const refreshed = await refreshAuthSessionOnce(session);
         if (!refreshed) {
+          lastRefreshFailureAt = Date.now();
+          if (session.expiresAt !== null && Date.now() < session.expiresAt) {
+            return session;
+          }
           clearAuthSession();
           return null;
         }
+        lastRefreshFailureAt = 0;
         return refreshed;
       } finally {
         refreshInFlight = null;

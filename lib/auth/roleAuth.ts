@@ -5,6 +5,10 @@ export type RequiredRole = "student" | "teacher" | "admin";
 
 // 요청 반영: 관리자 기본 계정 고정
 const FIXED_ADMIN_EMAILS = ["rapah0310@gmail.com"];
+const ROLE_CACHE_KEY = "tutorweb_last_roles_v1";
+const ROLE_CACHE_TTL_MS = 10 * 60 * 1000;
+
+type RoleCacheMap = Record<string, { role: UserRole; ts: number }>;
 
 function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
@@ -12,6 +16,47 @@ function normalizeEmail(email: string): string {
 
 export function getAdminEmailSet(): Set<string> {
   return new Set(FIXED_ADMIN_EMAILS.map(normalizeEmail));
+}
+
+function readRoleCache(): RoleCacheMap {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = localStorage.getItem(ROLE_CACHE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as RoleCacheMap;
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeRoleCache(next: RoleCacheMap): void {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(ROLE_CACHE_KEY, JSON.stringify(next));
+}
+
+function loadCachedRole(email: string): UserRole | null {
+  if (!email) return null;
+  const cache = readRoleCache();
+  const row = cache[email];
+  if (!row) return null;
+  if (Date.now() - row.ts > ROLE_CACHE_TTL_MS) return null;
+  return row.role;
+}
+
+function saveCachedRole(email: string, role: UserRole): void {
+  if (!email || role === "guest") return;
+  const cache = readRoleCache();
+  cache[email] = { role, ts: Date.now() };
+  writeRoleCache(cache);
+}
+
+function clearCachedRole(email: string): void {
+  if (!email) return;
+  const cache = readRoleCache();
+  if (!(email in cache)) return;
+  delete cache[email];
+  writeRoleCache(cache);
 }
 
 export async function resolveUserRole(args: {
@@ -22,15 +67,22 @@ export async function resolveUserRole(args: {
   const normalized = normalizeEmail(email ?? "");
   if (!normalized) return "guest";
 
-  if (getAdminEmailSet().has(normalized)) return "admin";
+  if (getAdminEmailSet().has(normalized)) {
+    saveCachedRole(normalized, "admin");
+    return "admin";
+  }
   if (!accessToken) return "guest";
 
   try {
     const role = await fetchRoleBinding({ email: normalized, accessToken });
     if (role === "teacher" || role === "student") {
+      saveCachedRole(normalized, role);
       return role;
     }
+    clearCachedRole(normalized);
   } catch {
+    const cached = loadCachedRole(normalized);
+    if (cached) return cached;
     return "guest";
   }
   return "guest";

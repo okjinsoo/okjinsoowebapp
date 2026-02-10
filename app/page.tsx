@@ -253,7 +253,7 @@ export default function HomePage() {
               {error}
             </div>
           ) : null}
-          {redirectFrom ? (
+          {redirectFrom && (!loggedIn || (!roleLoading && role === "guest")) ? (
             <div
               style={{
                 marginTop: 10,

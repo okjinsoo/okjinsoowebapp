@@ -69,7 +69,10 @@ export async function fetchRoleBinding(args: {
     headers,
   });
 
-  if (!res.ok) return null;
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`role_bindings fetch failed: ${res.status} ${text}`);
+  }
 
   const rows = (await res.json()) as RoleBindingRow[];
   const role = rows[0]?.role;

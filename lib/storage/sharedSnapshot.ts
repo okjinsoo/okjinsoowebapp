@@ -10,6 +10,7 @@ const SESSIONS_KEY = "tutorweb_sessions_v1";
 const STUDENTS_EVENT = "tutorweb:studentsUpdated";
 const TEACHERS_EVENT = "tutorweb:teachersUpdated";
 const SESSIONS_EVENT = "tutorweb:sessionsUpdated";
+const PULL_COOLDOWN_MS = 5000;
 
 type SnapshotRow = {
   teachers?: Teacher[];
@@ -20,6 +21,13 @@ type SnapshotRow = {
 export type PushSharedSnapshotResult = {
   sessionsSynced: boolean;
 };
+
+let lastPullSnapshotAt = 0;
+let pullSnapshotInFlight: Promise<{
+  teachers: Teacher[];
+  students: Student[];
+  sessions: Session[];
+} | null> | null = null;
 
 function safeParse<T>(raw: string | null, fallback: T): T {
   if (!raw) return fallback;
@@ -81,6 +89,11 @@ function applyLocalSnapshot(args: { teachers: Teacher[]; students: Student[]; se
 function isMissingColumnError(detail: string, column: string): boolean {
   const lower = detail.toLowerCase();
   return lower.includes(column.toLowerCase()) && (lower.includes("column") || lower.includes("schema cache") || lower.includes("42703"));
+}
+
+function hasLocalSnapshot(): boolean {
+  if (typeof window === "undefined") return false;
+  return localStorage.getItem(TEACHERS_KEY) !== null && localStorage.getItem(STUDENTS_KEY) !== null;
 }
 
 export async function pushSharedSnapshot(args?: {
@@ -152,55 +165,77 @@ export async function pullSharedSnapshotAndHydrate(): Promise<{
   students: Student[];
   sessions: Session[];
 } | null> {
-  const cfg = getSupabaseConfig();
-  if (!cfg) return null;
-
-  const headers = await getHeaders();
-  if (!headers) return null;
-
-  const fetchRows = async (select: string): Promise<{ rows: SnapshotRow[]; missingSessionsColumn: boolean }> => {
-    const url = new URL("/rest/v1/app_state_snapshots", cfg.url);
-    url.searchParams.set("select", select);
-    url.searchParams.set("id", `eq.${SNAPSHOT_KEY}`);
-    url.searchParams.set("limit", "1");
-
-    const res = await fetch(url.toString(), {
-      method: "GET",
-      headers,
-    });
-
-    if (res.ok) {
-      return { rows: (await res.json()) as SnapshotRow[], missingSessionsColumn: false };
-    }
-
-    const text = await res.text();
-    if (select.includes("sessions") && isMissingColumnError(text, "sessions")) {
-      return { rows: [], missingSessionsColumn: true };
-    }
-
-    throw new Error(`snapshot fetch failed: ${res.status} ${text}`);
-  };
-
-  let usedLegacySnapshot = false;
-  let rowsResult = await fetchRows("teachers,students,sessions");
-  if (rowsResult.missingSessionsColumn) {
-    usedLegacySnapshot = true;
-    rowsResult = await fetchRows("teachers,students");
+  if (Date.now() - lastPullSnapshotAt < PULL_COOLDOWN_MS && hasLocalSnapshot()) {
+    return {
+      teachers: readLocalTeachers(),
+      students: readLocalStudents(),
+      sessions: readLocalSessions(),
+    };
   }
 
-  const rows = rowsResult.rows;
-  const row = rows[0];
-  if (!row) return null;
-
-  const teachers = Array.isArray(row.teachers) ? row.teachers : [];
-  const students = Array.isArray(row.students) ? row.students : [];
-  const sessions = Array.isArray(row.sessions) ? row.sessions : [];
-
-  if (usedLegacySnapshot) {
-    applyLocalSnapshot({ teachers, students });
-    return { teachers, students, sessions: readLocalSessions() };
+  if (pullSnapshotInFlight) {
+    return pullSnapshotInFlight;
   }
 
-  applyLocalSnapshot({ teachers, students, sessions });
-  return { teachers, students, sessions };
+  pullSnapshotInFlight = (async () => {
+    const cfg = getSupabaseConfig();
+    if (!cfg) return null;
+
+    const headers = await getHeaders();
+    if (!headers) return null;
+
+    const fetchRows = async (select: string): Promise<{ rows: SnapshotRow[]; missingSessionsColumn: boolean }> => {
+      const url = new URL("/rest/v1/app_state_snapshots", cfg.url);
+      url.searchParams.set("select", select);
+      url.searchParams.set("id", `eq.${SNAPSHOT_KEY}`);
+      url.searchParams.set("limit", "1");
+
+      const res = await fetch(url.toString(), {
+        method: "GET",
+        headers,
+      });
+
+      if (res.ok) {
+        return { rows: (await res.json()) as SnapshotRow[], missingSessionsColumn: false };
+      }
+
+      const text = await res.text();
+      if (select.includes("sessions") && isMissingColumnError(text, "sessions")) {
+        return { rows: [], missingSessionsColumn: true };
+      }
+
+      throw new Error(`snapshot fetch failed: ${res.status} ${text}`);
+    };
+
+    let usedLegacySnapshot = false;
+    let rowsResult = await fetchRows("teachers,students,sessions");
+    if (rowsResult.missingSessionsColumn) {
+      usedLegacySnapshot = true;
+      rowsResult = await fetchRows("teachers,students");
+    }
+
+    const rows = rowsResult.rows;
+    const row = rows[0];
+    if (!row) return null;
+
+    const teachers = Array.isArray(row.teachers) ? row.teachers : [];
+    const students = Array.isArray(row.students) ? row.students : [];
+    const sessions = Array.isArray(row.sessions) ? row.sessions : [];
+
+    if (usedLegacySnapshot) {
+      applyLocalSnapshot({ teachers, students });
+      lastPullSnapshotAt = Date.now();
+      return { teachers, students, sessions: readLocalSessions() };
+    }
+
+    applyLocalSnapshot({ teachers, students, sessions });
+    lastPullSnapshotAt = Date.now();
+    return { teachers, students, sessions };
+  })();
+
+  try {
+    return await pullSnapshotInFlight;
+  } finally {
+    pullSnapshotInFlight = null;
+  }
 }

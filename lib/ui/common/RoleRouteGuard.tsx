@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { TEACHERS_EVENT } from "@/lib/storage/teachers";
 import {
   AUTH_EVENT,
   AUTH_STORAGE_KEY,
@@ -66,14 +65,10 @@ export default function RoleRouteGuard({ requiredRole, children }: Props) {
 
     requestSync();
     window.addEventListener(AUTH_EVENT, requestSync);
-    window.addEventListener("tutorweb:studentsUpdated", requestSync);
-    window.addEventListener(TEACHERS_EVENT, requestSync);
     window.addEventListener("storage", onStorage);
     return () => {
       cancelled = true;
       window.removeEventListener(AUTH_EVENT, requestSync);
-      window.removeEventListener("tutorweb:studentsUpdated", requestSync);
-      window.removeEventListener(TEACHERS_EVENT, requestSync);
       window.removeEventListener("storage", onStorage);
     };
   }, [requiredRole]);
@@ -82,7 +77,7 @@ export default function RoleRouteGuard({ requiredRole, children }: Props) {
     if (status !== "blocked") return;
     const id = window.setTimeout(() => {
       router.replace(`/?next=${encodeURIComponent(pathname || "/")}`);
-    }, 700);
+    }, 1800);
     return () => window.clearTimeout(id);
   }, [status, router, pathname]);
 
