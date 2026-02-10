@@ -1,4 +1,7 @@
 // lib/storage/consultations.ts
+"use client";
+
+import { browserStorage } from "@/lib/storage/browserStorage";
 import type { ConsultationRecord, Id } from "@/lib/types/index";
 
 const KEY = "tutorweb_consultations_v1";
@@ -16,12 +19,12 @@ function safeParse<T>(raw: string | null, fallback: T): T {
 
 function loadAll(): Store {
   if (typeof window === "undefined") return {};
-  return safeParse<Store>(localStorage.getItem(KEY), {});
+  return safeParse<Store>(browserStorage.getItem(KEY), {});
 }
 
 function saveAll(next: Store) {
   if (typeof window === "undefined") return;
-  localStorage.setItem(KEY, JSON.stringify(next));
+  browserStorage.setItem(KEY, JSON.stringify(next));
   window.dispatchEvent(new CustomEvent("tutorweb:consultationsUpdated"));
 }
 

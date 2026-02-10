@@ -1,5 +1,8 @@
 // lib/storage/teachers.ts
-// A안: 선생님(Teacher) 목록을 localStorage 에 저장합니다.
+// A안: 선생님(Teacher) 목록을 browserStorage 에 저장합니다.
+"use client";
+
+import { browserStorage } from "@/lib/storage/browserStorage";
 import { syncRoleBindingEmails } from "@/lib/auth/roleBindings";
 import { pushSharedSnapshot, readLocalStudents } from "@/lib/storage/sharedSnapshot";
 import type { Teacher } from "@/lib/types/index";
@@ -17,7 +20,7 @@ function dispatchTeachersUpdated() {
 export function loadCurrentTeacherId(): string | null {
   if (typeof window === "undefined") return null;
   try {
-    const v = localStorage.getItem(LS_CURRENT_TEACHER);
+    const v = browserStorage.getItem(LS_CURRENT_TEACHER);
     return v && v.trim() ? v.trim() : null;
   } catch {
     return null;
@@ -27,14 +30,14 @@ export function loadCurrentTeacherId(): string | null {
 export function saveCurrentTeacherId(id: string) {
   if (typeof window === "undefined") return;
   try {
-    localStorage.setItem(LS_CURRENT_TEACHER, id);
+    browserStorage.setItem(LS_CURRENT_TEACHER, id);
   } catch {}
 }
 
 export function clearCurrentTeacherId() {
   if (typeof window === "undefined") return;
   try {
-    localStorage.removeItem(LS_CURRENT_TEACHER);
+    browserStorage.removeItem(LS_CURRENT_TEACHER);
   } catch {}
 }
 
@@ -74,13 +77,13 @@ function syncSharedSnapshot(nextTeachers: Teacher[]): void {
 
 export function loadTeachers(): Teacher[] {
   if (typeof window === "undefined") return [];
-  return safeParse<Teacher[]>(localStorage.getItem(KEY), []);
+  return safeParse<Teacher[]>(browserStorage.getItem(KEY), []);
 }
 
 export function saveTeachers(list: Teacher[]): void {
   if (typeof window === "undefined") return;
   const previous = loadTeachers();
-  localStorage.setItem(KEY, JSON.stringify(list));
+  browserStorage.setItem(KEY, JSON.stringify(list));
   dispatchTeachersUpdated();
   syncTeacherRoleBindings(previous, list);
   syncSharedSnapshot(list);
@@ -108,7 +111,7 @@ export function findTeacherById(teacherId: string): Teacher | null {
 export function clearTeachers(): void {
   if (typeof window === "undefined") return;
   const previous = loadTeachers();
-  localStorage.removeItem(KEY);
+  browserStorage.removeItem(KEY);
   dispatchTeachersUpdated();
   syncTeacherRoleBindings(previous, []);
   syncSharedSnapshot([]);

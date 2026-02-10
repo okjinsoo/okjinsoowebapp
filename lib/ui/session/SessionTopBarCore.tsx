@@ -1,5 +1,7 @@
 "use client";
 
+import { browserStorage } from "@/lib/storage/browserStorage";
+
 import { useEffect, useMemo, useState } from "react";
 import {
   buildBaseDatesISOByToken,
@@ -190,7 +192,7 @@ export default function SessionTopBarCore({ role, token, index }: Props) {
     const readJson = <T,>(key: string, fallback: T): T => {
       if (typeof window === "undefined") return fallback;
       try {
-        const raw = localStorage.getItem(key);
+        const raw = browserStorage.getItem(key);
         if (!raw) return fallback;
         return JSON.parse(raw) as T;
       } catch {

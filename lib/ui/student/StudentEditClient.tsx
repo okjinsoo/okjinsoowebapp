@@ -1,6 +1,8 @@
 // v1/lib/ui/student/StudentEditClient.tsx
 "use client";
 
+import { browserStorage } from "@/lib/storage/browserStorage";
+
 import React, { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Id, Student, Teacher } from "@/lib/types/index";
@@ -25,13 +27,13 @@ function clearStudentScopedStorage(token: string) {
   try {
     const prefix = `mk3:${token}:session:`;
     const removeKeys: string[] = [];
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
+    for (let i = 0; i < browserStorage.length; i++) {
+      const key = browserStorage.key(i);
       if (!key) continue;
       if (key.startsWith(prefix)) removeKeys.push(key);
     }
-    for (const k of removeKeys) localStorage.removeItem(k);
-    localStorage.removeItem(metaMapKey(token));
+    for (const k of removeKeys) browserStorage.removeItem(k);
+    browserStorage.removeItem(metaMapKey(token));
   } catch {
     // ignore
   }

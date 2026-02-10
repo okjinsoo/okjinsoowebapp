@@ -1,5 +1,7 @@
 "use client";
 
+import { browserStorage } from "@/lib/storage/browserStorage";
+
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { findStudentByToken, upsertStudent } from "@/lib/storage/students";
@@ -190,7 +192,7 @@ function applyPauseStateFromConsultations(student: Student, records: Consultatio
 function readJson<T>(key: string, fallback: T): T {
   if (typeof window === "undefined") return fallback;
   try {
-    const raw = localStorage.getItem(key);
+    const raw = browserStorage.getItem(key);
     if (!raw) return fallback;
     return JSON.parse(raw) as T;
   } catch {

@@ -1,6 +1,8 @@
 // v1/lib/storage/lectures.ts
 "use client";
 
+import { browserStorage } from "@/lib/storage/browserStorage";
+
 import type {
   LectureTree,
   LectureNode,
@@ -11,7 +13,7 @@ import type {
 } from "@/lib/types/index";
 
 /**
- * ✅ 강의 저장소(localStorage) 키
+ * ✅ 강의 저장소(browserStorage) 키
  * - 트리 전체를 1개로 저장합니다.
  */
 const KEY_LECTURE_TREE = "mk3:lectureTree";
@@ -86,7 +88,7 @@ export function makeEmptyLectureTree(): LectureTree {
 
 export function loadLectureTree(): LectureTree {
   const raw =
-    typeof window !== "undefined" ? window.localStorage.getItem(KEY_LECTURE_TREE) : null;
+    typeof window !== "undefined" ? browserStorage.getItem(KEY_LECTURE_TREE) : null;
   const parsed = safeParseJson<LectureTree>(raw);
 
   // 없으면 기본 트리 생성
@@ -106,7 +108,7 @@ export function saveLectureTree(tree: LectureTree): LectureTree {
     updatedAt: nowIso(),
   };
   if (typeof window !== "undefined") {
-    window.localStorage.setItem(KEY_LECTURE_TREE, JSON.stringify(next));
+    browserStorage.setItem(KEY_LECTURE_TREE, JSON.stringify(next));
   }
   return next;
 }
@@ -407,14 +409,14 @@ export type SessionItem = {
  * (레거시) 회차별 강의 아이템 로드
  * - 기존 화면이 의존하고 있을 수 있어 유지합니다.
  * - 동작:
- *   1) localStorage에 items가 있으면 그대로 반환
+ *   1) browserStorage에 items가 있으면 그대로 반환
  *   2) 없으면 "강의 트리의 첫 3개 leaf"를 기본값으로 생성해 반환
  *
  * ⚠️ 추후: Session.lectureLeafIds 기반으로 완전히 대체 예정
  */
 export function getSessionItemsDefault(token: string, sessionIndex: number): SessionItem[] {
   const key = legacyItemsKey(token, sessionIndex);
-  const raw = typeof window !== "undefined" ? window.localStorage.getItem(key) : null;
+  const raw = typeof window !== "undefined" ? browserStorage.getItem(key) : null;
   const parsed = safeParseJson<SessionItem[]>(raw);
   if (parsed && Array.isArray(parsed)) return parsed;
 
@@ -431,7 +433,7 @@ export function getSessionItemsDefault(token: string, sessionIndex: number): Ses
   }));
 
   if (typeof window !== "undefined") {
-    window.localStorage.setItem(key, JSON.stringify(base));
+    browserStorage.setItem(key, JSON.stringify(base));
   }
   return base;
 }

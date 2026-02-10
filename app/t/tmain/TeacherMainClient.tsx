@@ -1,6 +1,8 @@
 // app/t/tmain/TeacherMainClient.tsx
 "use client";
 
+import { browserStorage } from "@/lib/storage/browserStorage";
+
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Student, Teacher } from "@/lib/types/index";
@@ -57,7 +59,7 @@ function parseDateTime(iso: string | null | undefined) {
 function readJson<T>(key: string, fallback: T): T {
   if (typeof window === "undefined") return fallback;
   try {
-    const raw = localStorage.getItem(key);
+    const raw = browserStorage.getItem(key);
     if (!raw) return fallback;
     return JSON.parse(raw) as T;
   } catch {

@@ -1,5 +1,7 @@
 "use client";
 
+import { browserStorage } from "@/lib/storage/browserStorage";
+
 export const AUTH_STORAGE_KEY = "tutorweb_auth_session_v1";
 export const AUTH_EVENT = "tutorweb:authUpdated";
 
@@ -111,7 +113,7 @@ function isAuthSession(v: unknown): v is AuthSession {
 export function loadAuthSession(): AuthSession | null {
   if (typeof window === "undefined") return null;
   try {
-    const raw = localStorage.getItem(AUTH_STORAGE_KEY);
+    const raw = browserStorage.getItem(AUTH_STORAGE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as unknown;
     if (!isAuthSession(parsed)) return null;
@@ -123,13 +125,13 @@ export function loadAuthSession(): AuthSession | null {
 
 export function saveAuthSession(session: AuthSession): void {
   if (typeof window === "undefined") return;
-  localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(session));
+  browserStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(session));
   dispatchAuthUpdated();
 }
 
 export function clearAuthSession(): void {
   if (typeof window === "undefined") return;
-  localStorage.removeItem(AUTH_STORAGE_KEY);
+  browserStorage.removeItem(AUTH_STORAGE_KEY);
   dispatchAuthUpdated();
 }
 

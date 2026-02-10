@@ -1,4 +1,7 @@
+"use client";
+
 import { fetchRoleBinding } from "@/lib/auth/roleBindings";
+import { browserStorage } from "@/lib/storage/browserStorage";
 
 export type UserRole = "guest" | "student" | "teacher" | "admin";
 export type RequiredRole = "student" | "teacher" | "admin";
@@ -21,7 +24,7 @@ export function getAdminEmailSet(): Set<string> {
 function readRoleCache(): RoleCacheMap {
   if (typeof window === "undefined") return {};
   try {
-    const raw = localStorage.getItem(ROLE_CACHE_KEY);
+    const raw = browserStorage.getItem(ROLE_CACHE_KEY);
     if (!raw) return {};
     const parsed = JSON.parse(raw) as RoleCacheMap;
     return parsed && typeof parsed === "object" ? parsed : {};
@@ -32,7 +35,7 @@ function readRoleCache(): RoleCacheMap {
 
 function writeRoleCache(next: RoleCacheMap): void {
   if (typeof window === "undefined") return;
-  localStorage.setItem(ROLE_CACHE_KEY, JSON.stringify(next));
+  browserStorage.setItem(ROLE_CACHE_KEY, JSON.stringify(next));
 }
 
 function loadCachedRole(email: string): UserRole | null {

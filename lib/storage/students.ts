@@ -1,4 +1,7 @@
 // lib/storage/students.ts
+"use client";
+
+import { browserStorage } from "@/lib/storage/browserStorage";
 import { syncRoleBindingEmails } from "@/lib/auth/roleBindings";
 import { pushSharedSnapshot, readLocalTeachers } from "@/lib/storage/sharedSnapshot";
 import type { Student, StudentStatus } from "@/lib/types/index";
@@ -41,13 +44,13 @@ function syncSharedSnapshot(nextStudents: Student[]): void {
 
 export function loadStudents(): Student[] {
   if (typeof window === "undefined") return [];
-  return safeParse<Student[]>(localStorage.getItem(KEY), []);
+  return safeParse<Student[]>(browserStorage.getItem(KEY), []);
 }
 
 export function saveStudents(list: Student[]): void {
   if (typeof window === "undefined") return;
   const previous = loadStudents();
-  localStorage.setItem(KEY, JSON.stringify(list));
+  browserStorage.setItem(KEY, JSON.stringify(list));
   window.dispatchEvent(new CustomEvent("tutorweb:studentsUpdated"));
   syncStudentRoleBindings(previous, list);
   syncSharedSnapshot(list);
@@ -84,7 +87,7 @@ export function findStudentByToken(token: string): Student | null {
 export function clearStudents(): void {
   if (typeof window === "undefined") return;
   const previous = loadStudents();
-  localStorage.removeItem(KEY);
+  browserStorage.removeItem(KEY);
   syncStudentRoleBindings(previous, []);
   syncSharedSnapshot([]);
 }

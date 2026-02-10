@@ -1,6 +1,8 @@
 // v1/lib/ui/student/StudentEditBase.tsx
 "use client";
 
+import { browserStorage } from "@/lib/storage/browserStorage";
+
 import { useEffect, useState } from "react";
 import { resolveSelectionForRole } from "@/lib/auth/loginSelection";
 import { pullSharedSnapshotAndHydrate } from "@/lib/storage/sharedSnapshot";
@@ -13,7 +15,7 @@ const KEY = "tutorweb_current_student_token";
 
 function loadCurrentStudentToken() {
   if (typeof window === "undefined") return null;
-  const v = localStorage.getItem(KEY);
+  const v = browserStorage.getItem(KEY);
   return v && v.trim() ? v.trim() : null;
 }
 

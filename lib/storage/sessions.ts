@@ -1,4 +1,7 @@
 // lib/storage/sessions.ts
+"use client";
+
+import { browserStorage } from "@/lib/storage/browserStorage";
 import { pushSharedSnapshot, readLocalStudents, readLocalTeachers } from "@/lib/storage/sharedSnapshot";
 import type { Session } from "@/lib/types/index";
 
@@ -15,7 +18,7 @@ function safeParse<T>(raw: string | null, fallback: T): T {
 
 export function loadSessions(): Session[] {
   if (typeof window === "undefined") return [];
-  return safeParse<Session[]>(localStorage.getItem(KEY), []);
+  return safeParse<Session[]>(browserStorage.getItem(KEY), []);
 }
 
 function syncSharedSnapshot(nextSessions: Session[]): void {
@@ -30,7 +33,7 @@ function syncSharedSnapshot(nextSessions: Session[]): void {
 
 export function saveSessions(list: Session[]): void {
   if (typeof window === "undefined") return;
-  localStorage.setItem(KEY, JSON.stringify(list));
+  browserStorage.setItem(KEY, JSON.stringify(list));
   window.dispatchEvent(new CustomEvent("tutorweb:sessionsUpdated"));
   syncSharedSnapshot(list);
 }
@@ -98,7 +101,7 @@ export function loadSessionItemsMap(
   const map: Record<number, SessionItem[]> = {};
   for (let i = 1; i <= planCount; i++) {
     try {
-      const raw = localStorage.getItem(itemsKey(token, i));
+      const raw = browserStorage.getItem(itemsKey(token, i));
       if (!raw) continue;
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed)) map[i] = parsed as SessionItem[];
@@ -112,6 +115,6 @@ export function loadSessionItemsMap(
 /** (선택) 디버그용 초기화 */
 export function clearSessions(): void {
   if (typeof window === "undefined") return;
-  localStorage.removeItem(KEY);
+  browserStorage.removeItem(KEY);
   syncSharedSnapshot([]);
 }

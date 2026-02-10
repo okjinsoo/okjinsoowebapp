@@ -1,6 +1,8 @@
 // v1/lib/ui/session/sessionEffective.ts
 "use client";
 
+import { browserStorage } from "@/lib/storage/browserStorage";
+
 import type { ScheduleRule, Student } from "@/lib/types/index";
 import { findStudentByToken } from "@/lib/storage/students";
 
@@ -10,7 +12,7 @@ import { findStudentByToken } from "@/lib/storage/students";
  * - baseDatesISO: buildBaseDatesISO(student) 또는 buildBaseDatesISOByToken(token)만 사용
  * - 날짜 계산: computeEffectiveISO()만 사용
  * - 배지 계산: buildBadges()만 사용
- * - 저장: upsertMeta()만 사용 (직접 localStorage set 금지)
+ * - 저장: upsertMeta()만 사용 (직접 browserStorage set 금지)
  *
  * ✅ carry 규칙(확정)
  * - i회차 carry는 "i회차부터" 바로 반영됨
@@ -73,7 +75,7 @@ function safeMinute(n: unknown): number | null {
   return m;
 }
 
-// -------------------- meta map (localStorage) --------------------
+// -------------------- meta map (browserStorage) --------------------
 
 export function metaMapKey(token: string) {
   return `tutorweb_metaMap_v1:${token}`;
@@ -81,7 +83,7 @@ export function metaMapKey(token: string) {
 
 function writeMetaMap(token: string, metaMap: Record<number, SessionMeta>) {
   if (typeof window === "undefined") return;
-  localStorage.setItem(metaMapKey(token), JSON.stringify(metaMap));
+  browserStorage.setItem(metaMapKey(token), JSON.stringify(metaMap));
   window.dispatchEvent(new CustomEvent("tutorweb:metaMapUpdated", { detail: { token } }));
 }
 
@@ -89,7 +91,7 @@ export function readMetaMap(token: string): Record<number, SessionMeta> {
   if (typeof window === "undefined") return {};
   if (!token) return {};
   try {
-    const raw = localStorage.getItem(metaMapKey(token));
+    const raw = browserStorage.getItem(metaMapKey(token));
     if (!raw) return {};
     const parsed = JSON.parse(raw) as Record<string, unknown>;
 

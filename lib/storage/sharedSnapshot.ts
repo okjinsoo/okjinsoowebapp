@@ -1,5 +1,7 @@
 "use client";
 
+import { browserStorage } from "@/lib/storage/browserStorage";
+
 import { getSupabaseConfig, getValidAccessToken } from "@/lib/auth/supabaseAuth";
 import type { Session, Student, Teacher } from "@/lib/types/index";
 
@@ -53,17 +55,17 @@ async function getHeaders(args?: { json?: boolean }): Promise<Record<string, str
 
 export function readLocalTeachers(): Teacher[] {
   if (typeof window === "undefined") return [];
-  return safeParse<Teacher[]>(localStorage.getItem(TEACHERS_KEY), []);
+  return safeParse<Teacher[]>(browserStorage.getItem(TEACHERS_KEY), []);
 }
 
 export function readLocalStudents(): Student[] {
   if (typeof window === "undefined") return [];
-  return safeParse<Student[]>(localStorage.getItem(STUDENTS_KEY), []);
+  return safeParse<Student[]>(browserStorage.getItem(STUDENTS_KEY), []);
 }
 
 export function readLocalSessions(): Session[] {
   if (typeof window === "undefined") return [];
-  return safeParse<Session[]>(localStorage.getItem(SESSIONS_KEY), []);
+  return safeParse<Session[]>(browserStorage.getItem(SESSIONS_KEY), []);
 }
 
 function dispatchLocalSnapshotUpdated(args?: { includeSessions?: boolean }) {
@@ -81,22 +83,22 @@ function applyLocalSnapshot(args: { teachers: Teacher[]; students: Student[]; se
   let sessionsChanged = false;
 
   const teachersRaw = JSON.stringify(args.teachers);
-  if (localStorage.getItem(TEACHERS_KEY) !== teachersRaw) {
-    localStorage.setItem(TEACHERS_KEY, teachersRaw);
+  if (browserStorage.getItem(TEACHERS_KEY) !== teachersRaw) {
+    browserStorage.setItem(TEACHERS_KEY, teachersRaw);
     changed = true;
   }
 
   const studentsRaw = JSON.stringify(args.students);
-  if (localStorage.getItem(STUDENTS_KEY) !== studentsRaw) {
-    localStorage.setItem(STUDENTS_KEY, studentsRaw);
+  if (browserStorage.getItem(STUDENTS_KEY) !== studentsRaw) {
+    browserStorage.setItem(STUDENTS_KEY, studentsRaw);
     changed = true;
   }
 
   const includeSessions = Array.isArray(args.sessions);
   if (includeSessions) {
     const sessionsRaw = JSON.stringify(args.sessions ?? []);
-    if (localStorage.getItem(SESSIONS_KEY) !== sessionsRaw) {
-      localStorage.setItem(SESSIONS_KEY, sessionsRaw);
+    if (browserStorage.getItem(SESSIONS_KEY) !== sessionsRaw) {
+      browserStorage.setItem(SESSIONS_KEY, sessionsRaw);
       sessionsChanged = true;
     }
   }
@@ -113,7 +115,7 @@ function isMissingColumnError(detail: string, column: string): boolean {
 
 function hasLocalSnapshot(): boolean {
   if (typeof window === "undefined") return false;
-  return localStorage.getItem(TEACHERS_KEY) !== null && localStorage.getItem(STUDENTS_KEY) !== null;
+  return browserStorage.getItem(TEACHERS_KEY) !== null && browserStorage.getItem(STUDENTS_KEY) !== null;
 }
 
 export async function pushSharedSnapshot(args?: {

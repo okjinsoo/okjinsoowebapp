@@ -1,6 +1,8 @@
 // v1/lib/ui/session/SessionClientCore.tsx
 "use client";
 
+import { browserStorage } from "@/lib/storage/browserStorage";
+
 import { useEffect, useMemo, useState } from "react";
 import type {
   LectureFolderNode,
@@ -108,9 +110,9 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
       setTree(t);
       setPickerPath([t.root.id]);
 
-      const leafIdsRaw = localStorage.getItem(keyLeafIds(token, sessionIndex));
-      const progRaw = localStorage.getItem(keyProgress(token, sessionIndex));
-      const lastRaw = localStorage.getItem(keyLastAdded(token, sessionIndex));
+      const leafIdsRaw = browserStorage.getItem(keyLeafIds(token, sessionIndex));
+      const progRaw = browserStorage.getItem(keyProgress(token, sessionIndex));
+      const lastRaw = browserStorage.getItem(keyLastAdded(token, sessionIndex));
 
       if (leafIdsRaw) {
         try {
@@ -143,20 +145,20 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
   useEffect(() => {
     if (!mounted) return;
     if (!canAssignLectures) return;
-    localStorage.setItem(keyLeafIds(token, sessionIndex), JSON.stringify(lectureLeafIds));
+    browserStorage.setItem(keyLeafIds(token, sessionIndex), JSON.stringify(lectureLeafIds));
   }, [mounted, canAssignLectures, token, sessionIndex, lectureLeafIds]);
 
   useEffect(() => {
     if (!mounted) return;
     if (!canEditProgress) return;
-    localStorage.setItem(keyProgress(token, sessionIndex), JSON.stringify(progressByLeafId));
+    browserStorage.setItem(keyProgress(token, sessionIndex), JSON.stringify(progressByLeafId));
   }, [mounted, canEditProgress, token, sessionIndex, progressByLeafId]);
 
   useEffect(() => {
     if (!mounted) return;
     if (!canAssignLectures) return;
-    if (lastAddedLeafId) localStorage.setItem(keyLastAdded(token, sessionIndex), lastAddedLeafId);
-    else localStorage.removeItem(keyLastAdded(token, sessionIndex));
+    if (lastAddedLeafId) browserStorage.setItem(keyLastAdded(token, sessionIndex), lastAddedLeafId);
+    else browserStorage.removeItem(keyLastAdded(token, sessionIndex));
   }, [mounted, canAssignLectures, token, sessionIndex, lastAddedLeafId]);
 
   const usedLeafIds = useMemo(() => new Set(lectureLeafIds), [lectureLeafIds]);

@@ -1,5 +1,7 @@
 "use client";
 
+import { browserStorage } from "@/lib/storage/browserStorage";
+
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { sessionsByStudent } from "@/lib/storage/sessions";
@@ -59,7 +61,7 @@ function parseDateTime(iso: string | null | undefined) {
 function readJson<T>(key: string, fallback: T): T {
   if (typeof window === "undefined") return fallback;
   try {
-    const raw = localStorage.getItem(key);
+    const raw = browserStorage.getItem(key);
     if (!raw) return fallback;
     return JSON.parse(raw) as T;
   } catch {
