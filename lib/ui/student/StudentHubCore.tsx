@@ -12,6 +12,7 @@ import { findClassIndexByDatePreferFuture, findLastClassIndex } from "@/lib/ui/s
 import { formatGrade, formatPhone, formatSchedule } from "@/lib/ui/student/formatters";
 import { loadSessions, saveSessions, sessionsByStudent, upsertSession } from "@/lib/storage/sessions";
 import {
+  buildBadges,
   buildBaseDatesISO,
   computeEffectiveISO,
   getDdayMeta,
@@ -532,6 +533,7 @@ export default function StudentHubCore({
       index: number;
       iso: string;
       status?: string;
+      badges: string[];
       percent: number;
       refundCompleted?: boolean;
       refundRequested?: boolean;
@@ -562,6 +564,7 @@ export default function StudentHubCore({
         index: s.index,
         iso: effectiveISO,
         status: meta.status,
+        badges: buildBadges(meta),
         percent: progressPercent(s.index),
         refundCompleted: refundCompletedIndex ? s.index === refundCompletedIndex : false,
         refundRequested: refundRequestedIndex ? s.index === refundRequestedIndex : false,
@@ -1523,6 +1526,11 @@ export default function StudentHubCore({
                       {item.lastClass ? (
                         <Badge style={{ background: "#ef4444", color: "#fff" }}>마지막 수업</Badge>
                       ) : null}
+                      {item.badges.map((badge) => (
+                        <Badge key={`${item.index}:${badge}`} style={{ background: "#f1f5f9", color: "#334155" }}>
+                          {badge}
+                        </Badge>
+                      ))}
                       {!(
                         item.lastClass &&
                         consultTag &&

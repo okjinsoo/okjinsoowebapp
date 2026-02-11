@@ -25,6 +25,7 @@ export type TodaySessionRow = {
   dateText: string;
   timeText: string;
   status: "planned" | "present" | "absent";
+  badges?: string[];
   ddayLabel: string;
   ddayClass: string;
   percent: number;
@@ -243,6 +244,11 @@ export default function TodaySessionsCard({ rows, role }: Props) {
                     {r.lastClass ? (
                       <Badge style={{ background: "#ef4444", color: "#fff" }}>마지막 수업</Badge>
                     ) : null}
+                    {(r.badges ?? []).map((badge) => (
+                      <Badge key={`${r.token}:${r.index}:${badge}`} style={{ background: "#f1f5f9", color: "#334155" }}>
+                        {badge}
+                      </Badge>
+                    ))}
                     <Badge style={{ background: percentColor, color: "#fff" }}>{r.percent}%</Badge>
                     <Badge style={{ background: statusStyle.bg, color: statusStyle.text }}>{statusLabel}</Badge>
                   </div>

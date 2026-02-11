@@ -23,6 +23,7 @@ import TodaySessionsCard, { type TodaySessionRow } from "@/lib/ui/teacher/TodayS
 import TeacherStudentListCard from "@/lib/ui/teacher/TeacherStudentListCard";
 import RoleGateCard from "@/lib/ui/common/RoleGateCard";
 import {
+  buildBadges,
   buildBaseDatesISOByToken,
   computeEffectiveISO,
   getDdayMeta,
@@ -238,6 +239,7 @@ export default function TeacherMainClient({ initialRole = "t" }: { initialRole?:
           dateText,
           timeText,
           status: meta.status ?? "planned",
+          badges: buildBadges(meta),
           ddayLabel: dday.label,
           ddayClass: dday.className,
           percent,
