@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { loadStudents } from "@/lib/storage/students";
 import { loadCurrentTeacherId } from "@/lib/storage/teachers";
 import { sessionsByStudent } from "@/lib/storage/sessions";
+import { pushSharedSnapshot } from "@/lib/storage/sharedSnapshot";
 import {
   buildBaseDatesISOByToken,
   computeEffectiveISO,
@@ -84,15 +85,23 @@ export default function SessionQuickActions({ role, token, index }: Props) {
   const [draftReason, setDraftReason] = useState<string>("");
   const [draftRecord, setDraftRecord] = useState<string>("");
 
+  const syncSnapshotNow = () => {
+    void pushSharedSnapshot().catch((err) => {
+      console.error("공유 스냅샷 즉시 동기화 실패(quick actions):", err);
+    });
+  };
+
   const togglePresent = () => {
     if (!canEdit) return;
     upsertMeta(token, index, { status: isPresent ? "planned" : "present" });
+    syncSnapshotNow();
   };
 
   const toggleAbsent = () => {
     if (!canEdit) return;
     if (isAbsent) {
       upsertMeta(token, index, { status: "planned" });
+      syncSnapshotNow();
       return;
     }
     setOpenMode("absent");
@@ -310,11 +319,9 @@ export default function SessionQuickActions({ role, token, index }: Props) {
       reason: needReasonUI ? draftReason : "",
       record: needReasonUI ? draftRecord : "",
     });
+    syncSnapshotNow();
 
     setOpen(false);
-    if (typeof window !== "undefined") {
-      window.location.reload();
-    }
   };
 
   if (!canEdit) return null;
