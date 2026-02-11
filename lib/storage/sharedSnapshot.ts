@@ -19,7 +19,7 @@ const TEACHERS_EVENT = "tutorweb:teachersUpdated";
 const SESSIONS_EVENT = "tutorweb:sessionsUpdated";
 const PULL_COOLDOWN_MS = 5000;
 const SHARED_EXACT_KEYS = new Set([CONSULTATIONS_KEY]);
-const SHARED_PREFIXES = [META_MAP_PREFIX, "mk3:"];
+const SHARED_PREFIXES = [META_MAP_PREFIX];
 
 type SnapshotRow = {
   teachers?: Teacher[];
@@ -82,6 +82,10 @@ function readLocalStateKv(): Record<string, string> {
     out[key] = value;
   }
   return out;
+}
+
+export function readLocalSharedStateKv(): Record<string, string> {
+  return readLocalStateKv();
 }
 
 async function getHeaders(args?: { json?: boolean }): Promise<Record<string, string> | null> {
@@ -263,26 +267,47 @@ export async function pushSharedSnapshot(args?: {
   const headers = await getHeaders({ json: true });
   if (!headers) return { sessionsSynced: false, stateKvSynced: false };
 
-  const readHeaders = await getHeaders();
-  if (!readHeaders) return { sessionsSynced: false, stateKvSynced: false };
-
   const teachers = args?.teachers ?? readLocalTeachers();
   const students = args?.students ?? readLocalStudents();
   const sessions = args?.sessions ?? readLocalSessions();
-  const localStateKv = args?.stateKv ?? readLocalStateKv();
+  const hasStateKvArg = Object.prototype.hasOwnProperty.call(args ?? {}, "stateKv");
+  let stateKv: Record<string, string> | undefined;
+
+  if (hasStateKvArg) {
+    const readHeaders = await getHeaders();
+    if (!readHeaders) return { sessionsSynced: false, stateKvSynced: false };
+
+    const snapshotUrl = new URL("/rest/v1/app_state_snapshots", cfg.url);
+    const remoteStateKv = await fetchRemoteStateKv({
+      url: snapshotUrl,
+      headers: readHeaders,
+    });
+    const localStateKv = toStateKv(args?.stateKv ?? {});
+    stateKv = {
+      ...remoteStateKv,
+      ...localStateKv,
+    };
+  }
 
   const snapshotUrl = new URL("/rest/v1/app_state_snapshots", cfg.url);
-  const remoteStateKv = await fetchRemoteStateKv({
-    url: snapshotUrl,
-    headers: readHeaders,
-  });
-  const stateKv = {
-    ...remoteStateKv,
-    ...localStateKv,
-  };
-
   const upsertUrl = new URL(snapshotUrl.toString());
   upsertUrl.searchParams.set("on_conflict", "id");
+
+  const fullPayload: {
+    id: string;
+    teachers: Teacher[];
+    students: Student[];
+    sessions: Session[];
+    state_kv?: Record<string, string>;
+  } = {
+    id: SNAPSHOT_KEY,
+    teachers,
+    students,
+    sessions,
+  };
+  if (stateKv) {
+    fullPayload.state_kv = stateKv;
+  }
 
   const fullRes = await fetch(upsertUrl.toString(), {
     method: "POST",
@@ -290,22 +315,15 @@ export async function pushSharedSnapshot(args?: {
       ...headers,
       Prefer: "resolution=merge-duplicates",
     },
-    body: JSON.stringify([
-      {
-        id: SNAPSHOT_KEY,
-        teachers,
-        students,
-        sessions,
-        state_kv: stateKv,
-      },
-    ]),
+    body: JSON.stringify([fullPayload]),
   });
 
   if (fullRes.ok) return { sessionsSynced: true, stateKvSynced: true };
 
   const text = await fullRes.text();
   const sessionsMissing = isMissingColumnError(text, "sessions");
-  const stateKvMissing = isMissingColumnError(text, "state_kv");
+  const stateKvMissing =
+    hasStateKvArg && isMissingColumnError(text, "state_kv");
 
   if (!sessionsMissing && !stateKvMissing) {
     throw new Error(`snapshot upsert failed: ${fullRes.status} ${text}`);
@@ -323,7 +341,9 @@ export async function pushSharedSnapshot(args?: {
     students,
   };
   if (!sessionsMissing) fallbackPayload.sessions = sessions;
-  if (!stateKvMissing) fallbackPayload.state_kv = stateKv;
+  if (hasStateKvArg && !stateKvMissing && stateKv) {
+    fallbackPayload.state_kv = stateKv;
+  }
 
   const fallbackRes = await fetch(upsertUrl.toString(), {
     method: "POST",
@@ -341,7 +361,10 @@ export async function pushSharedSnapshot(args?: {
     );
   }
 
-  return { sessionsSynced: !sessionsMissing, stateKvSynced: !stateKvMissing };
+  return {
+    sessionsSynced: !sessionsMissing,
+    stateKvSynced: !hasStateKvArg || !stateKvMissing,
+  };
 }
 
 export async function pullSharedSnapshotAndHydrate(): Promise<{

@@ -8,22 +8,19 @@ import { pullSharedSnapshotAndHydrateWithOptions, pushSharedSnapshot } from "@/l
 const PUSH_DEBOUNCE_MS = 700;
 const REMOTE_PULL_INTERVAL_MS = 2000;
 const AUTH_KEY = "tutorweb_auth_session_v1";
-const SHARED_KEYS = new Set([
-  "tutorweb_teachers_v1",
-  "tutorweb_students_v1",
-  "tutorweb_sessions_v1",
-  "tutorweb_consultations_v1",
-]);
+const CONSULTATIONS_KEY = "tutorweb_consultations_v1";
+const META_MAP_PREFIX = "tutorweb_metaMap_v1:";
 
-function shouldSyncKey(key: string): boolean {
+function isStateKvKey(key: string): boolean {
   if (!key) return false;
-  if (SHARED_KEYS.has(key)) return true;
-  return key.startsWith("tutorweb_metaMap_v1:") || key.startsWith("mk3:");
+  if (key === CONSULTATIONS_KEY) return true;
+  return key.startsWith(META_MAP_PREFIX);
 }
 
 export default function SharedSnapshotAgent() {
   const hydratingRef = useRef(false);
   const pushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingStateKvRef = useRef<Record<string, string>>({});
 
   useEffect(() => {
     const hydrate = async (forceRemote = false) => {
@@ -43,7 +40,15 @@ export default function SharedSnapshotAgent() {
         clearTimeout(pushTimerRef.current);
       }
       pushTimerRef.current = setTimeout(() => {
-        void pushSharedSnapshot().catch((err) => {
+        const pending = { ...pendingStateKvRef.current };
+        pendingStateKvRef.current = {};
+        if (Object.keys(pending).length === 0) return;
+
+        void pushSharedSnapshot({ stateKv: pending }).catch((err) => {
+          pendingStateKvRef.current = {
+            ...pending,
+            ...pendingStateKvRef.current,
+          };
           console.error("공유 스냅샷 업로드 실패(agent):", err);
         });
       }, PUSH_DEBOUNCE_MS);
@@ -52,10 +57,14 @@ export default function SharedSnapshotAgent() {
     const onStorageChanged: EventListener = (event) => {
       if (hydratingRef.current) return;
 
-      const ce = event as CustomEvent<{ key?: string | null }>;
+      const ce = event as CustomEvent<{ key?: string | null; newValue?: string | null }>;
       const key = ce.detail?.key ?? "";
       if (key === AUTH_KEY) return;
-      if (!shouldSyncKey(key)) return;
+      if (!isStateKvKey(key)) return;
+
+      const newValue = ce.detail?.newValue;
+      if (typeof newValue !== "string") return;
+      pendingStateKvRef.current[key] = newValue;
       schedulePush();
     };
 

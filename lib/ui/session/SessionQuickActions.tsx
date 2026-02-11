@@ -2,6 +2,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { browserStorage } from "@/lib/storage/browserStorage";
 import { loadStudents } from "@/lib/storage/students";
 import { loadCurrentTeacherId } from "@/lib/storage/teachers";
 import { sessionsByStudent } from "@/lib/storage/sessions";
@@ -9,6 +10,7 @@ import { pushSharedSnapshot } from "@/lib/storage/sharedSnapshot";
 import {
   buildBaseDatesISOByToken,
   computeEffectiveISO,
+  metaMapKey,
   upsertMeta,
   useMetaMap,
   readMetaMap,
@@ -86,7 +88,10 @@ export default function SessionQuickActions({ role, token, index }: Props) {
   const [draftRecord, setDraftRecord] = useState<string>("");
 
   const syncSnapshotNow = () => {
-    void pushSharedSnapshot().catch((err) => {
+    const key = metaMapKey(token);
+    const value = browserStorage.getItem(key);
+    if (typeof value !== "string") return;
+    void pushSharedSnapshot({ stateKv: { [key]: value } }).catch((err) => {
       console.error("공유 스냅샷 즉시 동기화 실패(quick actions):", err);
     });
   };

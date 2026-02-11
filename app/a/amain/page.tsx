@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { syncRoleBindingEmails } from "@/lib/auth/roleBindings";
 import { ensureAuthSession, getSupabaseConfig } from "@/lib/auth/supabaseAuth";
-import { pushSharedSnapshot } from "@/lib/storage/sharedSnapshot";
+import { pushSharedSnapshot, readLocalSharedStateKv } from "@/lib/storage/sharedSnapshot";
 import { loadStudents } from "@/lib/storage/students";
 import { loadTeachers, saveCurrentTeacherId, TEACHERS_EVENT } from "@/lib/storage/teachers";
 import { loadSessions, sessionsByStudent } from "@/lib/storage/sessions";
@@ -325,7 +325,7 @@ export default function AdminMainPage() {
           role: "student",
           accessToken: session.accessToken,
         }),
-        pushSharedSnapshot({ teachers, students, sessions }),
+        pushSharedSnapshot({ teachers, students, sessions, stateKv: readLocalSharedStateKv() }),
       ]);
 
       if (snapshotResult.sessionsSynced && snapshotResult.stateKvSynced) {
