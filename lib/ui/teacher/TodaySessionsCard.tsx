@@ -244,13 +244,13 @@ export default function TodaySessionsCard({ rows, role }: Props) {
                     {r.lastClass ? (
                       <Badge style={{ background: "#ef4444", color: "#fff" }}>마지막 수업</Badge>
                     ) : null}
+                    <Badge style={{ background: percentColor, color: "#fff" }}>{r.percent}%</Badge>
+                    <Badge style={{ background: statusStyle.bg, color: statusStyle.text }}>{statusLabel}</Badge>
                     {(r.badges ?? []).map((badge) => (
                       <Badge key={`${r.token}:${r.index}:${badge}`} style={{ background: "#f1f5f9", color: "#334155" }}>
                         {badge}
                       </Badge>
                     ))}
-                    <Badge style={{ background: percentColor, color: "#fff" }}>{r.percent}%</Badge>
-                    <Badge style={{ background: statusStyle.bg, color: statusStyle.text }}>{statusLabel}</Badge>
                   </div>
                 </Link>
                 <div onClick={(e) => e.stopPropagation()} style={{ display: "flex", gap: 6 }}>
