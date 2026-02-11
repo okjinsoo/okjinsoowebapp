@@ -1349,9 +1349,11 @@ export default function StudentHubCore({
             <div style={{ fontWeight: 900 }}>학생 이름</div>
             <div style={{ fontWeight: 900, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
               {student?.name ?? "-"}
-              <Badge style={{ background: studentStatusView.bg, color: studentStatusView.color }}>
-                {studentStatusView.label}
-              </Badge>
+              {accessRole !== "s" ? (
+                <Badge style={{ background: studentStatusView.bg, color: studentStatusView.color }}>
+                  {studentStatusView.label}
+                </Badge>
+              ) : null}
             </div>
             {accessRole !== "s" ? (
               <>
@@ -1531,7 +1533,8 @@ export default function StudentHubCore({
                           {badge}
                         </Badge>
                       ))}
-                      {!(
+                      {accessRole !== "s" &&
+                      !(
                         item.lastClass &&
                         consultTag &&
                         consultTag.label === "휴회 예정"
