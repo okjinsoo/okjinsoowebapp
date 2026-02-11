@@ -101,12 +101,10 @@ export default function TeacherMainClient({ initialRole = "t" }: { initialRole?:
     let cancelled = false;
 
     async function bootstrap() {
-      if (initialRole === "t") {
-        try {
-          await pullSharedSnapshotAndHydrate();
-        } catch (err) {
-          console.error("공유 스냅샷 불러오기 실패(teacher):", err);
-        }
+      try {
+        await pullSharedSnapshotAndHydrate();
+      } catch (err) {
+        console.error("공유 스냅샷 불러오기 실패(teacher):", err);
       }
 
       if (cancelled) return;
@@ -126,12 +124,10 @@ export default function TeacherMainClient({ initialRole = "t" }: { initialRole?:
 
   useEffect(() => {
     const onGate = async () => {
-      if (initialRole === "t") {
-        try {
-          await pullSharedSnapshotAndHydrate();
-        } catch (err) {
-          console.error("공유 스냅샷 새로고침 실패(teacher):", err);
-        }
+      try {
+        await pullSharedSnapshotAndHydrate();
+      } catch (err) {
+        console.error("공유 스냅샷 새로고침 실패(teacher):", err);
       }
 
       const nextTeachers = loadTeachers();

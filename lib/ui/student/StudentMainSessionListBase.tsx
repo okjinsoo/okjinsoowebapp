@@ -32,12 +32,10 @@ export default function StudentMainSessionListBase({ role }: { role: "a" | "t" |
     let cancelled = false;
 
     async function bootstrap() {
-      if (role !== "a") {
-        try {
-          await pullSharedSnapshotAndHydrate();
-        } catch (err) {
-          console.error("공유 스냅샷 불러오기 실패(student session list):", err);
-        }
+      try {
+        await pullSharedSnapshotAndHydrate();
+      } catch (err) {
+        console.error("공유 스냅샷 불러오기 실패(student session list):", err);
       }
 
       if (cancelled) return;
@@ -73,12 +71,10 @@ export default function StudentMainSessionListBase({ role }: { role: "a" | "t" |
 
   useEffect(() => {
     const onGate = async () => {
-      if (role !== "a") {
-        try {
-          await pullSharedSnapshotAndHydrate();
-        } catch (err) {
-          console.error("공유 스냅샷 새로고침 실패(student session list):", err);
-        }
+      try {
+        await pullSharedSnapshotAndHydrate();
+      } catch (err) {
+        console.error("공유 스냅샷 새로고침 실패(student session list):", err);
       }
 
       const nextStudents = loadStudents();

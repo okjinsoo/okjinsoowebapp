@@ -34,12 +34,10 @@ export default function StudentMainClient({ role }: { role: "a" | "t" | "s" }) {
     let cancelled = false;
 
     async function bootstrap() {
-      if (role !== "a") {
-        try {
-          await pullSharedSnapshotAndHydrate();
-        } catch (err) {
-          console.error("공유 스냅샷 불러오기 실패(student):", err);
-        }
+      try {
+        await pullSharedSnapshotAndHydrate();
+      } catch (err) {
+        console.error("공유 스냅샷 불러오기 실패(student):", err);
       }
 
       if (cancelled) return;
@@ -77,12 +75,10 @@ export default function StudentMainClient({ role }: { role: "a" | "t" | "s" }) {
 
   useEffect(() => {
     const onGate = async () => {
-      if (role !== "a") {
-        try {
-          await pullSharedSnapshotAndHydrate();
-        } catch (err) {
-          console.error("공유 스냅샷 새로고침 실패(student):", err);
-        }
+      try {
+        await pullSharedSnapshotAndHydrate();
+      } catch (err) {
+        console.error("공유 스냅샷 새로고침 실패(student):", err);
       }
 
       const nextStudents = loadStudents();

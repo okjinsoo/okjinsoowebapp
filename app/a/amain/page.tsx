@@ -4,7 +4,11 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { syncRoleBindingEmails } from "@/lib/auth/roleBindings";
 import { ensureAuthSession, getSupabaseConfig } from "@/lib/auth/supabaseAuth";
-import { pushSharedSnapshot, readLocalSharedStateKv } from "@/lib/storage/sharedSnapshot";
+import {
+  pullSharedSnapshotAndHydrate,
+  pushSharedSnapshot,
+  readLocalSharedStateKv,
+} from "@/lib/storage/sharedSnapshot";
 import { loadStudents } from "@/lib/storage/students";
 import { loadTeachers, saveCurrentTeacherId, TEACHERS_EVENT } from "@/lib/storage/teachers";
 import { loadSessions, sessionsByStudent } from "@/lib/storage/sessions";
@@ -100,12 +104,25 @@ export default function AdminMainPage() {
   const [syncResult, setSyncResult] = useState("");
 
   useEffect(() => {
-    const id = setTimeout(() => {
+    let cancelled = false;
+
+    async function bootstrap() {
+      try {
+        await pullSharedSnapshotAndHydrate();
+      } catch (err) {
+        console.error("공유 스냅샷 불러오기 실패(admin):", err);
+      }
+      if (cancelled) return;
+
       setStudents(loadStudents());
       setTeachers(loadTeachers());
       setMounted(true);
-    }, 0);
-    return () => clearTimeout(id);
+    }
+
+    void bootstrap();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {

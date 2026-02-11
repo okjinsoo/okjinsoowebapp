@@ -27,12 +27,10 @@ export default function StudentEditBase({ role }: { role: "a" | "t" | "s" }) {
     let cancelled = false;
 
     async function bootstrap() {
-      if (role !== "a") {
-        try {
-          await pullSharedSnapshotAndHydrate();
-        } catch (err) {
-          console.error("공유 스냅샷 불러오기 실패(student edit):", err);
-        }
+      try {
+        await pullSharedSnapshotAndHydrate();
+      } catch (err) {
+        console.error("공유 스냅샷 불러오기 실패(student edit):", err);
       }
       if (cancelled) return;
 
