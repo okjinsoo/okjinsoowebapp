@@ -1,322 +1,327 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
-import type { LectureFolderNode, LectureLeafNode, LectureNode, LectureTree } from "@/lib/types/index";
+import type { LectureFolderNode, LectureLeafNode, LectureTree } from "@/lib/types/index";
 import {
   addFolder,
   addLeaf,
   deleteNode,
   findFolderById,
+  findNodeById,
   loadLectureTree,
-  reorderChildren,
-  saveLectureTree,
   saveLectureTreeWithReindex,
   updateLeafLinks,
   updateNodeTitle,
 } from "@/lib/storage/lectures";
 
-type DragPayload = {
-  parentFolderId: string;
-  nodeId: string;
-};
-
 type Selection = { id: string; title: string; lectureUrl: string; problem0: string } | null;
-
 type Draft = { title: string; lectureUrl: string; problem0: string } | null;
-
-const DRAG_MIME = "application/x-lecture-node";
-
-function parseDragPayload(raw: string | null, fallback: DragPayload | null): DragPayload | null {
-  if (!raw) return fallback;
-  try {
-    const parsed = JSON.parse(raw) as Partial<DragPayload>;
-    if (typeof parsed.parentFolderId !== "string") return fallback;
-    if (typeof parsed.nodeId !== "string") return fallback;
-    return { parentFolderId: parsed.parentFolderId, nodeId: parsed.nodeId };
-  } catch {
-    return fallback;
-  }
-}
+type LeafRow = { leaf: LectureLeafNode; pathLabel: string };
 
 function cloneTree(t: LectureTree): LectureTree {
   return JSON.parse(JSON.stringify(t)) as LectureTree;
 }
 
-function ensureLeaf(x: LectureNode): LectureLeafNode {
-  if (x.type !== "leaf") throw new Error("Not a leaf");
-  return x as LectureLeafNode;
+function folderChildren(folder: LectureFolderNode): LectureFolderNode[] {
+  return folder.children.filter((c) => c.type === "folder") as LectureFolderNode[];
 }
 
-function buildFolderPathMap(root: LectureFolderNode): Map<string, string[]> {
-  const map = new Map<string, string[]>();
-  function walk(node: LectureFolderNode, path: string[]) {
-    map.set(node.id, path);
-    for (const child of node.children) {
-      if (child.type === "folder") {
-        walk(child as LectureFolderNode, [...path, child.id]);
-      }
+function leafChildren(folder: LectureFolderNode): LectureLeafNode[] {
+  return folder.children.filter((c) => c.type === "leaf") as LectureLeafNode[];
+}
+
+function flattenLeafRows(folder: LectureFolderNode, prefix = ""): LeafRow[] {
+  const rows: LeafRow[] = [];
+  for (const child of folder.children) {
+    if (child.type === "leaf") {
+      rows.push({ leaf: child as LectureLeafNode, pathLabel: prefix });
+      continue;
     }
+    const childFolder = child as LectureFolderNode;
+    const nextPrefix = prefix ? `${prefix} / ${childFolder.title}` : childFolder.title;
+    rows.push(...flattenLeafRows(childFolder, nextPrefix));
   }
-  walk(root, [root.id]);
-  return map;
+  return rows;
 }
 
-function MiniTree(props: {
-  node: LectureFolderNode;
-  depth: number;
-  currentId: string;
-  pathMap: Map<string, string[]>;
-  onNavigate: (path: string[]) => void;
-}) {
-  const { node, depth, currentId, pathMap, onNavigate } = props;
-  const path = pathMap.get(node.id) ?? [node.id];
-  const isCurrent = node.id === currentId;
+function pickValidId(currentId: string | null, items: { id: string }[]): string | null {
+  if (currentId && items.some((item) => item.id === currentId)) return currentId;
+  return items[0]?.id ?? null;
+}
 
-  return (
-    <div>
-      <button
-        className={`block w-full text-left rounded px-2 py-1 text-xs ${
-          isCurrent ? "bg-neutral-200" : "hover:bg-neutral-100"
-        }`}
-        style={{ paddingLeft: 8 + depth * 12 }}
-        onClick={() => onNavigate(path)}
-      >
-        DIR {node.title}
-      </button>
-      <div>
-        {node.children
-          .filter((c) => c.type === "folder")
-          .map((child) => (
-            <MiniTree
-              key={child.id}
-              node={child as LectureFolderNode}
-              depth={depth + 1}
-              currentId={currentId}
-              pathMap={pathMap}
-              onNavigate={onNavigate}
-            />
-          ))}
-      </div>
-    </div>
-  );
+function safeTrim(v: string | undefined): string {
+  return (v ?? "").trim();
 }
 
 export default function LecturesPage() {
   const [tree, setTree] = useState<LectureTree | null>(null);
   const [editMode, setEditMode] = useState(false);
-  const [dragging, setDragging] = useState<DragPayload | null>(null);
-  const [path, setPath] = useState<string[]>([]);
-  const [historyState, setHistoryState] = useState<{ stack: string[][]; index: number }>({
-    stack: [],
-    index: -1,
-  });
+  const [editSnapshot, setEditSnapshot] = useState<LectureTree | null>(null);
+
+  const [selectedGradeId, setSelectedGradeId] = useState<string | null>(null);
+  const [selectedCurriculumId, setSelectedCurriculumId] = useState<string | null>(null);
+  const [selectedSectionId, setSelectedSectionId] = useState<string | null>(null);
+  const [expandedSectionIds, setExpandedSectionIds] = useState<string[]>([]);
 
   const [selection, setSelection] = useState<Selection>(null);
   const [draft, setDraft] = useState<Draft>(null);
-  const [quickType, setQuickType] = useState<"folder" | "leaf">("folder");
-  const [quickTitle, setQuickTitle] = useState("");
 
-  // 편집 시작 시점 스냅샷(취소 시 롤백)
-  const [editSnapshot, setEditSnapshot] = useState<LectureTree | null>(null);
+  const [newGradeTitle, setNewGradeTitle] = useState("");
+  const [newCurriculumTitle, setNewCurriculumTitle] = useState("");
+  const [newSectionTitle, setNewSectionTitle] = useState("");
+  const [newLectureTitle, setNewLectureTitle] = useState("");
 
   useEffect(() => {
     const id = setTimeout(() => {
-      const t = loadLectureTree();
-      setTree(t);
-      setPath([t.root.id]); // 루트부터 시작
-      setHistoryState({ stack: [[t.root.id]], index: 0 });
+      const loaded = loadLectureTree();
+      setTree(loaded);
     }, 0);
     return () => clearTimeout(id);
   }, []);
 
-  function samePath(a: string[], b: string[]) {
-    if (a.length !== b.length) return false;
-    for (let i = 0; i < a.length; i++) {
-      if (a[i] !== b[i]) return false;
+  const gradeFolders = useMemo(() => {
+    if (!tree) return [] as LectureFolderNode[];
+    return folderChildren(tree.root);
+  }, [tree]);
+
+  const selectedGrade = useMemo(() => {
+    const id = pickValidId(selectedGradeId, gradeFolders);
+    if (!id) return null;
+    return gradeFolders.find((g) => g.id === id) ?? null;
+  }, [gradeFolders, selectedGradeId]);
+
+  const curriculumFolders = useMemo(() => {
+    if (!selectedGrade) return [] as LectureFolderNode[];
+    return folderChildren(selectedGrade);
+  }, [selectedGrade]);
+
+  const selectedCurriculum = useMemo(() => {
+    const id = pickValidId(selectedCurriculumId, curriculumFolders);
+    if (!id) return null;
+    return curriculumFolders.find((c) => c.id === id) ?? null;
+  }, [curriculumFolders, selectedCurriculumId]);
+
+  const sectionFolders = useMemo(() => {
+    if (!selectedCurriculum) return [] as LectureFolderNode[];
+    return folderChildren(selectedCurriculum);
+  }, [selectedCurriculum]);
+
+  const selectedSection = useMemo(() => {
+    const id = pickValidId(selectedSectionId, sectionFolders);
+    if (!id) return null;
+    return sectionFolders.find((s) => s.id === id) ?? null;
+  }, [sectionFolders, selectedSectionId]);
+
+  const directLeafRows = useMemo(() => {
+    if (!selectedCurriculum) return [] as LeafRow[];
+    return leafChildren(selectedCurriculum).map((leaf) => ({ leaf, pathLabel: "" }));
+  }, [selectedCurriculum]);
+
+  const openedSectionIds = useMemo(() => {
+    const kept = expandedSectionIds.filter((id) => sectionFolders.some((s) => s.id === id));
+    if (kept.length > 0) return kept;
+    if (sectionFolders.length === 0) return [] as string[];
+    return [sectionFolders[0].id];
+  }, [expandedSectionIds, sectionFolders]);
+
+  const activeSelection = useMemo(() => {
+    if (!tree || !selection) return null;
+    const n = findNodeById(tree, selection.id);
+    if (!n || n.type !== "leaf") return null;
+    return selection;
+  }, [tree, selection]);
+
+  const activeDraft = activeSelection ? draft : null;
+
+  function selectLeaf(leaf: LectureLeafNode) {
+    const problem0 = safeTrim(leaf.problemUrls?.[0] ?? "");
+    setSelection({
+      id: leaf.id,
+      title: leaf.title,
+      lectureUrl: safeTrim(leaf.lectureUrl),
+      problem0,
+    });
+    setDraft({
+      title: leaf.title,
+      lectureUrl: safeTrim(leaf.lectureUrl),
+      problem0,
+    });
+  }
+
+  function isDraftDirty() {
+    if (!activeSelection || !activeDraft) return false;
+    return (
+      activeSelection.title !== activeDraft.title ||
+      activeSelection.lectureUrl !== activeDraft.lectureUrl ||
+      activeSelection.problem0 !== activeDraft.problem0
+    );
+  }
+
+  function applyDraft(baseTree: LectureTree): { nextTree: LectureTree; nextSelection: Selection } {
+    if (!activeSelection || !activeDraft || !isDraftDirty()) {
+      return { nextTree: baseTree, nextSelection: activeSelection ?? null };
+    }
+    const nextTitle = updateNodeTitle(baseTree, activeSelection.id, activeDraft.title);
+    const next = updateLeafLinks(nextTitle, activeSelection.id, {
+      lectureUrl: activeDraft.lectureUrl,
+      problemUrls: [activeDraft.problem0],
+    });
+    const nextSel: Selection = {
+      ...activeSelection,
+      title: activeDraft.title,
+      lectureUrl: activeDraft.lectureUrl,
+      problem0: activeDraft.problem0,
+    };
+    return { nextTree: next, nextSelection: nextSel };
+  }
+
+  function saveDraftLocal() {
+    if (!tree) return false;
+    const { nextTree, nextSelection } = applyDraft(tree);
+    if (nextTree === tree) return true;
+    setTree(nextTree);
+    setSelection(nextSelection);
+    if (nextSelection) {
+      setDraft({
+        title: nextSelection.title,
+        lectureUrl: nextSelection.lectureUrl,
+        problem0: nextSelection.problem0,
+      });
     }
     return true;
   }
 
-  function goToPath(next: string[]) {
-    setPath(next);
-    setHistoryState((prev) => {
-      const trimmed = prev.stack.slice(0, prev.index + 1);
-      const last = trimmed[trimmed.length - 1];
-      if (last && samePath(last, next)) return prev;
-      const nextStack = [...trimmed, next];
-      return { stack: nextStack, index: nextStack.length - 1 };
-    });
-  }
-
-  const canBack = historyState.index > 0;
-  const canForward = historyState.index + 1 < historyState.stack.length;
-
-  function goBack() {
-    setHistoryState((prev) => {
-      if (prev.index <= 0) return prev;
-      const idx = prev.index - 1;
-      const nextPath = prev.stack[idx];
-      setPath(nextPath);
-      return { ...prev, index: idx };
-    });
-  }
-
-  function goForward() {
-    setHistoryState((prev) => {
-      if (prev.index + 1 >= prev.stack.length) return prev;
-      const idx = prev.index + 1;
-      const nextPath = prev.stack[idx];
-      setPath(nextPath);
-      return { ...prev, index: idx };
-    });
-  }
-
-  const columns = useMemo(() => {
-    if (!tree) return [] as LectureFolderNode[];
-    const ids = path.length > 0 ? path : [tree.root.id];
-    const nodes = ids
-      .map((id) => findFolderById(tree, id))
-      .filter((x): x is LectureFolderNode => Boolean(x));
-    return nodes.slice(-4);
-  }, [tree, path]);
-
-  const breadcrumb = useMemo(() => {
-    if (!tree) return [] as LectureFolderNode[];
-    return path
-      .map((id) => findFolderById(tree, id))
-      .filter((x): x is LectureFolderNode => Boolean(x));
-  }, [tree, path]);
-
-  const currentFolder = columns[columns.length - 1] ?? null;
-  const folderPathMap = useMemo(() => {
-    if (!tree) return new Map<string, string[]>();
-    return buildFolderPathMap(tree.root);
-  }, [tree]);
-  const baseDepth = Math.max(0, path.length - columns.length);
-
-  function setSelectionFromNode(node: LectureNode) {
-    if (node.type === "folder") return;
-    const leaf = ensureLeaf(node);
-    const problem0 = (leaf.problemUrls?.[0] ?? "").trim();
-    const nextSel: Selection = {
-      id: leaf.id,
-      title: leaf.title,
-      lectureUrl: (leaf.lectureUrl ?? "").trim(),
-      problem0,
-    };
-    setSelection(nextSel);
-    setDraft({ title: nextSel.title, lectureUrl: nextSel.lectureUrl, problem0 });
-  }
-
-  function isDirty(): boolean {
-    if (!selection || !draft) return false;
-    return (
-      selection.title !== draft.title ||
-      selection.lectureUrl !== draft.lectureUrl ||
-      selection.problem0 !== draft.problem0
-    );
-  }
-
-  function saveDraft(): boolean {
-    if (!tree || !selection || !draft) return false;
-    if (!isDirty()) return true;
-
-    const nextTitle = updateNodeTitle(tree, selection.id, draft.title);
-    const next = updateLeafLinks(nextTitle, selection.id, {
-      lectureUrl: draft.lectureUrl,
-      problemUrls: [draft.problem0],
-    });
-    const saved = saveLectureTree(next);
-    setTree(saved);
-    setSelection({ ...selection, title: draft.title, lectureUrl: draft.lectureUrl, problem0: draft.problem0 });
-    return true;
-  }
-
-  function cancelDraft() {
-    if (!selection) return;
-    setDraft({
-      title: selection.title,
-      lectureUrl: selection.lectureUrl,
-      problem0: selection.problem0,
-    });
-  }
-
-  function autoSaveBeforeMove(action: () => void) {
-    if (isDirty()) {
-      const saved = saveDraft();
+  function withDraftSaved(action: () => void) {
+    if (editMode && isDraftDirty()) {
+      const ok = window.confirm("현재 강의 편집 내용을 먼저 반영하고 이동할까요?");
+      if (!ok) return;
+      const saved = saveDraftLocal();
       if (!saved) return;
     }
     action();
   }
 
-  const startEdit = () => {
+  function requireEditMode() {
+    if (editMode) return true;
+    window.alert("먼저 편집 버튼을 눌러주세요.");
+    return false;
+  }
+
+  function startEdit() {
     if (!tree) return;
     setEditSnapshot(cloneTree(tree));
     setEditMode(true);
-  };
+  }
 
-  const cancelEdit = () => {
+  function cancelEdit() {
     if (!editSnapshot) {
       setEditMode(false);
       return;
     }
     setTree(cloneTree(editSnapshot));
-    setEditMode(false);
     setEditSnapshot(null);
-    setDragging(null);
-  };
+    setEditMode(false);
+  }
 
-  const saveEdit = () => {
+  function saveEdit() {
     if (!tree) return;
-    const saved = saveLectureTreeWithReindex(tree);
+    const applied = applyDraft(tree);
+    const saved = saveLectureTreeWithReindex(applied.nextTree);
     setTree(saved);
-    setEditMode(false);
+    setSelection(applied.nextSelection);
+    if (applied.nextSelection) {
+      setDraft({
+        title: applied.nextSelection.title,
+        lectureUrl: applied.nextSelection.lectureUrl,
+        problem0: applied.nextSelection.problem0,
+      });
+    }
     setEditSnapshot(null);
-    setDragging(null);
-  };
+    setEditMode(false);
+  }
 
-  const onAddFolder = (parentFolderId: string, title: string) => {
-    if (!tree) return;
-    const trimmed = title.trim();
-    if (!trimmed) {
-      window.alert("폴더 이름을 입력해주세요.");
+  function onAddGrade() {
+    if (!tree || !requireEditMode()) return;
+    const title = newGradeTitle.trim();
+    if (!title) {
+      window.alert("학년 이름을 입력해주세요.");
       return;
     }
-    const next = addFolder(tree, parentFolderId, trimmed);
+    const next = addFolder(tree, tree.root.id, title);
+    const root = findFolderById(next, next.root.id);
+    const created = root ? folderChildren(root).slice(-1)[0] : null;
     setTree(next);
-  };
+    setNewGradeTitle("");
+    if (created) setSelectedGradeId(created.id);
+  }
 
-  const onAddLeaf = (parentFolderId: string, title: string) => {
-    if (!tree) return;
-    const trimmed = title.trim();
-    if (!trimmed) {
+  function onAddCurriculum() {
+    if (!tree || !requireEditMode()) return;
+    if (!selectedGrade) {
+      window.alert("먼저 학년 탭을 선택해주세요.");
+      return;
+    }
+    const title = newCurriculumTitle.trim();
+    if (!title) {
+      window.alert("과정 이름을 입력해주세요.");
+      return;
+    }
+    const next = addFolder(tree, selectedGrade.id, title);
+    const parent = findFolderById(next, selectedGrade.id);
+    const created = parent ? folderChildren(parent).slice(-1)[0] : null;
+    setTree(next);
+    setNewCurriculumTitle("");
+    if (created) setSelectedCurriculumId(created.id);
+  }
+
+  function onAddSection() {
+    if (!tree || !requireEditMode()) return;
+    if (!selectedCurriculum) {
+      window.alert("먼저 과정을 선택해주세요.");
+      return;
+    }
+    const title = newSectionTitle.trim();
+    if (!title) {
+      window.alert("단원(폴더) 이름을 입력해주세요.");
+      return;
+    }
+    const next = addFolder(tree, selectedCurriculum.id, title);
+    const parent = findFolderById(next, selectedCurriculum.id);
+    const created = parent ? folderChildren(parent).slice(-1)[0] : null;
+    setTree(next);
+    setNewSectionTitle("");
+    if (created) {
+      setSelectedSectionId(created.id);
+      setExpandedSectionIds((prev) => Array.from(new Set([...prev, created.id])));
+    }
+  }
+
+  function onAddLecture() {
+    if (!tree || !requireEditMode()) return;
+    if (!selectedSection) {
+      window.alert("먼저 단원을 선택해주세요.");
+      return;
+    }
+    const title = newLectureTitle.trim();
+    if (!title) {
       window.alert("강의 제목을 입력해주세요.");
       return;
     }
-    const next = addLeaf(tree, parentFolderId, {
-      title: trimmed,
-      lectureUrl: "",
-      problemUrls: [""],
-    });
+    const next = addLeaf(tree, selectedSection.id, { title, lectureUrl: "", problemUrls: [""] });
+    const parent = findFolderById(next, selectedSection.id);
+    const created = parent ? leafChildren(parent).slice(-1)[0] : null;
     setTree(next);
-    const parent = findFolderById(next, parentFolderId);
-    const created = parent?.children.filter((c) => c.type === "leaf").slice(-1)[0] ?? null;
-    if (created && created.type === "leaf") {
-      setSelectionFromNode(created);
-    }
-    setQuickTitle("");
-  };
+    setNewLectureTitle("");
+    if (created) selectLeaf(created);
+  }
 
-  const onDeleteNode = (nodeId: string) => {
-    if (!tree) return;
-
-    // ✅ 루트 삭제 금지
+  function onDeleteNode(nodeId: string, label: string) {
+    if (!tree || !requireEditMode()) return;
     if (nodeId === tree.root.id) {
       window.alert("루트 폴더는 삭제할 수 없습니다.");
       return;
     }
-
-    const ok = window.confirm("정말 삭제할까요? (하위 폴더/강의도 함께 삭제됩니다)");
+    const ok = window.confirm(`${label}을(를) 삭제할까요? 하위 강의도 함께 삭제됩니다.`);
     if (!ok) return;
     const next = deleteNode(tree, nodeId);
     setTree(next);
@@ -324,74 +329,14 @@ export default function LecturesPage() {
       setSelection(null);
       setDraft(null);
     }
-  };
+  }
 
-  // ---- Drag & Drop (같은 폴더의 children 안에서만) ----
-
-  const onDragStartNode = (parentFolderId: string, nodeId: string, e: React.DragEvent) => {
-    if (!editMode) return;
-    const payload: DragPayload = { parentFolderId, nodeId };
-    setDragging(payload);
-    e.dataTransfer.setData(DRAG_MIME, JSON.stringify(payload));
-    e.dataTransfer.effectAllowed = "move";
-  };
-
-  const onDragOver = (e: React.DragEvent) => {
-    if (!editMode) return;
-    e.preventDefault();
-    e.dataTransfer.dropEffect = "move";
-  };
-
-  const onDropOnChild = (parentFolderId: string, targetNodeId: string, e: React.DragEvent) => {
-    if (!editMode || !tree) return;
-    e.preventDefault();
-
-    const payload = parseDragPayload(e.dataTransfer.getData(DRAG_MIME), dragging);
-    if (!payload) return;
-
-    // 같은 parent 폴더에서만 이동 허용
-    if (payload.parentFolderId !== parentFolderId) return;
-    if (payload.nodeId === targetNodeId) return;
-
-    const parent = findFolderById(tree, parentFolderId);
-    if (!parent) return;
-
-    const ids = parent.children.map((c) => c.id);
-    const fromIdx = ids.indexOf(payload.nodeId);
-    const toIdx = ids.indexOf(targetNodeId);
-    if (fromIdx < 0 || toIdx < 0) return;
-
-    // payload.nodeId를 제거한 뒤 target 위치 앞에 삽입
-    const nextIds = ids.filter((id) => id !== payload.nodeId);
-    const insertAt = nextIds.indexOf(targetNodeId);
-    nextIds.splice(insertAt, 0, payload.nodeId);
-
-    const nextTree = reorderChildren(tree, parentFolderId, nextIds);
-    setTree(nextTree);
-  };
-
-  const onDropOnFolderEnd = (parentFolderId: string, e: React.DragEvent) => {
-    if (!editMode || !tree) return;
-    e.preventDefault();
-
-    const payload = parseDragPayload(e.dataTransfer.getData(DRAG_MIME), dragging);
-    if (!payload) return;
-
-    if (payload.parentFolderId !== parentFolderId) return;
-
-    const parent = findFolderById(tree, parentFolderId);
-    if (!parent) return;
-
-    const ids = parent.children.map((c) => c.id);
-    const fromIdx = ids.indexOf(payload.nodeId);
-    if (fromIdx < 0) return;
-
-    const nextIds = ids.filter((id) => id !== payload.nodeId);
-    nextIds.push(payload.nodeId);
-
-    const nextTree = reorderChildren(tree, parentFolderId, nextIds);
-    setTree(nextTree);
-  };
+  function toggleSection(sectionId: string) {
+    setExpandedSectionIds((prev) => {
+      if (prev.includes(sectionId)) return prev.filter((id) => id !== sectionId);
+      return [...prev, sectionId];
+    });
+  }
 
   if (!tree) {
     return (
@@ -403,48 +348,14 @@ export default function LecturesPage() {
 
   return (
     <div className="p-6 space-y-4">
-      <header className="flex items-start justify-between gap-3">
+      <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="page-title">강의 저장소</h1>
           <p className="text-sm text-neutral-600">
-            Finder 계층(열) 방식으로 폴더를 열어 관리합니다. (편집 모드에서만 수정/정렬 가능)
+            요청하신 스타일처럼 학년 탭과 과정 드롭다운으로 강의를 관리합니다.
           </p>
-          <div className="mt-2 text-sm text-neutral-600">
-            {breadcrumb.map((f, idx) => (
-              <span key={`${f.id}:${idx}`}>
-                <button
-                  className="underline underline-offset-2"
-                  onClick={() =>
-                    autoSaveBeforeMove(() => {
-                      const next = breadcrumb.slice(0, idx + 1).map((x) => x.id);
-                      goToPath(next);
-                    })
-                  }
-                  disabled={idx === breadcrumb.length - 1}
-                >
-                  {f.title}
-                </button>
-                {idx < breadcrumb.length - 1 ? " / " : ""}
-              </span>
-            ))}
-          </div>
         </div>
-
         <div className="flex items-center gap-2">
-          <button
-            className="px-2 py-1 rounded border text-xs hover:bg-neutral-50 disabled:opacity-50"
-            onClick={() => autoSaveBeforeMove(goBack)}
-            disabled={!canBack}
-          >
-            ← 뒤로
-          </button>
-          <button
-            className="px-2 py-1 rounded border text-xs hover:bg-neutral-50 disabled:opacity-50"
-            onClick={() => autoSaveBeforeMove(goForward)}
-            disabled={!canForward}
-          >
-            앞으로 →
-          </button>
           {!editMode ? (
             <button className="px-3 py-2 rounded-lg border text-sm hover:bg-neutral-50" onClick={startEdit}>
               편집
@@ -455,251 +366,359 @@ export default function LecturesPage() {
                 취소
               </button>
               <button className="px-3 py-2 rounded-lg bg-black text-white text-sm hover:opacity-90" onClick={saveEdit}>
-                저장 (orderKey 재부여)
+                저장
               </button>
             </>
           )}
         </div>
       </header>
 
-      <div className="rounded-2xl border p-4">
-        <div className="flex items-center justify-between gap-2 mb-3">
-          <div className="text-sm font-semibold">
-            현재 폴더: <span className="text-neutral-700">{currentFolder?.title ?? "-"}</span>
+      <div className="rounded-2xl border bg-white p-3">
+        <div className="flex flex-wrap items-center gap-2">
+          {gradeFolders.length === 0 ? (
+            <span className="text-sm text-neutral-500">학년 탭이 아직 없습니다. 편집 모드에서 추가해주세요.</span>
+          ) : (
+            gradeFolders.map((grade) => {
+              const active = grade.id === selectedGrade?.id;
+              return (
+                <button
+                  key={grade.id}
+                  className={`px-4 py-2 rounded-md border text-sm ${
+                    active ? "bg-sky-100 border-sky-300 text-sky-900" : "bg-white hover:bg-neutral-50"
+                  }`}
+                  onClick={() =>
+                    withDraftSaved(() => {
+                      setSelectedGradeId(grade.id);
+                    })
+                  }
+                >
+                  {grade.title}
+                </button>
+              );
+            })
+          )}
+
+          <div className="mx-1 h-8 w-px bg-neutral-200" />
+
+          <select
+            className="min-w-[220px] rounded-md border px-3 py-2 text-sm bg-white"
+            value={selectedCurriculum?.id ?? ""}
+            onChange={(e) =>
+              withDraftSaved(() => {
+                setSelectedCurriculumId(e.target.value || null);
+              })
+            }
+            disabled={!selectedGrade}
+          >
+            {!selectedGrade ? <option value="">먼저 학년을 선택하세요</option> : null}
+            {curriculumFolders.map((curr) => (
+              <option key={curr.id} value={curr.id}>
+                {curr.title}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-[380px_minmax(0,1fr)]">
+        <section className="rounded-2xl border bg-white overflow-hidden">
+          <div className="px-4 py-3 border-b bg-neutral-50 text-sm font-semibold">
+            {selectedCurriculum ? selectedCurriculum.title : "과정을 선택해주세요"}
           </div>
-          <div className="flex items-center gap-2">
-            {path.length > 1 ? (
-              <button
-                className="px-2 py-1 rounded border text-xs hover:bg-neutral-50"
-                onClick={() => autoSaveBeforeMove(() => goToPath(path.slice(0, -1)))}
-              >
-                상위로
-              </button>
-            ) : null}
-            {path[0] ? (
-              <button
-                className="px-2 py-1 rounded border text-xs hover:bg-neutral-50"
-                onClick={() => autoSaveBeforeMove(() => goToPath([path[0]]))}
-              >
-                루트로
-              </button>
-            ) : null}
-            {editMode && currentFolder ? (
+
+          <div className="max-h-[62vh] overflow-y-auto">
+            {selectedCurriculum ? (
               <>
-                <div className="flex items-center gap-1">
-                  <select
-                    className="rounded border px-2 py-1 text-xs"
-                    value={quickType}
-                    onChange={(e) => setQuickType(e.target.value === "folder" ? "folder" : "leaf")}
-                  >
-                    <option value="folder">폴더</option>
-                    <option value="leaf">강의</option>
-                  </select>
-                  <input
-                    className="rounded border px-2 py-1 text-xs"
-                    value={quickTitle}
-                    onChange={(e) => setQuickTitle(e.target.value)}
-                    placeholder={quickType === "folder" ? "폴더 이름" : "강의 제목"}
-                  />
-                  <button
-                    className="px-2 py-1 rounded border text-xs hover:bg-neutral-50"
-                    onClick={() => {
-                      if (quickType === "folder") onAddFolder(currentFolder.id, quickTitle);
-                      else onAddLeaf(currentFolder.id, quickTitle);
-                    }}
-                  >
-                    생성
-                  </button>
-                </div>
-                {currentFolder.id !== tree.root.id ? (
-                  <button
-                    className="px-2 py-1 rounded border text-xs hover:bg-neutral-50"
-                    onClick={() => onDeleteNode(currentFolder.id)}
-                    title="폴더 삭제"
-                  >
-                    삭제
-                  </button>
+                {directLeafRows.length > 0 ? (
+                  <div className="border-b">
+                    <div className="px-4 py-2 text-sm font-semibold text-neutral-700 bg-neutral-50">기본 목록</div>
+                    <div className="px-2 py-2 space-y-1">
+                      {directLeafRows.map((row, index) => {
+                        const selected = activeSelection?.id === row.leaf.id;
+                        return (
+                          <button
+                            key={row.leaf.id}
+                            className={`w-full flex items-center gap-2 rounded px-2 py-2 text-left ${
+                              selected ? "bg-sky-100" : "hover:bg-neutral-50"
+                            }`}
+                            onClick={() =>
+                              withDraftSaved(() => {
+                                selectLeaf(row.leaf);
+                              })
+                            }
+                          >
+                            <span
+                              className={`inline-flex h-5 w-5 items-center justify-center rounded-full text-[10px] ${
+                                selected ? "bg-sky-500 text-white" : "bg-neutral-200 text-neutral-700"
+                              }`}
+                            >
+                              ▶
+                            </span>
+                            <span className="text-sm">{`[${index + 1}강] ${row.leaf.title}`}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ) : null}
+
+                {sectionFolders.map((section) => {
+                  const opened = openedSectionIds.includes(section.id);
+                  const rows = flattenLeafRows(section);
+                  const activeSection = section.id === selectedSection?.id;
+                  return (
+                    <div key={section.id} className="border-b">
+                      <button
+                        className={`w-full flex items-center justify-between px-4 py-2 text-left ${
+                          activeSection ? "bg-neutral-100" : "bg-white hover:bg-neutral-50"
+                        }`}
+                        onClick={() =>
+                          withDraftSaved(() => {
+                            setSelectedSectionId(section.id);
+                            toggleSection(section.id);
+                          })
+                        }
+                      >
+                        <span className="font-semibold text-sm">{section.title}</span>
+                        <span className="text-xs text-neutral-500">{opened ? "▼" : "▶"}</span>
+                      </button>
+                      {opened ? (
+                        <div className="px-2 py-2 space-y-1 bg-white">
+                          {rows.length === 0 ? (
+                            <div className="px-2 py-2 text-xs text-neutral-500">강의가 없습니다.</div>
+                          ) : (
+                            rows.map((row, index) => {
+                              const selected = activeSelection?.id === row.leaf.id;
+                              return (
+                                <button
+                                  key={row.leaf.id}
+                                  className={`w-full flex items-center gap-2 rounded px-2 py-2 text-left ${
+                                    selected ? "bg-sky-100" : "hover:bg-neutral-50"
+                                  }`}
+                                  onClick={() =>
+                                    withDraftSaved(() => {
+                                      selectLeaf(row.leaf);
+                                    })
+                                  }
+                                >
+                                  <span
+                                    className={`inline-flex h-5 w-5 items-center justify-center rounded-full text-[10px] ${
+                                      selected ? "bg-sky-500 text-white" : "bg-neutral-200 text-neutral-700"
+                                    }`}
+                                  >
+                                    ▶
+                                  </span>
+                                  <div className="min-w-0">
+                                    <div className="truncate text-sm">{`[${index + 1}강] ${row.leaf.title}`}</div>
+                                    {row.pathLabel ? (
+                                      <div className="truncate text-[11px] text-neutral-500">{row.pathLabel}</div>
+                                    ) : null}
+                                  </div>
+                                </button>
+                              );
+                            })
+                          )}
+                        </div>
+                      ) : null}
+                    </div>
+                  );
+                })}
+
+                {sectionFolders.length === 0 && directLeafRows.length === 0 ? (
+                  <div className="p-4 text-sm text-neutral-500">이 과정에 단원/강의가 없습니다.</div>
                 ) : null}
               </>
-            ) : null}
+            ) : (
+              <div className="p-4 text-sm text-neutral-500">과정을 선택하면 강의 목록이 표시됩니다.</div>
+            )}
           </div>
-        </div>
+        </section>
 
-        <div className="flex gap-2">
-          <div className="min-w-[220px] max-w-[240px] rounded-xl border p-2 overflow-y-auto" style={{ maxHeight: 520 }}>
-            <div className="text-xs font-semibold text-neutral-600 mb-2">폴더 트리</div>
-            {tree ? (
-              <MiniTree
-                node={tree.root}
-                depth={0}
-                currentId={currentFolder?.id ?? ""}
-                pathMap={folderPathMap}
-                onNavigate={(nextPath) => autoSaveBeforeMove(() => goToPath(nextPath))}
-              />
-            ) : null}
-          </div>
+        <section className="rounded-2xl border bg-white p-4 space-y-4">
+          <div className="text-sm font-semibold">강의 상세</div>
 
-          <div className="flex gap-2 overflow-x-auto">
-            {columns.map((folder, idx) => {
-              const depthIndex = baseDepth + idx;
-              return (
-                <div key={`${folder.id}:${idx}`} className="min-w-[240px] rounded-xl border p-2">
-                  <div className="text-xs font-semibold text-neutral-600 mb-2">{folder.title}</div>
-                  <div className="space-y-1">
-                    {folder.children.length === 0 ? (
-                      <div className="text-xs text-neutral-500">비어 있습니다.</div>
-                    ) : null}
+          {activeSelection && activeDraft ? (
+            <div className="space-y-3">
+              <div className="rounded-lg border bg-neutral-50 p-3 text-xs text-neutral-600">
+                선택된 강의 ID: <span className="font-mono">{activeSelection.id}</span>
+              </div>
 
-                    {folder.children.map((child) => {
-                      const isFolder = child.type === "folder";
-                      const isSelected = !isFolder && selection?.id === child.id;
+              <div className="space-y-1">
+                <label className="text-xs text-neutral-600">제목</label>
+                <input
+                  className="w-full rounded-lg border px-3 py-2 text-sm"
+                  value={activeDraft.title}
+                  onChange={(e) => setDraft({ ...activeDraft, title: e.target.value })}
+                  disabled={!editMode}
+                />
+              </div>
 
-                      return (
-                        <div
-                          key={child.id}
-                          className={
-                            "flex items-center justify-between gap-2 rounded-lg border px-2 py-2 cursor-pointer " +
-                            (isSelected ? "bg-neutral-100" : "bg-white")
-                          }
-                          onDragOver={onDragOver}
-                          onDrop={(e) => onDropOnChild(folder.id, child.id, e)}
-                          title={editMode ? "같은 폴더 안에서만 정렬됩니다." : undefined}
-                          onClick={() =>
-                            autoSaveBeforeMove(() => {
-                              if (child.type === "folder") {
-                                setSelection(null);
-                                setDraft(null);
-                                goToPath([...path.slice(0, depthIndex + 1), child.id]);
-                                return;
-                              }
-                              setSelectionFromNode(child);
-                            })
-                          }
-                        >
-                          <div className="flex items-center gap-2">
-                            {editMode ? (
-                              <button
-                                type="button"
-                                className="w-6 h-6 rounded border text-xs hover:bg-neutral-50 cursor-grab active:cursor-grabbing"
-                                draggable
-                                onDragStart={(e) => onDragStartNode(folder.id, child.id, e)}
-                                title="드래그해서 순서를 바꾸세요"
-                                onClick={(e) => e.stopPropagation()}
-                              >
-                                ≡
-                              </button>
-                            ) : null}
+              <div className="space-y-1">
+                <label className="text-xs text-neutral-600">강의 URL</label>
+                <input
+                  className="w-full rounded-lg border px-3 py-2 text-sm"
+                  value={activeDraft.lectureUrl}
+                  onChange={(e) => setDraft({ ...activeDraft, lectureUrl: e.target.value })}
+                  placeholder="https://..."
+                  disabled={!editMode}
+                />
+              </div>
 
-                            <span className="text-[11px] rounded border px-1 py-0.5 text-neutral-600">
-                              {isFolder ? "DIR" : "LEC"}
-                            </span>
+              <div className="space-y-1">
+                <label className="text-xs text-neutral-600">문제 URL (1)</label>
+                <input
+                  className="w-full rounded-lg border px-3 py-2 text-sm"
+                  value={activeDraft.problem0}
+                  onChange={(e) => setDraft({ ...activeDraft, problem0: e.target.value })}
+                  placeholder="https://..."
+                  disabled={!editMode}
+                />
+              </div>
 
-                            <span className="text-left text-sm">{child.title}</span>
-                          </div>
-
-                          {editMode ? (
-                            <button
-                              className="text-xs text-neutral-500 hover:text-neutral-700"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                onDeleteNode(child.id);
-                              }}
-                            >
-                              삭제
-                            </button>
-                          ) : null}
-                        </div>
-                      );
-                    })}
-
-                    {editMode ? (
-                      <div
-                        className="rounded-lg border border-dashed p-2 text-xs text-neutral-500"
-                        onDragOver={onDragOver}
-                        onDrop={(e) => onDropOnFolderEnd(folder.id, e)}
-                      >
-                        여기로 드롭하면 맨 아래로 이동
-                      </div>
-                    ) : null}
-                  </div>
-                </div>
-              );
-            })}
-
-          <div className="min-w-[280px] rounded-xl border p-3">
-            <div className="text-xs font-semibold text-neutral-600 mb-2">편집 패널</div>
-            {selection && draft ? (
-              <div className="space-y-3">
-                <div className="text-sm font-semibold">
-                  강의 편집
-                </div>
-
-                <div className="space-y-1">
-                  <div className="text-xs text-neutral-600">제목</div>
-                  <input
-                    className="w-full px-3 py-2 rounded-lg border text-sm"
-                    value={draft.title}
-                    onChange={(e) => {
-                      const v = e.target.value;
-                      setDraft({ ...draft, title: v });
-                    }}
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <div className="text-xs text-neutral-600">강의 URL</div>
-                  <input
-                    className="w-full px-3 py-2 rounded-lg border text-sm"
-                    value={draft.lectureUrl}
-                    onChange={(e) => setDraft({ ...draft, lectureUrl: e.target.value })}
-                    placeholder="https://..."
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <div className="text-xs text-neutral-600">문제 URL (1)</div>
-                  <input
-                    className="w-full px-3 py-2 rounded-lg border text-sm"
-                    value={draft.problem0}
-                    onChange={(e) => setDraft({ ...draft, problem0: e.target.value })}
-                    placeholder="https://..."
-                  />
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <button
-                    className="px-3 py-2 rounded-lg bg-black text-white text-sm hover:opacity-90"
-                    onClick={saveDraft}
-                    disabled={!isDirty()}
-                  >
-                    저장
+              {editMode ? (
+                <div className="flex flex-wrap items-center gap-2">
+                  <button className="px-3 py-2 rounded-lg border text-sm hover:bg-neutral-50" onClick={saveDraftLocal}>
+                    현재 반영
                   </button>
                   <button
                     className="px-3 py-2 rounded-lg border text-sm hover:bg-neutral-50"
-                    onClick={cancelDraft}
-                    disabled={!isDirty()}
+                    onClick={() =>
+                      setDraft({
+                        title: activeSelection.title,
+                        lectureUrl: activeSelection.lectureUrl,
+                        problem0: activeSelection.problem0,
+                      })
+                    }
                   >
-                    취소
+                    현재값 되돌리기
                   </button>
-                  {isDirty() ? (
-                    <span className="text-xs text-neutral-500">저장하지 않은 변경이 있습니다.</span>
-                  ) : null}
+                  <button
+                    className="px-3 py-2 rounded-lg border text-sm text-red-600 hover:bg-red-50"
+                    onClick={() => onDeleteNode(activeSelection.id, "강의")}
+                  >
+                    강의 삭제
+                  </button>
+                  {isDraftDirty() ? <span className="text-xs text-neutral-500">저장 전 변경 내용이 있습니다.</span> : null}
+                </div>
+              ) : (
+                <div className="text-xs text-neutral-500">수정하려면 상단의 편집 버튼을 누르세요.</div>
+              )}
+            </div>
+          ) : (
+            <div className="text-sm text-neutral-500">왼쪽 목록에서 강의를 선택해주세요.</div>
+          )}
+
+          {editMode ? (
+            <div className="space-y-3 border-t pt-4">
+              <div className="text-sm font-semibold">편집 도구</div>
+
+              <div className="space-y-2">
+                <div className="text-xs text-neutral-600">학년 탭 추가</div>
+                <div className="flex gap-2">
+                  <input
+                    className="flex-1 rounded-lg border px-3 py-2 text-sm"
+                    value={newGradeTitle}
+                    onChange={(e) => setNewGradeTitle(e.target.value)}
+                    placeholder="예: 초 / 중 / 고"
+                  />
+                  <button className="px-3 py-2 rounded-lg border text-sm hover:bg-neutral-50" onClick={onAddGrade}>
+                    추가
+                  </button>
                 </div>
               </div>
-            ) : (
-              <div className="text-sm text-neutral-500">강의를 선택하세요.</div>
-            )}
-          </div>
-        </div>
-      </div>
 
+              <div className="space-y-2">
+                <div className="text-xs text-neutral-600">과정 추가 (현재 학년)</div>
+                <div className="flex gap-2">
+                  <input
+                    className="flex-1 rounded-lg border px-3 py-2 text-sm"
+                    value={newCurriculumTitle}
+                    onChange={(e) => setNewCurriculumTitle(e.target.value)}
+                    placeholder="예: 공통수학1(22개정)"
+                  />
+                  <button
+                    className="px-3 py-2 rounded-lg border text-sm hover:bg-neutral-50"
+                    onClick={onAddCurriculum}
+                    disabled={!selectedGrade}
+                  >
+                    추가
+                  </button>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <div className="text-xs text-neutral-600">단원(폴더) 추가 (현재 과정)</div>
+                <div className="flex gap-2">
+                  <input
+                    className="flex-1 rounded-lg border px-3 py-2 text-sm"
+                    value={newSectionTitle}
+                    onChange={(e) => setNewSectionTitle(e.target.value)}
+                    placeholder="예: 도형의 방정식"
+                  />
+                  <button
+                    className="px-3 py-2 rounded-lg border text-sm hover:bg-neutral-50"
+                    onClick={onAddSection}
+                    disabled={!selectedCurriculum}
+                  >
+                    추가
+                  </button>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <div className="text-xs text-neutral-600">강의 추가 (현재 단원)</div>
+                <div className="flex gap-2">
+                  <input
+                    className="flex-1 rounded-lg border px-3 py-2 text-sm"
+                    value={newLectureTitle}
+                    onChange={(e) => setNewLectureTitle(e.target.value)}
+                    placeholder="예: 두 점 사이의 거리"
+                  />
+                  <button
+                    className="px-3 py-2 rounded-lg border text-sm hover:bg-neutral-50"
+                    onClick={onAddLecture}
+                    disabled={!selectedSection}
+                  >
+                    추가
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap gap-2 pt-1">
+                <button
+                  className="px-3 py-2 rounded-lg border text-sm text-red-600 hover:bg-red-50"
+                  onClick={() => selectedSection && onDeleteNode(selectedSection.id, "단원")}
+                  disabled={!selectedSection}
+                >
+                  현재 단원 삭제
+                </button>
+                <button
+                  className="px-3 py-2 rounded-lg border text-sm text-red-600 hover:bg-red-50"
+                  onClick={() => selectedCurriculum && onDeleteNode(selectedCurriculum.id, "과정")}
+                  disabled={!selectedCurriculum}
+                >
+                  현재 과정 삭제
+                </button>
+                <button
+                  className="px-3 py-2 rounded-lg border text-sm text-red-600 hover:bg-red-50"
+                  onClick={() => selectedGrade && onDeleteNode(selectedGrade.id, "학년")}
+                  disabled={!selectedGrade}
+                >
+                  현재 학년 삭제
+                </button>
+              </div>
+
+              <div className="text-xs text-neutral-500">
+                실제 저장은 상단 <b>저장</b> 버튼에서 한 번에 반영됩니다.
+              </div>
+            </div>
+          ) : null}
+        </section>
       </div>
 
       <footer className="text-xs text-neutral-500">
-        • 회차에는 leafId만 저장합니다. • 정렬은 폴더 단위(children)에서만 가능합니다. • 저장 시 전체 leaf에
-        orderKey가 000001부터 재부여됩니다.
+        • 기존 folder/leaf 데이터 구조는 그대로 유지했습니다. • 저장 시 leaf orderKey가 재정렬됩니다.
       </footer>
-
     </div>
   );
 }
