@@ -95,6 +95,7 @@ export default function AdminMainPage() {
   const [mounted, setMounted] = useState(false);
   const [students, setStudents] = useState(() => loadStudents());
   const [teachers, setTeachers] = useState(() => loadTeachers());
+  const [metaTick, setMetaTick] = useState(0);
   const [syncingRoles, setSyncingRoles] = useState(false);
   const [syncResult, setSyncResult] = useState("");
 
@@ -112,20 +113,24 @@ export default function AdminMainPage() {
       setStudents(loadStudents());
       setTeachers(loadTeachers());
     };
+    const onMetaUpdated = () => setMetaTick((x) => x + 1);
     window.addEventListener("tutorweb:studentsUpdated", refresh);
     window.addEventListener("tutorweb:sessionsUpdated", refresh);
     window.addEventListener("tutorweb:consultationsUpdated", refresh);
+    window.addEventListener("tutorweb:metaMapUpdated", onMetaUpdated);
     window.addEventListener(TEACHERS_EVENT, refresh);
     return () => {
       window.removeEventListener("tutorweb:studentsUpdated", refresh);
       window.removeEventListener("tutorweb:sessionsUpdated", refresh);
       window.removeEventListener("tutorweb:consultationsUpdated", refresh);
+      window.removeEventListener("tutorweb:metaMapUpdated", onMetaUpdated);
       window.removeEventListener(TEACHERS_EVENT, refresh);
     };
   }, []);
 
   const statusCards = useMemo<StudentStatusCard[]>(() => {
     if (!mounted) return [];
+    void metaTick;
     const today = todayYmdKST();
 
     const cards: StudentStatusCard[] = [];
@@ -196,7 +201,7 @@ export default function AdminMainPage() {
     }
 
     return cards.sort((a, b) => a.studentName.localeCompare(b.studentName, "ko"));
-  }, [mounted, students, teachers]);
+  }, [mounted, students, teachers, metaTick]);
 
   const sectionOrder: StudentStatusKind[] = [
     "need_extension",
@@ -221,6 +226,7 @@ export default function AdminMainPage() {
 
   const pauseRequestCards = useMemo<PauseRequestCard[]>(() => {
     if (!mounted) return [];
+    void metaTick;
     const statusByStudentId = new Map(statusCards.map((c) => [c.studentId, c] as const));
     const cards: PauseRequestCard[] = [];
 
@@ -278,7 +284,7 @@ export default function AdminMainPage() {
       const bv = b.consultDateTimeLabel === "-" ? "9999" : b.consultDateTimeLabel;
       return av.localeCompare(bv) || a.studentName.localeCompare(b.studentName, "ko");
     });
-  }, [mounted, students, teachers, statusCards]);
+  }, [mounted, students, teachers, statusCards, metaTick]);
 
   async function onClickRoleSyncTest() {
     setSyncResult("");

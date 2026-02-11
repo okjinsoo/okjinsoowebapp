@@ -80,6 +80,7 @@ export default function TeacherMainClient({ initialRole = "t" }: { initialRole?:
 
   const [isHydrated, setIsHydrated] = useState(false);
   const [teacherId, setTeacherId] = useState<string | null>(null);
+  const [timelineTick, setTimelineTick] = useState(0);
 
   const applyTeacherSelection = useCallback((nextTeachers: Teacher[]) => {
     if (initialRole === "t") {
@@ -142,16 +143,25 @@ export default function TeacherMainClient({ initialRole = "t" }: { initialRole?:
     const requestGateRefresh = () => {
       void onGate();
     };
+    const onTimelineUpdated = () => {
+      setTimelineTick((x) => x + 1);
+    };
 
     window.addEventListener(GATE_EVENT, requestGateRefresh);
     window.addEventListener(AUTH_EVENT, requestGateRefresh);
     window.addEventListener("tutorweb:studentsUpdated", requestGateRefresh);
     window.addEventListener(TEACHERS_EVENT, requestGateRefresh);
+    window.addEventListener("tutorweb:sessionsUpdated", onTimelineUpdated);
+    window.addEventListener("tutorweb:consultationsUpdated", onTimelineUpdated);
+    window.addEventListener("tutorweb:metaMapUpdated", onTimelineUpdated);
     return () => {
       window.removeEventListener(GATE_EVENT, requestGateRefresh);
       window.removeEventListener(AUTH_EVENT, requestGateRefresh);
       window.removeEventListener("tutorweb:studentsUpdated", requestGateRefresh);
       window.removeEventListener(TEACHERS_EVENT, requestGateRefresh);
+      window.removeEventListener("tutorweb:sessionsUpdated", onTimelineUpdated);
+      window.removeEventListener("tutorweb:consultationsUpdated", onTimelineUpdated);
+      window.removeEventListener("tutorweb:metaMapUpdated", onTimelineUpdated);
     };
   }, [initialRole, applyTeacherSelection]);
 
@@ -169,6 +179,7 @@ export default function TeacherMainClient({ initialRole = "t" }: { initialRole?:
 
   const todayRows = useMemo<TodaySessionRow[]>(() => {
     if (!isHydrated) return [];
+    void timelineTick;
     const now = new Date();
     const rows: TodaySessionRow[] = [];
 
@@ -245,7 +256,7 @@ export default function TeacherMainClient({ initialRole = "t" }: { initialRole?:
       if (timeCmp !== 0) return timeCmp;
       return a.studentName.localeCompare(b.studentName, "ko");
     });
-  }, [visibleStudents, isHydrated]);
+  }, [visibleStudents, isHydrated, timelineTick]);
 
   if (!isHydrated) {
     return (

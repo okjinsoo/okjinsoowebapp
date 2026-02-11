@@ -18,7 +18,8 @@ const STUDENTS_EVENT = "tutorweb:studentsUpdated";
 const TEACHERS_EVENT = "tutorweb:teachersUpdated";
 const SESSIONS_EVENT = "tutorweb:sessionsUpdated";
 const PULL_COOLDOWN_MS = 5000;
-const MANAGED_PREFIXES = ["tutorweb_", "mk3:"];
+const SHARED_EXACT_KEYS = new Set([CONSULTATIONS_KEY]);
+const SHARED_PREFIXES = [META_MAP_PREFIX, "mk3:"];
 
 type SnapshotRow = {
   teachers?: Teacher[];
@@ -55,7 +56,8 @@ function safeParse<T>(raw: string | null, fallback: T): T {
 function shouldPersistKey(key: string): boolean {
   if (!key) return false;
   if (key === AUTH_STORAGE_KEY) return false;
-  return MANAGED_PREFIXES.some((prefix) => key.startsWith(prefix));
+  if (SHARED_EXACT_KEYS.has(key)) return true;
+  return SHARED_PREFIXES.some((prefix) => key.startsWith(prefix));
 }
 
 function toStateKv(raw: unknown): Record<string, string> {
@@ -131,22 +133,6 @@ function applyStateKv(stateKv: Record<string, string> | null | undefined): {
   let changed = false;
   let hadConsultations = false;
   let hadMetaMap = false;
-
-  const incomingKeys = new Set(Object.keys(stateKv).filter(shouldPersistKey));
-  const existingManagedKeys: string[] = [];
-  for (let i = 0; i < browserStorage.length; i += 1) {
-    const key = browserStorage.key(i);
-    if (!key || !shouldPersistKey(key)) continue;
-    existingManagedKeys.push(key);
-  }
-
-  for (const key of existingManagedKeys) {
-    if (incomingKeys.has(key)) continue;
-    browserStorage.removeItem(key);
-    changed = true;
-    if (key === CONSULTATIONS_KEY) hadConsultations = true;
-    if (key.startsWith(META_MAP_PREFIX)) hadMetaMap = true;
-  }
 
   for (const [key, value] of Object.entries(stateKv)) {
     if (!shouldPersistKey(key)) continue;
@@ -246,6 +232,25 @@ async function fetchSnapshotRows(args: {
   };
 }
 
+async function fetchRemoteStateKv(args: {
+  url: URL;
+  headers: Record<string, string>;
+}): Promise<Record<string, string>> {
+  const result = await fetchSnapshotRows({
+    url: args.url,
+    headers: args.headers,
+    select: "state_kv",
+  });
+  if (!result.ok) {
+    if (isMissingColumnError(result.text, "state_kv")) {
+      return {};
+    }
+    throw new Error(`snapshot fetch failed(state_kv): ${result.status} ${result.text}`);
+  }
+  const row = result.rows[0];
+  return toStateKv(row?.state_kv);
+}
+
 export async function pushSharedSnapshot(args?: {
   teachers?: Teacher[];
   students?: Student[];
@@ -258,15 +263,28 @@ export async function pushSharedSnapshot(args?: {
   const headers = await getHeaders({ json: true });
   if (!headers) return { sessionsSynced: false, stateKvSynced: false };
 
+  const readHeaders = await getHeaders();
+  if (!readHeaders) return { sessionsSynced: false, stateKvSynced: false };
+
   const teachers = args?.teachers ?? readLocalTeachers();
   const students = args?.students ?? readLocalStudents();
   const sessions = args?.sessions ?? readLocalSessions();
-  const stateKv = args?.stateKv ?? readLocalStateKv();
+  const localStateKv = args?.stateKv ?? readLocalStateKv();
 
-  const url = new URL("/rest/v1/app_state_snapshots", cfg.url);
-  url.searchParams.set("on_conflict", "id");
+  const snapshotUrl = new URL("/rest/v1/app_state_snapshots", cfg.url);
+  const remoteStateKv = await fetchRemoteStateKv({
+    url: snapshotUrl,
+    headers: readHeaders,
+  });
+  const stateKv = {
+    ...remoteStateKv,
+    ...localStateKv,
+  };
 
-  const fullRes = await fetch(url.toString(), {
+  const upsertUrl = new URL(snapshotUrl.toString());
+  upsertUrl.searchParams.set("on_conflict", "id");
+
+  const fullRes = await fetch(upsertUrl.toString(), {
     method: "POST",
     headers: {
       ...headers,
@@ -307,7 +325,7 @@ export async function pushSharedSnapshot(args?: {
   if (!sessionsMissing) fallbackPayload.sessions = sessions;
   if (!stateKvMissing) fallbackPayload.state_kv = stateKv;
 
-  const fallbackRes = await fetch(url.toString(), {
+  const fallbackRes = await fetch(upsertUrl.toString(), {
     method: "POST",
     headers: {
       ...headers,
@@ -331,7 +349,19 @@ export async function pullSharedSnapshotAndHydrate(): Promise<{
   students: Student[];
   sessions: Session[];
 } | null> {
-  if (Date.now() - lastPullSnapshotAt < PULL_COOLDOWN_MS && hasLocalSnapshot()) {
+  return pullSharedSnapshotAndHydrateWithOptions();
+}
+
+export async function pullSharedSnapshotAndHydrateWithOptions(args?: {
+  forceRemote?: boolean;
+}): Promise<{
+  teachers: Teacher[];
+  students: Student[];
+  sessions: Session[];
+} | null> {
+  const forceRemote = Boolean(args?.forceRemote);
+
+  if (!forceRemote && Date.now() - lastPullSnapshotAt < PULL_COOLDOWN_MS && hasLocalSnapshot()) {
     return {
       teachers: readLocalTeachers(),
       students: readLocalStudents(),
