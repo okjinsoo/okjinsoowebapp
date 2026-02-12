@@ -447,6 +447,43 @@ export default function StudentHubCore({
     minWidth: 60,
   };
 
+  function resolveScheduleStartIndexByDate(targetDate: string): number {
+    if (!student) return Math.max(1, currentCount + 1);
+    const targetMs = new Date(`${targetDate}T00:00:00+09:00`).getTime();
+    if (!Number.isFinite(targetMs)) return Math.max(1, currentCount + 1);
+
+    const baseDates = buildBaseDatesISO(student, 120);
+    const localMetaMap = readMetaMap(token);
+    const scanMax = Math.max(currentCount, baseDates.length);
+
+    let nearestFutureIdx: number | null = null;
+    let nearestFutureMs = Number.POSITIVE_INFINITY;
+
+    for (let i = 1; i <= scanMax; i++) {
+      const { effectiveISO } = computeEffectiveISO({
+        token,
+        index: i,
+        baseDatesISO: baseDates,
+        metaMap: localMetaMap,
+      });
+      if (!effectiveISO) continue;
+
+      const ymd = ymdFromISO_KST(effectiveISO);
+      if (!ymd) continue;
+      const ms = new Date(`${ymd}T00:00:00+09:00`).getTime();
+      if (!Number.isFinite(ms)) continue;
+
+      if (ms < targetMs) continue;
+      if (ms < nearestFutureMs || (ms === nearestFutureMs && (nearestFutureIdx === null || i < nearestFutureIdx))) {
+        nearestFutureMs = ms;
+        nearestFutureIdx = i;
+      }
+    }
+
+    if (nearestFutureIdx !== null) return nearestFutureIdx;
+    return Math.max(1, scanMax + 1);
+  }
+
   const backToTmain =
     accessRole === "a" ? "/a/tmain" : accessRole === "t" ? "/t/tmain" : null;
 
@@ -719,7 +756,10 @@ export default function StudentHubCore({
   function saveScheduleChange() {
     if (!student) return;
     setScheduleError("");
-    const startIndex = Math.max(1, Math.floor(Number(scheduleStartIndex)));
+    const computedStart = scheduleStartDate
+      ? resolveScheduleStartIndexByDate(scheduleStartDate)
+      : Number(scheduleStartIndex);
+    const startIndex = Math.max(1, Math.floor(Number(computedStart)));
     if (!Number.isFinite(startIndex)) return setScheduleError("시작 회차를 입력해주세요.");
 
     const rules: ScheduleRule[] = [];
@@ -2113,24 +2153,7 @@ export default function StudentHubCore({
                     const v = e.target.value;
                     setScheduleStartDate(v);
                     if (!v) return;
-                    const baseDates = buildBaseDatesISO(student, 60);
-                    const metaMap = readMetaMap(token);
-                    const pick = new Date(`${v}T00:00:00`);
-                    if (!Number.isFinite(pick.getTime())) return;
-                    for (let i = 1; i <= currentCount; i++) {
-                      const { effectiveISO } = computeEffectiveISO({
-                        token,
-                        index: i,
-                        baseDatesISO: baseDates,
-                        metaMap,
-                      });
-                      if (!effectiveISO) continue;
-                      const t = new Date(effectiveISO);
-                      if (Number.isFinite(t.getTime()) && t >= pick) {
-                        setScheduleStartIndex(i);
-                        break;
-                      }
-                    }
+                    setScheduleStartIndex(resolveScheduleStartIndexByDate(v));
                   }}
                   style={inputStyle}
                 />
