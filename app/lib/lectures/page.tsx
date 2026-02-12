@@ -9,6 +9,7 @@ import {
   findFolderById,
   findNodeById,
   loadLectureTree,
+  reorderChildren,
   saveLectureTreeWithReindex,
   updateLeafLinks,
   updateNodeTitle,
@@ -17,6 +18,7 @@ import {
 type Selection = { id: string; title: string; lectureUrl: string; problem0: string } | null;
 type Draft = { title: string; lectureUrl: string; problem0: string } | null;
 type LeafRow = { leaf: LectureLeafNode; pathLabel: string };
+const GRADE_DRAG_MIME = "application/x-lecture-grade-id";
 
 function cloneTree(t: LectureTree): LectureTree {
   return JSON.parse(JSON.stringify(t)) as LectureTree;
@@ -70,6 +72,7 @@ export default function LecturesPage() {
   const [newCurriculumTitle, setNewCurriculumTitle] = useState("");
   const [newSectionTitle, setNewSectionTitle] = useState("");
   const [newLectureTitle, setNewLectureTitle] = useState("");
+  const [draggingGradeId, setDraggingGradeId] = useState<string | null>(null);
 
   useEffect(() => {
     const id = setTimeout(() => {
@@ -338,6 +341,57 @@ export default function LecturesPage() {
     });
   }
 
+  function onGradeDragStart(gradeId: string, e: React.DragEvent<HTMLButtonElement>) {
+    if (!editMode) return;
+    setDraggingGradeId(gradeId);
+    e.dataTransfer.setData(GRADE_DRAG_MIME, gradeId);
+    e.dataTransfer.effectAllowed = "move";
+  }
+
+  function onGradeDragOver(e: React.DragEvent) {
+    if (!editMode) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+  }
+
+  function reorderGradeTabs(sourceGradeId: string, targetGradeId: string, placeAfterTarget: boolean) {
+    if (!tree || !editMode) return;
+    if (sourceGradeId === targetGradeId) return;
+
+    const ids = gradeFolders.map((g) => g.id);
+    const fromIdx = ids.indexOf(sourceGradeId);
+    const toIdx = ids.indexOf(targetGradeId);
+    if (fromIdx < 0 || toIdx < 0) return;
+
+    const nextIds = ids.filter((id) => id !== sourceGradeId);
+    const targetIndex = nextIds.indexOf(targetGradeId);
+    const insertAt = placeAfterTarget ? targetIndex + 1 : targetIndex;
+    nextIds.splice(insertAt, 0, sourceGradeId);
+
+    const next = reorderChildren(tree, tree.root.id, nextIds);
+    setTree(next);
+  }
+
+  function onGradeDrop(targetGradeId: string, e: React.DragEvent<HTMLButtonElement>) {
+    if (!editMode) return;
+    e.preventDefault();
+    const source = e.dataTransfer.getData(GRADE_DRAG_MIME) || draggingGradeId;
+    if (!source) return;
+    reorderGradeTabs(source, targetGradeId, false);
+    setDraggingGradeId(null);
+  }
+
+  function onGradeDropToEnd(e: React.DragEvent<HTMLDivElement>) {
+    if (!tree || !editMode) return;
+    e.preventDefault();
+    const source = e.dataTransfer.getData(GRADE_DRAG_MIME) || draggingGradeId;
+    if (!source) return;
+    const last = gradeFolders[gradeFolders.length - 1];
+    if (!last) return;
+    reorderGradeTabs(source, last.id, true);
+    setDraggingGradeId(null);
+  }
+
   if (!tree) {
     return (
       <div className="p-6">
@@ -380,12 +434,20 @@ export default function LecturesPage() {
           ) : (
             gradeFolders.map((grade) => {
               const active = grade.id === selectedGrade?.id;
+              const dragging = draggingGradeId === grade.id;
               return (
                 <button
                   key={grade.id}
                   className={`px-4 py-2 rounded-md border text-sm ${
                     active ? "bg-sky-100 border-sky-300 text-sky-900" : "bg-white hover:bg-neutral-50"
                   }`}
+                  draggable={editMode}
+                  onDragStart={(e) => onGradeDragStart(grade.id, e)}
+                  onDragOver={onGradeDragOver}
+                  onDrop={(e) => onGradeDrop(grade.id, e)}
+                  onDragEnd={() => setDraggingGradeId(null)}
+                  style={{ cursor: editMode ? "grab" : "pointer", opacity: dragging ? 0.65 : 1 }}
+                  title={editMode ? "드래그해서 학년 탭 순서를 바꿀 수 있습니다." : undefined}
                   onClick={() =>
                     withDraftSaved(() => {
                       setSelectedGradeId(grade.id);
@@ -397,6 +459,17 @@ export default function LecturesPage() {
               );
             })
           )}
+
+          {editMode && gradeFolders.length > 1 ? (
+            <div
+              className="px-3 py-2 rounded-md border border-dashed text-xs text-neutral-500 bg-neutral-50"
+              onDragOver={onGradeDragOver}
+              onDrop={onGradeDropToEnd}
+              title="여기로 드롭하면 맨 뒤로 이동합니다."
+            >
+              맨 뒤로 이동
+            </div>
+          ) : null}
 
           <div className="mx-1 h-8 w-px bg-neutral-200" />
 
@@ -418,6 +491,7 @@ export default function LecturesPage() {
             ))}
           </select>
         </div>
+        {editMode ? <div className="mt-2 text-xs text-neutral-500">편집 모드에서 학년 탭을 드래그해서 순서를 바꿀 수 있습니다.</div> : null}
       </div>
 
       <div className="grid gap-4 lg:grid-cols-[380px_minmax(0,1fr)]">
