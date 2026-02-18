@@ -40,7 +40,7 @@ export type Student = {
   teacherId?: string | null;
 
   // ---------- 신규 학생 기본정보(필수) ----------
-  // Google e-mail은 UI에서 [local]@gmail.com 형태로 입력받아 전체 주소로 저장합니다.
+  // Google e-mail은 UI에서 전체 주소(예: xx@yy.zz)로 입력받아 저장합니다.
   googleEmail: string;
 
   // 전화번호는 저장 시 숫자만 남깁니다(예: 010-1234-5678 -> 01012345678)
