@@ -102,6 +102,7 @@ export type ConsultationRecord = {
 export type ScheduleChangeEvent = {
   id: Id;
   startIndex: number; // 이 회차부터 적용
+  startDate?: string; // "YYYY-MM-DD" (선택한 변경 시작 날짜)
   newRules: ScheduleRule[];
   createdAt?: string; // ISO string
 };

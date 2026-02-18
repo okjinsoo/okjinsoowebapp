@@ -88,7 +88,6 @@ function writeMetaMap(token: string, metaMap: Record<number, SessionMeta>) {
 }
 
 export function readMetaMap(token: string): Record<number, SessionMeta> {
-  if (typeof window === "undefined") return {};
   if (!token) return {};
   try {
     const raw = browserStorage.getItem(metaMapKey(token));
@@ -293,6 +292,46 @@ function buildDatesAfterISO(lastISO: string, rules: ScheduleRule[], count: numbe
   return out;
 }
 
+function normalizeYmd(v: unknown): string | null {
+  if (typeof v !== "string") return null;
+  const s = v.trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return null;
+  const t = new Date(`${s}T00:00:00+09:00`).getTime();
+  if (!Number.isFinite(t)) return null;
+  return s;
+}
+
+function buildDatesSegment(args: {
+  studentStartYMD: string;
+  lastISO: string | null;
+  rules: ScheduleRule[];
+  count: number;
+  minStartYMD?: string | null;
+}): string[] {
+  const { studentStartYMD, lastISO, rules, count, minStartYMD } = args;
+  if (count <= 0) return [];
+
+  if (!lastISO) {
+    const startYMD = minStartYMD && minStartYMD > studentStartYMD ? minStartYMD : studentStartYMD;
+    return buildDatesFromRules(startYMD, rules, count);
+  }
+
+  let boundaryISO = lastISO;
+  const minYmd = normalizeYmd(minStartYMD);
+  if (minYmd) {
+    const minIso = isoFromKST(minYmd, 0, 0);
+    if (minIso) {
+      const minMs = new Date(minIso).getTime();
+      const boundaryMs = new Date(boundaryISO).getTime();
+      if (Number.isFinite(minMs) && Number.isFinite(boundaryMs) && minMs > boundaryMs) {
+        boundaryISO = minIso;
+      }
+    }
+  }
+
+  return buildDatesAfterISO(boundaryISO, rules, count);
+}
+
 function buildBaseDatesISOFromRules(student: Student, count: number): string[] {
   const startYMD = student.startDate; // "YYYY-MM-DD"
   if (!startYMD) return [];
@@ -300,43 +339,72 @@ function buildBaseDatesISOFromRules(student: Student, count: number): string[] {
   if (baseRules.length === 0) return [];
 
   const rawChanges = Array.isArray(student.scheduleChangeEvents) ? student.scheduleChangeEvents : [];
+  const localMetaMap = readMetaMap(student.token ?? "");
   const changes = rawChanges
     .filter((c) => Number.isFinite(c.startIndex) && c.startIndex >= 1 && Array.isArray(c.newRules))
-    .sort((a, b) => a.startIndex - b.startIndex);
+    .map((c) => {
+      const effectiveStartIndex = Math.max(1, Math.floor(Number(c.startIndex)));
+      const carryOffset = carrySumUntil(localMetaMap, effectiveStartIndex);
+      const baseStartIndex = Math.max(1, effectiveStartIndex + carryOffset);
+      const rules = normalizeRules(c.newRules ?? []);
+      const startDate = normalizeYmd((c as { startDate?: unknown }).startDate);
+      return {
+        effectiveStartIndex,
+        baseStartIndex,
+        rules,
+        startDate,
+      };
+    })
+    .filter((c) => c.rules.length > 0)
+    .sort((a, b) => {
+      if (a.baseStartIndex !== b.baseStartIndex) return a.baseStartIndex - b.baseStartIndex;
+      return a.effectiveStartIndex - b.effectiveStartIndex;
+    });
 
   if (changes.length === 0) return buildDatesFromRules(startYMD, baseRules, count);
 
   const out: string[] = [];
   let lastISO: string | null = null;
   let currentRules = baseRules;
-  let currentStart = 1;
+  let currentBaseStart = 1;
+  let currentMinStartYMD: string | null = null;
 
   for (const ch of changes) {
-    if (ch.startIndex <= currentStart) {
-      currentRules = normalizeRules(ch.newRules ?? []);
-      currentStart = ch.startIndex;
+    if (ch.baseStartIndex <= currentBaseStart) {
+      currentRules = ch.rules;
+      currentBaseStart = ch.baseStartIndex;
+      currentMinStartYMD = ch.startDate;
       continue;
     }
 
-    const segCount = Math.min(ch.startIndex - currentStart, count - out.length);
+    const segCount = Math.min(ch.baseStartIndex - currentBaseStart, count - out.length);
     if (segCount > 0) {
-      const segment: string[] = lastISO
-        ? buildDatesAfterISO(lastISO, currentRules, segCount)
-        : buildDatesFromRules(startYMD, currentRules, segCount);
+      const segment = buildDatesSegment({
+        studentStartYMD: startYMD,
+        lastISO,
+        rules: currentRules,
+        count: segCount,
+        minStartYMD: currentMinStartYMD,
+      });
       out.push(...segment);
       lastISO = segment[segment.length - 1] ?? lastISO;
     }
 
-    currentRules = normalizeRules(ch.newRules ?? []);
-    currentStart = ch.startIndex;
+    currentRules = ch.rules;
+    currentBaseStart = ch.baseStartIndex;
+    currentMinStartYMD = ch.startDate;
     if (out.length >= count) break;
   }
 
   if (out.length < count) {
     const segCount = count - out.length;
-    const segment: string[] = lastISO
-      ? buildDatesAfterISO(lastISO, currentRules, segCount)
-      : buildDatesFromRules(startYMD, currentRules, segCount);
+    const segment = buildDatesSegment({
+      studentStartYMD: startYMD,
+      lastISO,
+      rules: currentRules,
+      count: segCount,
+      minStartYMD: currentMinStartYMD,
+    });
     out.push(...segment);
   }
 

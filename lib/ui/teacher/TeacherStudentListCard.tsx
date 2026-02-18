@@ -31,12 +31,32 @@ export default function TeacherStudentListCard({ students, onStudentClick, onAdd
 
   const scheduleTextOf = (s: Student) => {
     const changes = s.scheduleChangeEvents ?? [];
-    if (changes.length > 0) {
-      const sorted = [...changes].sort((a, b) => a.startIndex - b.startIndex);
-      const last = sorted[sorted.length - 1];
-      if (last?.newRules?.length) return formatSchedule(last.newRules);
+    const sorted = [...changes].sort((a, b) => a.startIndex - b.startIndex);
+    const today = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Seoul",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    })
+      .formatToParts(new Date())
+      .reduce(
+        (acc, p) => {
+          if (p.type === "year") acc.y = p.value;
+          if (p.type === "month") acc.m = p.value;
+          if (p.type === "day") acc.d = p.value;
+          return acc;
+        },
+        { y: "1970", m: "01", d: "01" }
+      );
+    const todayYmd = `${today.y}-${today.m}-${today.d}`;
+
+    let rules = [...(s.scheduleRules ?? [])];
+    for (const ch of sorted) {
+      if (!Array.isArray(ch.newRules) || ch.newRules.length === 0) continue;
+      if (ch.startDate && ch.startDate > todayYmd) continue;
+      rules = [...ch.newRules];
     }
-    return formatSchedule(s.scheduleRules ?? []);
+    return rules.length ? formatSchedule(rules) : "-";
   };
 
   return (

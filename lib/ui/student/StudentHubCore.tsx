@@ -329,11 +329,18 @@ export default function StudentHubCore({
     return formatSchedule(rules);
   }, [student]);
   const currentScheduleText = useMemo(() => {
+    if (!student) return scheduleText;
     const changes = student?.scheduleChangeEvents ?? [];
     if (changes.length === 0) return scheduleText;
     const sorted = [...changes].sort((a, b) => a.startIndex - b.startIndex);
-    const last = sorted[sorted.length - 1];
-    return last?.newRules?.length ? formatSchedule(last.newRules) : scheduleText;
+    const today = todayYmdKST();
+    let activeRules = [...(student.scheduleRules ?? [])];
+    for (const ch of sorted) {
+      if (!Array.isArray(ch.newRules) || ch.newRules.length === 0) continue;
+      if (ch.startDate && ch.startDate > today) continue;
+      activeRules = [...ch.newRules];
+    }
+    return activeRules.length ? formatSchedule(activeRules) : scheduleText;
   }, [student, scheduleText]);
 
   const parentRoleLabel = useMemo(() => {
@@ -706,11 +713,11 @@ export default function StudentHubCore({
     if (!student) return;
     setScheduleError("");
     const baseDates = buildBaseDatesISO(student, 60);
-    const metaMap = readMetaMap(token);
+    const localMetaMap = readMetaMap(token);
     let nextIndex = 0;
     const now = new Date();
     for (let i = 1; i <= currentCount; i++) {
-      const { effectiveISO } = computeEffectiveISO({ token, index: i, baseDatesISO: baseDates, metaMap });
+      const { effectiveISO } = computeEffectiveISO({ token, index: i, baseDatesISO: baseDates, metaMap: localMetaMap });
       if (!effectiveISO) continue;
       const t = new Date(effectiveISO);
       if (Number.isFinite(t.getTime()) && t > now) {
@@ -720,11 +727,23 @@ export default function StudentHubCore({
     }
     const startIdx = nextIndex > 0 ? nextIndex : Math.max(1, currentCount + 1);
     setScheduleStartIndex(startIdx);
-    const baseYmd = startIdx > 0 ? ymdFromISO_KST(baseDates[startIdx - 1]) : null;
-    setScheduleStartDate(baseYmd ?? "");
-    const rules = (student?.scheduleChangeEvents?.length
-      ? student?.scheduleChangeEvents?.[student.scheduleChangeEvents.length - 1]?.newRules
-      : student?.scheduleRules) ?? [];
+    const { effectiveISO: startEffectiveISO } = computeEffectiveISO({
+      token,
+      index: startIdx,
+      baseDatesISO: baseDates,
+      metaMap: localMetaMap,
+    });
+    const startYmd = ymdFromISO_KST(startEffectiveISO ?? "");
+    setScheduleStartDate(startYmd ?? "");
+
+    const sortedChanges = [...(student.scheduleChangeEvents ?? [])].sort((a, b) => a.startIndex - b.startIndex);
+    const today = todayYmdKST();
+    let rules = [...(student.scheduleRules ?? [])];
+    for (const ch of sortedChanges) {
+      if (!Array.isArray(ch.newRules) || ch.newRules.length === 0) continue;
+      if (ch.startDate && ch.startDate > today) continue;
+      rules = [...ch.newRules];
+    }
     setScheduleDays((prev) => {
       const next = { ...prev };
       for (const d of [0, 1, 2, 3, 4, 5, 6]) next[d] = { ...next[d], on: false };
@@ -777,7 +796,24 @@ export default function StudentHubCore({
     }
 
     const nextEvents = (student?.scheduleChangeEvents ?? []).filter((e) => e.startIndex !== startIndex);
-    nextEvents.push({ id: makeId(), startIndex, newRules: rules, createdAt: nowIso() });
+    const baseDates = buildBaseDatesISO(student, 120);
+    const localMetaMap = readMetaMap(token);
+    const { effectiveISO } = computeEffectiveISO({
+      token,
+      index: startIndex,
+      baseDatesISO: baseDates,
+      metaMap: localMetaMap,
+    });
+    const fallbackStartDate = ymdFromISO_KST(effectiveISO ?? "");
+    const normalizedStartDate = (scheduleStartDate || fallbackStartDate || "").trim();
+
+    nextEvents.push({
+      id: makeId(),
+      startIndex,
+      startDate: normalizedStartDate || undefined,
+      newRules: rules,
+      createdAt: nowIso(),
+    });
     nextEvents.sort((a, b) => a.startIndex - b.startIndex);
 
     upsertStudent({ ...student, scheduleChangeEvents: nextEvents });
@@ -1625,8 +1661,8 @@ export default function StudentHubCore({
                         alignItems: "center",
                       }}
                     >
-                    <div style={{ fontWeight: 700 }}>{formatYmdDot(e.createdAt?.slice(0, 10))}</div>
-                    <div>{e.startIndex}회차부터</div>
+                      <div style={{ fontWeight: 700 }}>{formatYmdDot(e.createdAt?.slice(0, 10))}</div>
+                    <div>{e.startDate ? `${formatYmdDot(e.startDate)}부터` : `${e.startIndex}회차부터`}</div>
                     <div style={{ color: "#374151" }}>{formatSchedule(e.newRules)}</div>
                   </div>
                   {canEdit ? (
