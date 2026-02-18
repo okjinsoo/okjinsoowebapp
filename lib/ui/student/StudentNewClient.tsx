@@ -80,8 +80,7 @@ export default function StudentNewClient(props: {
   const [name, setName] = useState("");
   const [gender, setGender] = useState<"" | "male" | "female">("");
 
-  const [gmailLocal, setGmailLocal] = useState(""); // local part only
-  const googleEmail = useMemo(() => `${gmailLocal.trim()}@gmail.com`, [gmailLocal]);
+  const [googleEmail, setGoogleEmail] = useState("");
 
   const [studentPhone, setStudentPhone] = useState("");
   const [school, setSchool] = useState("");
@@ -150,9 +149,11 @@ export default function StudentNewClient(props: {
 
     if (!name.trim()) return fail("학생 이름을 입력해주세요.");
 
-    const local = gmailLocal.trim();
-    if (!local) return fail("학생 Google e-mail을 입력해주세요.");
-    if (local.includes("@")) return fail("e-mail은 @ 앞부분만 입력해주세요. (@gmail.com은 자동입니다.)");
+    const email = googleEmail.trim();
+    if (!email) return fail("학생 Google e-mail을 입력해주세요.");
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return fail("e-mail 형식이 올바르지 않습니다. 예: xx@yy.zz");
+    }
 
     if (!normalizePhoneDigits(studentPhone)) return fail("학생 전화번호를 입력해주세요.");
     if (!school.trim()) return fail("학생 학교를 입력해주세요.");
@@ -197,7 +198,7 @@ export default function StudentNewClient(props: {
       planCount: pc,
       scheduleRules: rules,
 
-      googleEmail: `${gmailLocal.trim()}@gmail.com`,
+      googleEmail: googleEmail.trim(),
       studentPhone: normalizePhoneDigits(studentPhone),
       school: school.trim(),
       grade: grade,
@@ -413,24 +414,21 @@ export default function StudentNewClient(props: {
 
             <div>
               <div style={{ fontWeight: 700}}>학생 Google e-mail *</div>
-              <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 6, flexWrap: "wrap" }}>
-                <input
-                  value={gmailLocal}
-                  onChange={(e) => setGmailLocal(e.target.value)}
-                  placeholder="예: okjinsoo.math"
-                  style={{
-                    flex: 1,
-                    minWidth: 220,
-                    height: 40,
-                    padding: 10,
-                    border: "1px solid #ccc",
-                    borderRadius: 8,
-                  }}
-                />
-                <span style={{ fontFamily: "monospace" }}>@gmail.com</span>
-              </div>
+              <input
+                value={googleEmail}
+                onChange={(e) => setGoogleEmail(e.target.value)}
+                placeholder="예: xx@yy.zz"
+                style={{
+                  width: "100%",
+                  height: 44,
+                  padding: 10,
+                  border: "1px solid #ccc",
+                  borderRadius: 8,
+                  marginTop: 6,
+                }}
+              />
               <div style={{ color: "#666", marginTop: 6 }}>
-                저장 값: <code>{gmailLocal.trim() ? googleEmail : "[입력 필요]@gmail.com"}</code>
+                저장 값: <code>{googleEmail.trim() || "입력 필요"}</code>
               </div>
             </div>
 
