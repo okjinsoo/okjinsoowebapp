@@ -4,6 +4,8 @@ import { browserStorage } from "@/lib/storage/browserStorage";
 
 export const AUTH_STORAGE_KEY = "tutorweb_auth_session_v1";
 export const AUTH_EVENT = "tutorweb:authUpdated";
+const AUTH_COOKIE_KEY = "tutorweb_auth_session_bridge_v1";
+const AUTH_COOKIE_MAX_AGE_SEC = 60 * 60 * 24 * 14;
 
 export type AuthSession = {
   accessToken: string;
@@ -41,6 +43,65 @@ const REFRESH_SKEW_MS = 60 * 1000;
 const REFRESH_FAILURE_COOLDOWN_MS = 30 * 1000;
 let refreshInFlight: Promise<AuthSession | null> | null = null;
 let lastRefreshFailureAt = 0;
+
+function parseAuthSessionRaw(raw: string | null): AuthSession | null {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!isAuthSession(parsed)) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function readCookie(name: string): string | null {
+  if (typeof document === "undefined") return null;
+  const chunks = document.cookie ? document.cookie.split("; ") : [];
+  for (const chunk of chunks) {
+    const idx = chunk.indexOf("=");
+    if (idx <= 0) continue;
+    const key = decodeURIComponent(chunk.slice(0, idx));
+    if (key !== name) continue;
+    return decodeURIComponent(chunk.slice(idx + 1));
+  }
+  return null;
+}
+
+function writeCookie(name: string, value: string, maxAgeSec: number): void {
+  if (typeof document === "undefined") return;
+  const secure = typeof window !== "undefined" && window.location.protocol === "https:" ? "; Secure" : "";
+  document.cookie = `${encodeURIComponent(name)}=${encodeURIComponent(value)}; Path=/; Max-Age=${Math.max(
+    0,
+    Math.floor(maxAgeSec)
+  )}; SameSite=Lax${secure}`;
+}
+
+function clearCookie(name: string): void {
+  if (typeof document === "undefined") return;
+  const secure = typeof window !== "undefined" && window.location.protocol === "https:" ? "; Secure" : "";
+  document.cookie = `${encodeURIComponent(name)}=; Path=/; Max-Age=0; SameSite=Lax${secure}`;
+}
+
+function sessionRank(session: AuthSession | null): number {
+  if (!session) return Number.NEGATIVE_INFINITY;
+  if (session.expiresAt === null) return Date.now();
+  return session.expiresAt;
+}
+
+function pickPreferredSession(primary: AuthSession | null, secondary: AuthSession | null): AuthSession | null {
+  if (!primary) return secondary;
+  if (!secondary) return primary;
+
+  const now = Date.now();
+  const primaryExpired = primary.expiresAt !== null && now >= primary.expiresAt;
+  const secondaryExpired = secondary.expiresAt !== null && now >= secondary.expiresAt;
+  if (primaryExpired !== secondaryExpired) {
+    return primaryExpired ? secondary : primary;
+  }
+
+  return sessionRank(secondary) > sessionRank(primary) ? secondary : primary;
+}
 
 export function getSupabaseConfig(): SupabaseConfig | null {
   const url = (process.env.NEXT_PUBLIC_SUPABASE_URL ?? "").trim();
@@ -112,26 +173,35 @@ function isAuthSession(v: unknown): v is AuthSession {
 
 export function loadAuthSession(): AuthSession | null {
   if (typeof window === "undefined") return null;
-  try {
-    const raw = browserStorage.getItem(AUTH_STORAGE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as unknown;
-    if (!isAuthSession(parsed)) return null;
-    return parsed;
-  } catch {
-    return null;
+  const storageRaw = browserStorage.getItem(AUTH_STORAGE_KEY);
+  const cookieRaw = readCookie(AUTH_COOKIE_KEY);
+  const storageSession = parseAuthSessionRaw(storageRaw);
+  const cookieSession = parseAuthSessionRaw(cookieRaw);
+  const picked = pickPreferredSession(storageSession, cookieSession);
+  if (!picked) return null;
+
+  const pickedRaw = JSON.stringify(picked);
+  if (storageRaw !== pickedRaw) {
+    browserStorage.setItem(AUTH_STORAGE_KEY, pickedRaw);
   }
+  if (cookieRaw !== pickedRaw) {
+    writeCookie(AUTH_COOKIE_KEY, pickedRaw, AUTH_COOKIE_MAX_AGE_SEC);
+  }
+  return picked;
 }
 
 export function saveAuthSession(session: AuthSession): void {
   if (typeof window === "undefined") return;
-  browserStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(session));
+  const raw = JSON.stringify(session);
+  browserStorage.setItem(AUTH_STORAGE_KEY, raw);
+  writeCookie(AUTH_COOKIE_KEY, raw, AUTH_COOKIE_MAX_AGE_SEC);
   dispatchAuthUpdated();
 }
 
 export function clearAuthSession(): void {
   if (typeof window === "undefined") return;
   browserStorage.removeItem(AUTH_STORAGE_KEY);
+  clearCookie(AUTH_COOKIE_KEY);
   dispatchAuthUpdated();
 }
 
@@ -189,12 +259,8 @@ async function refreshAuthSessionOnce(session: AuthSession): Promise<AuthSession
   return next;
 }
 
-export async function ensureAuthSession(): Promise<AuthSession | null> {
-  const session = loadAuthSession();
-  if (!session) return null;
-  if (!shouldRefreshSession(session)) return session;
-
-  if (Date.now() - lastRefreshFailureAt < REFRESH_FAILURE_COOLDOWN_MS) {
+async function refreshSessionWithLock(session: AuthSession, args?: { ignoreCooldown?: boolean }): Promise<AuthSession | null> {
+  if (!args?.ignoreCooldown && Date.now() - lastRefreshFailureAt < REFRESH_FAILURE_COOLDOWN_MS) {
     if (session.expiresAt === null || Date.now() < session.expiresAt) {
       return session;
     }
@@ -203,6 +269,9 @@ export async function ensureAuthSession(): Promise<AuthSession | null> {
   }
 
   if (!session.refreshToken) {
+    if (session.expiresAt === null || Date.now() < session.expiresAt) {
+      return session;
+    }
     clearAuthSession();
     return null;
   }
@@ -213,7 +282,7 @@ export async function ensureAuthSession(): Promise<AuthSession | null> {
         const refreshed = await refreshAuthSessionOnce(session);
         if (!refreshed) {
           lastRefreshFailureAt = Date.now();
-          if (session.expiresAt !== null && Date.now() < session.expiresAt) {
+          if (session.expiresAt === null || Date.now() < session.expiresAt) {
             return session;
           }
           clearAuthSession();
@@ -228,6 +297,19 @@ export async function ensureAuthSession(): Promise<AuthSession | null> {
   }
 
   return refreshInFlight;
+}
+
+export async function ensureAuthSession(): Promise<AuthSession | null> {
+  const session = loadAuthSession();
+  if (!session) return null;
+  if (!shouldRefreshSession(session)) return session;
+  return refreshSessionWithLock(session);
+}
+
+export async function forceRefreshAuthSession(): Promise<AuthSession | null> {
+  const session = loadAuthSession();
+  if (!session) return null;
+  return refreshSessionWithLock(session, { ignoreCooldown: true });
 }
 
 export async function getValidAccessToken(): Promise<string | null> {

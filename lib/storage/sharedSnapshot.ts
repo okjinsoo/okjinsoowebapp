@@ -2,6 +2,7 @@
 
 import {
   AUTH_STORAGE_KEY,
+  forceRefreshAuthSession,
   getSupabaseConfig,
   getValidAccessToken,
 } from "@/lib/auth/supabaseAuth";
@@ -134,9 +135,11 @@ export function readLocalSharedStateKv(): Record<string, string> {
   return readLocalStateKv();
 }
 
-async function getHeaders(args?: { json?: boolean }): Promise<Record<string, string> | null> {
+async function getHeaders(args?: { json?: boolean; forceRefresh?: boolean }): Promise<Record<string, string> | null> {
   const cfg = getSupabaseConfig();
-  const accessToken = await getValidAccessToken();
+  const accessToken = args?.forceRefresh
+    ? (await forceRefreshAuthSession())?.accessToken ?? null
+    : await getValidAccessToken();
   if (!cfg || !accessToken) return null;
 
   const headers: Record<string, string> = {
@@ -281,6 +284,11 @@ function isMissingColumnError(detail: string, column: string): boolean {
   );
 }
 
+function isJwtAuthError(detail: string): boolean {
+  const lower = detail.toLowerCase();
+  return lower.includes("jwt expired") || lower.includes("invalid jwt") || lower.includes("jwt");
+}
+
 function hasLocalSnapshot(): boolean {
   if (typeof window === "undefined") return false;
   return (
@@ -299,20 +307,71 @@ async function fetchSnapshotRows(args: {
   requestUrl.searchParams.set("id", `eq.${SNAPSHOT_KEY}`);
   requestUrl.searchParams.set("limit", "1");
 
-  const res = await fetch(requestUrl.toString(), {
-    method: "GET",
-    headers: args.headers,
-  });
+  const execute = async (headers: Record<string, string>): Promise<FetchRowsResult> => {
+    const res = await fetch(requestUrl.toString(), {
+      method: "GET",
+      headers,
+    });
 
-  if (res.ok) {
-    return { ok: true, rows: (await res.json()) as SnapshotRow[] };
-  }
+    if (res.ok) {
+      return { ok: true, rows: (await res.json()) as SnapshotRow[] };
+    }
 
-  return {
-    ok: false,
-    status: res.status,
-    text: await res.text(),
+    return {
+      ok: false,
+      status: res.status,
+      text: await res.text(),
+    };
   };
+
+  let result = await execute(args.headers);
+  if (!result.ok && result.status === 401 && isJwtAuthError(result.text)) {
+    const retryHeaders = await getHeaders({ forceRefresh: true });
+    if (retryHeaders) {
+      result = await execute(retryHeaders);
+    }
+  }
+  return result;
+}
+
+async function postSnapshotUpsertWithRetry(args: {
+  url: URL;
+  headers: Record<string, string>;
+  payload: unknown;
+}): Promise<{ ok: boolean; status: number; text: string }> {
+  const body = JSON.stringify(args.payload);
+
+  const execute = async (headers: Record<string, string>) => {
+    const res = await fetch(args.url.toString(), {
+      method: "POST",
+      headers: {
+        ...headers,
+        Prefer: "resolution=merge-duplicates",
+      },
+      body,
+    });
+    if (res.ok) {
+      return {
+        ok: true,
+        status: res.status,
+        text: "",
+      };
+    }
+    return {
+      ok: false,
+      status: res.status,
+      text: await res.text(),
+    };
+  };
+
+  let result = await execute(args.headers);
+  if (!result.ok && result.status === 401 && isJwtAuthError(result.text)) {
+    const retryHeaders = await getHeaders({ json: true, forceRefresh: true });
+    if (retryHeaders) {
+      result = await execute(retryHeaders);
+    }
+  }
+  return result;
 }
 
 async function fetchRemoteStateKv(args: {
@@ -436,29 +495,26 @@ export async function pushSharedSnapshot(args?: {
     fullPayload.state_kv = stateKv;
   }
 
-  const fullRes = await fetch(upsertUrl.toString(), {
-    method: "POST",
-    headers: {
-      ...headers,
-      Prefer: "resolution=merge-duplicates",
-    },
-    body: JSON.stringify([fullPayload]),
+  const fullResult = await postSnapshotUpsertWithRetry({
+    url: upsertUrl,
+    headers,
+    payload: [fullPayload],
   });
 
-  if (fullRes.ok) {
+  if (fullResult.ok) {
     return {
       sessionsSynced: true,
       stateKvSynced: true,
     };
   }
 
-  const text = await fullRes.text();
+  const text = fullResult.text;
   const sessionsMissing = includeSessions && isMissingColumnError(text, "sessions");
   const stateKvMissing =
     hasStateKvArg && isMissingColumnError(text, "state_kv");
 
   if (!sessionsMissing && !stateKvMissing) {
-    throw new Error(`snapshot upsert failed: ${fullRes.status} ${text}`);
+    throw new Error(`snapshot upsert failed: ${fullResult.status} ${text}`);
   }
 
   const fallbackPayload: {
@@ -473,19 +529,16 @@ export async function pushSharedSnapshot(args?: {
   if (includeSessions && !sessionsMissing) fallbackPayload.sessions = sessions ?? [];
   if (hasStateKvArg && !stateKvMissing) fallbackPayload.state_kv = stateKv ?? {};
 
-  const fallbackRes = await fetch(upsertUrl.toString(), {
-    method: "POST",
-    headers: {
-      ...headers,
-      Prefer: "resolution=merge-duplicates",
-    },
-    body: JSON.stringify([fallbackPayload]),
+  const fallbackResult = await postSnapshotUpsertWithRetry({
+    url: upsertUrl,
+    headers,
+    payload: [fallbackPayload],
   });
 
-  if (!fallbackRes.ok) {
-    const fallbackText = await fallbackRes.text();
+  if (!fallbackResult.ok) {
+    const fallbackText = fallbackResult.text;
     throw new Error(
-      `snapshot upsert failed (fallback): ${fallbackRes.status} ${fallbackText}`
+      `snapshot upsert failed (fallback): ${fallbackResult.status} ${fallbackText}`
     );
   }
 
