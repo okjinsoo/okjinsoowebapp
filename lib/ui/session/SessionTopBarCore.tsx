@@ -15,7 +15,7 @@ import {
 import { buildConsultationRecord, normalizeConsultPurpose, validateConsultForm } from "@/lib/factories/consultationFactory";
 import { fmtKST_yyyyMMdd_HHmm_noSeconds } from "@/lib/ui/session/format";
 import Badge from "@/lib/ui/common/Badge";
-import { ACHIEVEMENT_BADGE_BG, ACHIEVEMENT_BADGE_TEXT } from "@/lib/ui/common/achievementBadge";
+import { getAchievementBadgeStyle } from "@/lib/ui/common/achievementBadge";
 import { findStudentByToken, upsertStudent } from "@/lib/storage/students";
 import { sessionsByStudent } from "@/lib/storage/sessions";
 import { loadConsultationsByStudent, saveConsultationsByStudent } from "@/lib/storage/consultations";
@@ -555,7 +555,7 @@ export default function SessionTopBarCore({ role, token, index }: Props) {
         <div className="flex items-center gap-2 flex-wrap text-dim">
           <div>{mounted ? (effectiveISO ? fmtKST_yyyyMMdd_HHmm_noSeconds(effectiveISO) : "예정일 없음") : "-"}</div>
           <Badge style={{ background: statusStyle.bg, color: statusStyle.text }}>{statusLabel}</Badge>
-          <Badge style={{ background: ACHIEVEMENT_BADGE_BG, color: ACHIEVEMENT_BADGE_TEXT }}>{achievementPercent}%</Badge>
+          <Badge style={getAchievementBadgeStyle(achievementPercent)}>{achievementPercent}%</Badge>
           {!(
             lastClassIndex &&
             index === lastClassIndex &&

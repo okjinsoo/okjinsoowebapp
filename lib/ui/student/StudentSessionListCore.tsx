@@ -22,7 +22,7 @@ import Badge from "@/lib/ui/common/Badge";
 import SessionQuickActions from "@/lib/ui/session/SessionQuickActions";
 import { buildConsultationMap, pickPrimaryConsultTag } from "@/lib/ui/session/consultationMap";
 import { findLastClassIndex } from "@/lib/ui/session/pauseHelpers";
-import { ACHIEVEMENT_BADGE_BG, ACHIEVEMENT_BADGE_TEXT } from "@/lib/ui/common/achievementBadge";
+import { getAchievementBadgeStyle } from "@/lib/ui/common/achievementBadge";
 import type { ConsultTag } from "@/lib/ui/session/consultationMap";
 import type { ConsultationRecord } from "@/lib/types/index";
 import { ConsultBadge, ConsultButton } from "@/lib/ui/common/ConsultParts";
@@ -524,7 +524,7 @@ export default function StudentSessionListCore({ role, token, prefix, hideTokenI
                     <div>
                       {r.dateText} {r.timeText}
                     </div>
-                    <Badge style={{ background: ACHIEVEMENT_BADGE_BG, color: ACHIEVEMENT_BADGE_TEXT }}>{r.progress.percent}%</Badge>
+                    <Badge style={getAchievementBadgeStyle(r.progress.percent)}>{r.progress.percent}%</Badge>
                     <Badge style={{ background: statusStyle.bg, color: statusStyle.text }}>{statusLabel}</Badge>
                     {!(
                       consultTag &&
@@ -623,7 +623,7 @@ export default function StudentSessionListCore({ role, token, prefix, hideTokenI
                     <div>
                       {r.dateText} {r.timeText}
                     </div>
-                    <Badge style={{ background: ACHIEVEMENT_BADGE_BG, color: ACHIEVEMENT_BADGE_TEXT }}>{r.progress.percent}%</Badge>
+                    <Badge style={getAchievementBadgeStyle(r.progress.percent)}>{r.progress.percent}%</Badge>
                     <Badge style={{ background: statusStyle.bg, color: statusStyle.text }}>{statusLabel}</Badge>
                     {!(
                       consultTag &&

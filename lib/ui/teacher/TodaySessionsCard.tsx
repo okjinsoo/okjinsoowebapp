@@ -12,7 +12,7 @@ import { loadStudents, upsertStudent } from "@/lib/storage/students";
 import { buildConsultationRecord, validateConsultForm } from "@/lib/factories/consultationFactory";
 import { computePauseLifecycle } from "@/lib/factories/studentStatusFactory";
 import { ConsultBadge, ConsultButton } from "@/lib/ui/common/ConsultParts";
-import { ACHIEVEMENT_BADGE_BG, ACHIEVEMENT_BADGE_TEXT } from "@/lib/ui/common/achievementBadge";
+import { getAchievementBadgeStyle } from "@/lib/ui/common/achievementBadge";
 import ConsultModal, { ConsultFormState } from "@/lib/ui/common/ConsultModal";
 import { makeId } from "@/lib/utils/id";
 import { nowIso, todayYmdKST, ymdFromISO_KST } from "@/lib/utils/date";
@@ -237,7 +237,7 @@ export default function TodaySessionsCard({ rows, role }: Props) {
                     {r.lastClass ? (
                       <Badge style={{ background: "#ef4444", color: "#fff" }}>마지막 수업</Badge>
                     ) : null}
-                    <Badge style={{ background: ACHIEVEMENT_BADGE_BG, color: ACHIEVEMENT_BADGE_TEXT }}>{r.percent}%</Badge>
+                    <Badge style={getAchievementBadgeStyle(r.percent)}>{r.percent}%</Badge>
                     <Badge style={{ background: statusStyle.bg, color: statusStyle.text }}>{statusLabel}</Badge>
                     {(r.badges ?? []).map((badge) => (
                       <Badge key={`${r.token}:${r.index}:${badge}`} style={{ background: "#f1f5f9", color: "#334155" }}>
