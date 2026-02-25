@@ -167,6 +167,17 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
     return () => clearTimeout(id);
   }, [token, sessionIndex]);
 
+  useEffect(() => {
+    if (!mounted) return;
+    const onLectureTreeUpdated = () => {
+      setTree(loadLectureTree());
+    };
+    window.addEventListener("tutorweb:lectureTreeUpdated", onLectureTreeUpdated);
+    return () => {
+      window.removeEventListener("tutorweb:lectureTreeUpdated", onLectureTreeUpdated);
+    };
+  }, [mounted]);
+
   // save (progress는 모두 저장 / 배치는 t/a만 저장)
   useEffect(() => {
     if (!mounted) return;

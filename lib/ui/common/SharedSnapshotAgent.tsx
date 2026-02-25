@@ -6,6 +6,7 @@ import { BROWSER_STORAGE_EVENT } from "@/lib/storage/browserStorage";
 import { pullSharedSnapshotAndHydrateWithOptions, pushSharedSnapshot } from "@/lib/storage/sharedSnapshot";
 
 const PUSH_DEBOUNCE_MS = 700;
+const PUSH_RETRY_MS = 1500;
 const REMOTE_PULL_INTERVAL_MS = 2000;
 const AUTH_KEY = "tutorweb_auth_session_v1";
 const CONSULTATIONS_KEY = "tutorweb_consultations_v1";
@@ -42,13 +43,23 @@ export default function SharedSnapshotAgent() {
       pendingStateKvRef.current = {};
       if (Object.keys(pending).length === 0) return;
 
-      void pushSharedSnapshot({ stateKv: pending }).catch((err) => {
-        pendingStateKvRef.current = {
-          ...pending,
-          ...pendingStateKvRef.current,
-        };
-        console.error("공유 스냅샷 업로드 실패(agent):", err);
-      });
+      void pushSharedSnapshot({ stateKv: pending })
+        .then((result) => {
+          if (result.stateKvSynced) return;
+          pendingStateKvRef.current = {
+            ...pending,
+            ...pendingStateKvRef.current,
+          };
+          schedulePush(PUSH_RETRY_MS);
+        })
+        .catch((err) => {
+          pendingStateKvRef.current = {
+            ...pending,
+            ...pendingStateKvRef.current,
+          };
+          console.error("공유 스냅샷 업로드 실패(agent):", err);
+          schedulePush(PUSH_RETRY_MS);
+        });
     };
 
     const schedulePush = (delayMs = PUSH_DEBOUNCE_MS) => {

@@ -14,11 +14,13 @@ import {
   updateLeafLinks,
   updateNodeTitle,
 } from "@/lib/storage/lectures";
+import { pushSharedSnapshot } from "@/lib/storage/sharedSnapshot";
 
 type Selection = { id: string; title: string; lectureUrl: string; problem0: string } | null;
 type Draft = { title: string; lectureUrl: string; problem0: string } | null;
 type LeafRow = { leaf: LectureLeafNode; pathLabel: string };
 const GRADE_DRAG_MIME = "application/x-lecture-grade-id";
+const LECTURE_TREE_KEY = "mk3:lectureTree";
 
 function cloneTree(t: LectureTree): LectureTree {
   return JSON.parse(JSON.stringify(t)) as LectureTree;
@@ -282,6 +284,18 @@ export default function LecturesPage() {
     }
     setEditSnapshot(null);
     setEditMode(false);
+    void pushSharedSnapshot({
+      stateKv: {
+        [LECTURE_TREE_KEY]: JSON.stringify(saved),
+      },
+    })
+      .then((result) => {
+        if (result.stateKvSynced) return;
+        console.error("강의 저장소 state_kv 동기화 실패(lectures save): not synced");
+      })
+      .catch((err) => {
+        console.error("강의 저장소 state_kv 동기화 실패(lectures save):", err);
+      });
   }
 
   function onAddGrade() {

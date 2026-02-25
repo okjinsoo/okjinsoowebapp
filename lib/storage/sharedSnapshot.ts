@@ -18,6 +18,7 @@ const META_MAP_PREFIX = "tutorweb_metaMap_v1:";
 const STUDENTS_EVENT = "tutorweb:studentsUpdated";
 const TEACHERS_EVENT = "tutorweb:teachersUpdated";
 const SESSIONS_EVENT = "tutorweb:sessionsUpdated";
+const LECTURE_TREE_EVENT = "tutorweb:lectureTreeUpdated";
 const PULL_COOLDOWN_MS = 5000;
 const SHARED_EXACT_KEYS = new Set([CONSULTATIONS_KEY, LECTURE_TREE_KEY]);
 const SHARED_PREFIXES = [META_MAP_PREFIX];
@@ -61,13 +62,29 @@ function shouldPersistKey(key: string): boolean {
   return SHARED_PREFIXES.some((prefix) => key.startsWith(prefix));
 }
 
+function normalizeStateKvValue(key: string, value: unknown): string | null {
+  if (typeof value === "string") return value;
+
+  // 과거/수동 SQL 입력에서 객체로 저장된 강의 트리를 문자열로 보정
+  if (key === LECTURE_TREE_KEY && value && typeof value === "object") {
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return null;
+    }
+  }
+
+  return null;
+}
+
 function toStateKv(raw: unknown): Record<string, string> {
   if (!raw || typeof raw !== "object") return {};
   const out: Record<string, string> = {};
   for (const [key, value] of Object.entries(raw)) {
     if (!shouldPersistKey(key)) continue;
-    if (typeof value !== "string") continue;
-    out[key] = value;
+    const normalized = normalizeStateKvValue(key, value);
+    if (typeof normalized !== "string") continue;
+    out[key] = normalized;
   }
   return out;
 }
@@ -130,14 +147,21 @@ function applyStateKv(stateKv: Record<string, string> | null | undefined): {
   changed: boolean;
   hadConsultations: boolean;
   hadMetaMap: boolean;
+  hadLectureTree: boolean;
 } {
   if (typeof window === "undefined" || !stateKv) {
-    return { changed: false, hadConsultations: false, hadMetaMap: false };
+    return {
+      changed: false,
+      hadConsultations: false,
+      hadMetaMap: false,
+      hadLectureTree: false,
+    };
   }
 
   let changed = false;
   let hadConsultations = false;
   let hadMetaMap = false;
+  let hadLectureTree = false;
 
   for (const [key, value] of Object.entries(stateKv)) {
     if (!shouldPersistKey(key)) continue;
@@ -145,10 +169,11 @@ function applyStateKv(stateKv: Record<string, string> | null | undefined): {
     browserStorage.setItem(key, value);
     changed = true;
     if (key === CONSULTATIONS_KEY) hadConsultations = true;
+    if (key === LECTURE_TREE_KEY) hadLectureTree = true;
     if (key.startsWith(META_MAP_PREFIX)) hadMetaMap = true;
   }
 
-  return { changed, hadConsultations, hadMetaMap };
+  return { changed, hadConsultations, hadMetaMap, hadLectureTree };
 }
 
 function applyLocalSnapshot(args: {
@@ -189,6 +214,9 @@ function applyLocalSnapshot(args: {
   }
   if (stateResult.hadConsultations) {
     window.dispatchEvent(new CustomEvent("tutorweb:consultationsUpdated"));
+  }
+  if (stateResult.hadLectureTree) {
+    window.dispatchEvent(new CustomEvent(LECTURE_TREE_EVENT));
   }
   if (stateResult.hadMetaMap) {
     window.dispatchEvent(new CustomEvent("tutorweb:metaMapUpdated"));
@@ -262,21 +290,56 @@ export async function pushSharedSnapshot(args?: {
   sessions?: Session[];
   stateKv?: Record<string, string>;
 }): Promise<PushSharedSnapshotResult> {
+  const hasTeachersArg = Object.prototype.hasOwnProperty.call(args ?? {}, "teachers");
+  const hasStudentsArg = Object.prototype.hasOwnProperty.call(args ?? {}, "students");
+  const hasSessionsArg = Object.prototype.hasOwnProperty.call(args ?? {}, "sessions");
+  const hasStateKvArg = Object.prototype.hasOwnProperty.call(args ?? {}, "stateKv");
+  const includeCoreSnapshot = !args || Object.keys(args).length === 0;
+  const includeTeachers = includeCoreSnapshot || hasTeachersArg;
+  const includeStudents = includeCoreSnapshot || hasStudentsArg;
+  const includeSessions = includeCoreSnapshot || hasSessionsArg;
+
   const cfg = getSupabaseConfig();
-  if (!cfg) return { sessionsSynced: false, stateKvSynced: false };
+  if (!cfg) {
+    return {
+      sessionsSynced: !includeSessions,
+      stateKvSynced: !hasStateKvArg,
+    };
+  }
 
   const headers = await getHeaders({ json: true });
-  if (!headers) return { sessionsSynced: false, stateKvSynced: false };
+  if (!headers) {
+    return {
+      sessionsSynced: !includeSessions,
+      stateKvSynced: !hasStateKvArg,
+    };
+  }
 
-  const teachers = args?.teachers ?? readLocalTeachers();
-  const students = args?.students ?? readLocalStudents();
-  const sessions = args?.sessions ?? readLocalSessions();
-  const hasStateKvArg = Object.prototype.hasOwnProperty.call(args ?? {}, "stateKv");
+  const teachers = includeTeachers
+    ? hasTeachersArg
+      ? (args?.teachers ?? [])
+      : readLocalTeachers()
+    : undefined;
+  const students = includeStudents
+    ? hasStudentsArg
+      ? (args?.students ?? [])
+      : readLocalStudents()
+    : undefined;
+  const sessions = includeSessions
+    ? hasSessionsArg
+      ? (args?.sessions ?? [])
+      : readLocalSessions()
+    : undefined;
   let stateKv: Record<string, string> | undefined;
 
   if (hasStateKvArg) {
     const readHeaders = await getHeaders();
-    if (!readHeaders) return { sessionsSynced: false, stateKvSynced: false };
+    if (!readHeaders) {
+      return {
+        sessionsSynced: !includeSessions,
+        stateKvSynced: false,
+      };
+    }
 
     const snapshotUrl = new URL("/rest/v1/app_state_snapshots", cfg.url);
     const remoteStateKv = await fetchRemoteStateKv({
@@ -296,17 +359,15 @@ export async function pushSharedSnapshot(args?: {
 
   const fullPayload: {
     id: string;
-    teachers: Teacher[];
-    students: Student[];
-    sessions: Session[];
+    teachers?: Teacher[];
+    students?: Student[];
+    sessions?: Session[];
     state_kv?: Record<string, string>;
-  } = {
-    id: SNAPSHOT_KEY,
-    teachers,
-    students,
-    sessions,
-  };
-  if (stateKv) {
+  } = { id: SNAPSHOT_KEY };
+  if (includeTeachers) fullPayload.teachers = teachers ?? [];
+  if (includeStudents) fullPayload.students = students ?? [];
+  if (includeSessions) fullPayload.sessions = sessions ?? [];
+  if (hasStateKvArg && stateKv) {
     fullPayload.state_kv = stateKv;
   }
 
@@ -319,10 +380,15 @@ export async function pushSharedSnapshot(args?: {
     body: JSON.stringify([fullPayload]),
   });
 
-  if (fullRes.ok) return { sessionsSynced: true, stateKvSynced: true };
+  if (fullRes.ok) {
+    return {
+      sessionsSynced: true,
+      stateKvSynced: true,
+    };
+  }
 
   const text = await fullRes.text();
-  const sessionsMissing = isMissingColumnError(text, "sessions");
+  const sessionsMissing = includeSessions && isMissingColumnError(text, "sessions");
   const stateKvMissing =
     hasStateKvArg && isMissingColumnError(text, "state_kv");
 
@@ -332,19 +398,15 @@ export async function pushSharedSnapshot(args?: {
 
   const fallbackPayload: {
     id: string;
-    teachers: Teacher[];
-    students: Student[];
+    teachers?: Teacher[];
+    students?: Student[];
     sessions?: Session[];
     state_kv?: Record<string, string>;
-  } = {
-    id: SNAPSHOT_KEY,
-    teachers,
-    students,
-  };
-  if (!sessionsMissing) fallbackPayload.sessions = sessions;
-  if (hasStateKvArg && !stateKvMissing && stateKv) {
-    fallbackPayload.state_kv = stateKv;
-  }
+  } = { id: SNAPSHOT_KEY };
+  if (includeTeachers) fallbackPayload.teachers = teachers ?? [];
+  if (includeStudents) fallbackPayload.students = students ?? [];
+  if (includeSessions && !sessionsMissing) fallbackPayload.sessions = sessions ?? [];
+  if (hasStateKvArg && !stateKvMissing) fallbackPayload.state_kv = stateKv ?? {};
 
   const fallbackRes = await fetch(upsertUrl.toString(), {
     method: "POST",
@@ -363,7 +425,7 @@ export async function pushSharedSnapshot(args?: {
   }
 
   return {
-    sessionsSynced: !sessionsMissing,
+    sessionsSynced: !includeSessions || !sessionsMissing,
     stateKvSynced: !hasStateKvArg || !stateKvMissing,
   };
 }
