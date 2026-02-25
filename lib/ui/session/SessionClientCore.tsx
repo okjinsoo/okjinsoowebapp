@@ -55,16 +55,30 @@ function defaultProgress(): LeafProgress {
   return { noteDone: false, solveDone: false, noteLink: "", solveLink: "", lectureClicks: 0 };
 }
 
-function parseTreeUpdatedAtMs(raw: string | null): number | null {
-  if (typeof raw !== "string" || !raw.trim()) return null;
+function parseTreeMeta(raw: string | null): { updatedAtMs: number | null; leafCount: number } {
+  if (typeof raw !== "string" || !raw.trim()) {
+    return { updatedAtMs: null, leafCount: 0 };
+  }
   try {
-    const parsed = JSON.parse(raw) as { updatedAt?: unknown };
+    const parsed = JSON.parse(raw) as { updatedAt?: unknown; root?: unknown };
     const updatedAt = typeof parsed.updatedAt === "string" ? parsed.updatedAt : "";
-    if (!updatedAt) return null;
-    const ms = Date.parse(updatedAt);
-    return Number.isFinite(ms) ? ms : null;
+    const ms = updatedAt ? Date.parse(updatedAt) : NaN;
+    const updatedAtMs = Number.isFinite(ms) ? ms : null;
+
+    const countLeaves = (node: unknown): number => {
+      if (!node || typeof node !== "object") return 0;
+      const rec = node as Record<string, unknown>;
+      if (rec.type === "leaf") return 1;
+      if (rec.type !== "folder") return 0;
+      const children = Array.isArray(rec.children) ? rec.children : [];
+      let total = 0;
+      for (const child of children) total += countLeaves(child);
+      return total;
+    };
+
+    return { updatedAtMs, leafCount: countLeaves(parsed.root) };
   } catch {
-    return null;
+    return { updatedAtMs: null, leafCount: 0 };
   }
 }
 
@@ -228,10 +242,14 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
       const remoteLectureTree = await readRemoteSharedStateKvValue(LECTURE_TREE_KEY);
       if (typeof remoteLectureTree === "string" && remoteLectureTree.trim()) {
         const localLectureTree = browserStorage.getItem(LECTURE_TREE_KEY);
-        const localMs = parseTreeUpdatedAtMs(localLectureTree);
-        const remoteMs = parseTreeUpdatedAtMs(remoteLectureTree);
-        const shouldReplaceLocal =
-          localMs === null || remoteMs === null || remoteMs >= localMs;
+        const localMeta = parseTreeMeta(localLectureTree);
+        const remoteMeta = parseTreeMeta(remoteLectureTree);
+        const shouldReplaceLocal = (() => {
+          if (localMeta.leafCount === 0 && remoteMeta.leafCount > 0) return true;
+          if (localMeta.leafCount > 0 && remoteMeta.leafCount === 0) return false;
+          if (localMeta.updatedAtMs === null || remoteMeta.updatedAtMs === null) return true;
+          return remoteMeta.updatedAtMs >= localMeta.updatedAtMs;
+        })();
         if (shouldReplaceLocal && localLectureTree !== remoteLectureTree) {
           browserStorage.setItem(LECTURE_TREE_KEY, remoteLectureTree);
         }

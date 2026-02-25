@@ -89,16 +89,31 @@ function toStateKv(raw: unknown): Record<string, string> {
   return out;
 }
 
-function lectureTreeUpdatedAtMs(raw: string | null): number | null {
-  if (typeof raw !== "string" || !raw.trim()) return null;
+function lectureTreeMeta(raw: string | null): { updatedAtMs: number | null; leafCount: number } {
+  if (typeof raw !== "string" || !raw.trim()) {
+    return { updatedAtMs: null, leafCount: 0 };
+  }
   try {
-    const parsed = JSON.parse(raw) as { updatedAt?: unknown };
+    const parsed = JSON.parse(raw) as { updatedAt?: unknown; root?: unknown };
     const updatedAt = typeof parsed?.updatedAt === "string" ? parsed.updatedAt : "";
-    if (!updatedAt) return null;
-    const ms = Date.parse(updatedAt);
-    return Number.isFinite(ms) ? ms : null;
+    const ms = updatedAt ? Date.parse(updatedAt) : NaN;
+    const updatedAtMs = Number.isFinite(ms) ? ms : null;
+
+    const countLeaves = (node: unknown): number => {
+      if (!node || typeof node !== "object") return 0;
+      const rec = node as Record<string, unknown>;
+      if (rec.type === "leaf") return 1;
+      if (rec.type !== "folder") return 0;
+      const children = Array.isArray(rec.children) ? rec.children : [];
+      let total = 0;
+      for (const child of children) total += countLeaves(child);
+      return total;
+    };
+
+    const leafCount = countLeaves(parsed.root);
+    return { updatedAtMs, leafCount };
   } catch {
-    return null;
+    return { updatedAtMs: null, leafCount: 0 };
   }
 }
 
@@ -182,11 +197,22 @@ function applyStateKv(stateKv: Record<string, string> | null | undefined): {
     if (current === value) continue;
 
     if (key === LECTURE_TREE_KEY) {
-      const currentMs = lectureTreeUpdatedAtMs(current);
-      const incomingMs = lectureTreeUpdatedAtMs(value);
-      // 로컬이 더 최신이면 원격의 오래된 값을 덮어쓰지 않음
-      if (currentMs !== null && incomingMs !== null && currentMs > incomingMs) {
+      const currentMeta = lectureTreeMeta(current);
+      const incomingMeta = lectureTreeMeta(value);
+
+      // 로컬이 비어 있고 원격이 비어있지 않으면 원격 우선
+      if (currentMeta.leafCount === 0 && incomingMeta.leafCount > 0) {
+        // pass
+      } else if (currentMeta.leafCount > 0 && incomingMeta.leafCount === 0) {
+        // 원격이 비어있고 로컬이 비어있지 않으면 로컬 유지
         continue;
+      } else {
+        const currentMs = currentMeta.updatedAtMs;
+        const incomingMs = incomingMeta.updatedAtMs;
+        // 로컬이 더 최신이면 원격의 오래된 값을 덮어쓰지 않음
+        if (currentMs !== null && incomingMs !== null && currentMs > incomingMs) {
+          continue;
+        }
       }
     }
 
