@@ -170,7 +170,7 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
     });
   }
 
-function removeLeaf(leafId: string) {
+  function removeLeaf(leafId: string) {
     if (!canAssignLectures) return; // ✅ 학생은 실행 자체 불가
 
     setLectureLeafIds((prev) => {
