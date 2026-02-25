@@ -13,12 +13,13 @@ const TEACHERS_KEY = "tutorweb_teachers_v1";
 const STUDENTS_KEY = "tutorweb_students_v1";
 const SESSIONS_KEY = "tutorweb_sessions_v1";
 const CONSULTATIONS_KEY = "tutorweb_consultations_v1";
+const LECTURE_TREE_KEY = "mk3:lectureTree";
 const META_MAP_PREFIX = "tutorweb_metaMap_v1:";
 const STUDENTS_EVENT = "tutorweb:studentsUpdated";
 const TEACHERS_EVENT = "tutorweb:teachersUpdated";
 const SESSIONS_EVENT = "tutorweb:sessionsUpdated";
 const PULL_COOLDOWN_MS = 5000;
-const SHARED_EXACT_KEYS = new Set([CONSULTATIONS_KEY]);
+const SHARED_EXACT_KEYS = new Set([CONSULTATIONS_KEY, LECTURE_TREE_KEY]);
 const SHARED_PREFIXES = [META_MAP_PREFIX];
 
 type SnapshotRow = {

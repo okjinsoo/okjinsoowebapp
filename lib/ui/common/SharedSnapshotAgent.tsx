@@ -9,11 +9,13 @@ const PUSH_DEBOUNCE_MS = 700;
 const REMOTE_PULL_INTERVAL_MS = 2000;
 const AUTH_KEY = "tutorweb_auth_session_v1";
 const CONSULTATIONS_KEY = "tutorweb_consultations_v1";
+const LECTURE_TREE_KEY = "mk3:lectureTree";
 const META_MAP_PREFIX = "tutorweb_metaMap_v1:";
 
 function isStateKvKey(key: string): boolean {
   if (!key) return false;
   if (key === CONSULTATIONS_KEY) return true;
+  if (key === LECTURE_TREE_KEY) return true;
   return key.startsWith(META_MAP_PREFIX);
 }
 

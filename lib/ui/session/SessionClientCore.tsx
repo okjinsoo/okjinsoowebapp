@@ -13,6 +13,7 @@ import type {
 import {
   loadLectureTree,
   findLeafById,
+  flattenLeaves,
   getNextLeaf,
 } from "@/lib/storage/lectures";
 
@@ -34,6 +35,10 @@ type LeafProgress = {
   lectureClicks: number;
 };
 type ProgressByLeafId = Record<string, LeafProgress>;
+type PickerLeafOption = {
+  leaf: LectureLeafNode;
+  pathLabel: string;
+};
 
 function baseKey(token: string, sessionIndex: number) {
   return `mk3:${token}:session:${sessionIndex}`;
@@ -78,6 +83,24 @@ function findFolder(tree: LectureTree, folderId: string): LectureFolderNode | nu
   return null;
 }
 
+function collectPickerLeafOptions(
+  node: LectureFolderNode,
+  path: string[],
+  out: PickerLeafOption[]
+) {
+  for (const child of node.children) {
+    if (child.type === "leaf") {
+      out.push({
+        leaf: child as LectureLeafNode,
+        pathLabel: path.join(" / "),
+      });
+      continue;
+    }
+    const f = child as LectureFolderNode;
+    collectPickerLeafOptions(f, [...path, f.title], out);
+  }
+}
+
 export default function SessionClientCore({ token, sessionIndex, role, headerSlot }: Props) {
   const canAssignLectures = role !== "s"; // ✅ t/a만 강의 배치(추가/삭제/추천저장) 가능
   const canEditProgress = true; // ✅ 학생도 체크/링크 입력은 가능
@@ -97,6 +120,7 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
   // picker
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pickerPath, setPickerPath] = useState<string[]>(() => [tree.root.id]);
+  const [pickerQuery, setPickerQuery] = useState("");
 
   // recommend (not persisted)
   const [hideRecommend, setHideRecommend] = useState(false);
@@ -244,6 +268,7 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
     setTree(t);
     setPickerOpen(true);
     setPickerPath([t.root.id]);
+    setPickerQuery("");
   }
   function closePicker() {
     setPickerOpen(false);
@@ -257,6 +282,29 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
   function goToRoot() {
     setPickerPath([tree.root.id]);
   }
+
+  const pickerLeafOptions = useMemo(() => {
+    const out: PickerLeafOption[] = [];
+    collectPickerLeafOptions(tree.root, [], out);
+    const leavesSorted = flattenLeaves(tree, { sortByOrderKey: true });
+    const rank = new Map(leavesSorted.map((leaf, i) => [leaf.leafId, i]));
+    out.sort((a, b) => {
+      const ra = rank.get(a.leaf.leafId) ?? Number.MAX_SAFE_INTEGER;
+      const rb = rank.get(b.leaf.leafId) ?? Number.MAX_SAFE_INTEGER;
+      return ra - rb;
+    });
+    return out;
+  }, [tree]);
+
+  const filteredPickerLeafOptions = useMemo(() => {
+    const q = pickerQuery.trim().toLowerCase();
+    if (!q) return pickerLeafOptions;
+    return pickerLeafOptions.filter((item) => {
+      const title = item.leaf.title.toLowerCase();
+      const path = item.pathLabel.toLowerCase();
+      return title.includes(q) || path.includes(q);
+    });
+  }, [pickerLeafOptions, pickerQuery]);
 
   return (
     <section style={{ marginTop: 12 }}>
@@ -738,6 +786,63 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
                   </button>
                 ) : (
                   <span style={{ alignSelf: "center", opacity: 0.6 }}> (루트)</span>
+                )}
+              </div>
+            </div>
+
+            <div style={{ marginTop: 12, border: "1px solid #eee", borderRadius: 12, padding: 10, background: "#fff" }}>
+              <div className="card-title">빠른 강의 추가</div>
+              <input
+                value={pickerQuery}
+                onChange={(e) => setPickerQuery(e.target.value)}
+                placeholder="강의명/폴더명 검색"
+                style={{
+                  width: "100%",
+                  marginTop: 8,
+                  padding: "8px 10px",
+                  borderRadius: 10,
+                  border: "1px solid #ddd",
+                }}
+              />
+              <div style={{ marginTop: 8, maxHeight: 220, overflow: "auto", display: "grid", gap: 8 }}>
+                {filteredPickerLeafOptions.length === 0 ? (
+                  <div style={{ opacity: 0.7 }}>
+                    {pickerLeafOptions.length === 0
+                      ? "저장된 강의가 없습니다. /lib/lectures 에서 먼저 저장해주세요."
+                      : "검색 결과가 없습니다."}
+                  </div>
+                ) : (
+                  filteredPickerLeafOptions.map((item) => {
+                    const leaf = item.leaf;
+                    const disabled = usedLeafIds.has(leaf.leafId);
+                    return (
+                      <button
+                        key={`quick:${leaf.id}`}
+                        onClick={() => {
+                          if (disabled) return;
+                          addLectureLeaf(leaf);
+                          closePicker();
+                        }}
+                        disabled={disabled}
+                        style={{
+                          textAlign: "left",
+                          border: "1px solid #eee",
+                          borderRadius: 10,
+                          padding: "8px 10px",
+                          background: disabled ? "#f3f3f3" : "#fff",
+                          opacity: disabled ? 0.6 : 1,
+                          cursor: disabled ? "not-allowed" : "pointer",
+                        }}
+                        title={disabled ? "이미 회차에 포함된 강의입니다(중복 불가)" : "선택하면 회차에 즉시 추가됩니다"}
+                      >
+                        <div style={{ fontWeight: 700 }}>{leaf.title}</div>
+                        <div style={{ opacity: 0.7, marginTop: 2 }}>
+                          {item.pathLabel ? `${item.pathLabel} · ` : ""}
+                          orderKey: {leaf.orderKey}
+                        </div>
+                      </button>
+                    );
+                  })
                 )}
               </div>
             </div>
