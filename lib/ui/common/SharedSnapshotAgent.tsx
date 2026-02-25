@@ -37,23 +37,27 @@ export default function SharedSnapshotAgent() {
       }
     };
 
-    const schedulePush = () => {
+    const flushPending = () => {
+      const pending = { ...pendingStateKvRef.current };
+      pendingStateKvRef.current = {};
+      if (Object.keys(pending).length === 0) return;
+
+      void pushSharedSnapshot({ stateKv: pending }).catch((err) => {
+        pendingStateKvRef.current = {
+          ...pending,
+          ...pendingStateKvRef.current,
+        };
+        console.error("공유 스냅샷 업로드 실패(agent):", err);
+      });
+    };
+
+    const schedulePush = (delayMs = PUSH_DEBOUNCE_MS) => {
       if (pushTimerRef.current) {
         clearTimeout(pushTimerRef.current);
       }
       pushTimerRef.current = setTimeout(() => {
-        const pending = { ...pendingStateKvRef.current };
-        pendingStateKvRef.current = {};
-        if (Object.keys(pending).length === 0) return;
-
-        void pushSharedSnapshot({ stateKv: pending }).catch((err) => {
-          pendingStateKvRef.current = {
-            ...pending,
-            ...pendingStateKvRef.current,
-          };
-          console.error("공유 스냅샷 업로드 실패(agent):", err);
-        });
-      }, PUSH_DEBOUNCE_MS);
+        flushPending();
+      }, delayMs);
     };
 
     const onStorageChanged: EventListener = (event) => {
@@ -67,6 +71,11 @@ export default function SharedSnapshotAgent() {
       const newValue = ce.detail?.newValue;
       if (typeof newValue !== "string") return;
       pendingStateKvRef.current[key] = newValue;
+      // 강의 트리는 회차 상세에서 즉시 참조하므로 지연 없이 업로드
+      if (key === LECTURE_TREE_KEY) {
+        schedulePush(0);
+        return;
+      }
       schedulePush();
     };
 

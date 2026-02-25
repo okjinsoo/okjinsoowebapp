@@ -2,6 +2,7 @@
 "use client";
 
 import { browserStorage } from "@/lib/storage/browserStorage";
+import { pullSharedSnapshotAndHydrateWithOptions } from "@/lib/storage/sharedSnapshot";
 
 import { useEffect, useMemo, useState } from "react";
 import type {
@@ -121,6 +122,7 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pickerPath, setPickerPath] = useState<string[]>(() => [tree.root.id]);
   const [pickerQuery, setPickerQuery] = useState("");
+  const [pickerSyncing, setPickerSyncing] = useState(false);
 
   // recommend (not persisted)
   const [hideRecommend, setHideRecommend] = useState(false);
@@ -262,13 +264,23 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
     return findFolder(tree, curId);
   }, [tree, pickerPath]);
 
-  function openPicker() {
+  async function openPicker() {
     if (!canAssignLectures) return;
-    const t = loadLectureTree();
-    setTree(t);
-    setPickerOpen(true);
-    setPickerPath([t.root.id]);
-    setPickerQuery("");
+    setPickerSyncing(true);
+    try {
+      await pullSharedSnapshotAndHydrateWithOptions({ forceRemote: true });
+    } catch (err) {
+      console.error("강의 목록 원격 동기화 실패:", err);
+    }
+    try {
+      const t = loadLectureTree();
+      setTree(t);
+      setPickerOpen(true);
+      setPickerPath([t.root.id]);
+      setPickerQuery("");
+    } finally {
+      setPickerSyncing(false);
+    }
   }
   function closePicker() {
     setPickerOpen(false);
@@ -317,8 +329,8 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginTop: 8 }}>
         <div />
         {canAssignLectures ? (
-          <button onClick={openPicker} className="btn btn-black">
-            + 강의 추가
+          <button onClick={() => void openPicker()} className="btn btn-black" disabled={pickerSyncing}>
+            {pickerSyncing ? "강의 동기화 중..." : "+ 강의 추가"}
           </button>
         ) : (
           <div style={{ fontWeight: 400, color: "#444" }}>
