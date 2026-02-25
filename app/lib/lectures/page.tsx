@@ -136,6 +136,52 @@ export default function LecturesPage() {
 
   const activeDraft = activeSelection ? draft : null;
 
+  const draftDirty = useMemo(() => {
+    if (!activeSelection || !activeDraft) return false;
+    return (
+      activeSelection.title !== activeDraft.title ||
+      activeSelection.lectureUrl !== activeDraft.lectureUrl ||
+      activeSelection.problem0 !== activeDraft.problem0
+    );
+  }, [activeSelection, activeDraft]);
+
+  const treeDirty = useMemo(() => {
+    if (!editMode || !tree || !editSnapshot) return false;
+    try {
+      return JSON.stringify(tree) !== JSON.stringify(editSnapshot);
+    } catch {
+      return true;
+    }
+  }, [editMode, tree, editSnapshot]);
+
+  const hasPendingEditChanges = editMode && (draftDirty || treeDirty);
+
+  useEffect(() => {
+    if (!hasPendingEditChanges) return;
+    const message = "변경된 사항이 삭제됩니다. 이대로 진행하시겠습니까?";
+
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = message;
+      return message;
+    };
+
+    const onReloadShortcut = (e: KeyboardEvent) => {
+      const isReloadKey = e.key === "F5" || ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "r");
+      if (!isReloadKey) return;
+      e.preventDefault();
+      const ok = window.confirm(message);
+      if (ok) window.location.reload();
+    };
+
+    window.addEventListener("beforeunload", onBeforeUnload);
+    window.addEventListener("keydown", onReloadShortcut);
+    return () => {
+      window.removeEventListener("beforeunload", onBeforeUnload);
+      window.removeEventListener("keydown", onReloadShortcut);
+    };
+  }, [hasPendingEditChanges]);
+
   function selectLeaf(leaf: LectureLeafNode) {
     const problem0 = safeTrim(leaf.problemUrls?.[0] ?? "");
     setSelection({
@@ -152,12 +198,7 @@ export default function LecturesPage() {
   }
 
   function isDraftDirty() {
-    if (!activeSelection || !activeDraft) return false;
-    return (
-      activeSelection.title !== activeDraft.title ||
-      activeSelection.lectureUrl !== activeDraft.lectureUrl ||
-      activeSelection.problem0 !== activeDraft.problem0
-    );
+    return draftDirty;
   }
 
   function applyDraft(baseTree: LectureTree): { nextTree: LectureTree; nextSelection: Selection } {
