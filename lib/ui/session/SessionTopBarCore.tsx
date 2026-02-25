@@ -1,6 +1,6 @@
 "use client";
 
-import { browserStorage } from "@/lib/storage/browserStorage";
+import { BROWSER_STORAGE_EVENT, browserStorage } from "@/lib/storage/browserStorage";
 
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -64,6 +64,7 @@ export default function SessionTopBarCore({ role, token, index }: Props) {
   const [consultEditingId, setConsultEditingId] = useState<string | null>(null);
   const [studentTick, setStudentTick] = useState(0);
   const [consultTick, setConsultTick] = useState(0);
+  const [progressTick, setProgressTick] = useState(0);
   const [consultForm, setConsultForm] = useState<ConsultFormState>({
     date: todayYmdKST(),
     purpose: "general",
@@ -104,6 +105,25 @@ export default function SessionTopBarCore({ role, token, index }: Props) {
       window.removeEventListener("tutorweb:consultationsUpdated", onConsultations);
     };
   }, []);
+
+  useEffect(() => {
+    const baseKey = `mk3:${token}:session:${index}`;
+    const progressKey = `${baseKey}:progressByLeafId`;
+    const leafIdsKey = `${baseKey}:leafIds`;
+
+    const onBrowserStorageChanged: EventListener = (event) => {
+      const ce = event as CustomEvent<{ key?: string | null }>;
+      const key = ce.detail?.key ?? null;
+      if (!key) return;
+      if (key !== progressKey && key !== leafIdsKey) return;
+      setProgressTick((x) => x + 1);
+    };
+
+    window.addEventListener(BROWSER_STORAGE_EVENT, onBrowserStorageChanged);
+    return () => {
+      window.removeEventListener(BROWSER_STORAGE_EVENT, onBrowserStorageChanged);
+    };
+  }, [token, index]);
 
   const baseDatesISO = useMemo(() => buildBaseDatesISOByToken(token, 60), [token]);
 
@@ -189,6 +209,7 @@ export default function SessionTopBarCore({ role, token, index }: Props) {
 
   const achievementPercent = useMemo(() => {
     if (!mounted) return 0;
+    void progressTick;
     const readJson = <T,>(key: string, fallback: T): T => {
       if (typeof window === "undefined") return fallback;
       try {
@@ -212,7 +233,7 @@ export default function SessionTopBarCore({ role, token, index }: Props) {
       return acc + (p?.noteDone ? 1 : 0) + (p?.solveDone ? 1 : 0);
     }, 0);
     return total === 0 ? 0 : Math.round((done / total) * 100);
-  }, [mounted, token, index]);
+  }, [mounted, token, index, progressTick]);
 
   const achievementColor =
     achievementPercent >= 80
