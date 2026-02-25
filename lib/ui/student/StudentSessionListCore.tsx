@@ -1,6 +1,6 @@
 "use client";
 
-import { browserStorage } from "@/lib/storage/browserStorage";
+import { BROWSER_STORAGE_EVENT, browserStorage } from "@/lib/storage/browserStorage";
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
@@ -103,6 +103,7 @@ export default function StudentSessionListCore({ role, token, prefix, hideTokenI
   void role;
   const isAdmin = role === "a";
   const [mounted, setMounted] = useState(false);
+  const [progressTick, setProgressTick] = useState(0);
 
   // ✅ metaMap 배선 단일화
   const metaMap = useMetaMap(token);
@@ -143,13 +144,23 @@ export default function StudentSessionListCore({ role, token, prefix, hideTokenI
   useEffect(() => {
     const onConsult = () => setConsultTick((x) => x + 1);
     const onStudents = () => setStudentTick((x) => x + 1);
+    const onProgressChanged: EventListener = (event) => {
+      const ce = event as CustomEvent<{ key?: string | null }>;
+      const key = ce.detail?.key ?? "";
+      if (!key) return;
+      if (!key.startsWith(`mk3:${token}:session:`)) return;
+      if (!key.endsWith(":leafIds") && !key.endsWith(":progressByLeafId")) return;
+      setProgressTick((x) => x + 1);
+    };
     window.addEventListener("tutorweb:consultationsUpdated", onConsult);
     window.addEventListener("tutorweb:studentsUpdated", onStudents);
+    window.addEventListener(BROWSER_STORAGE_EVENT, onProgressChanged);
     return () => {
       window.removeEventListener("tutorweb:consultationsUpdated", onConsult);
       window.removeEventListener("tutorweb:studentsUpdated", onStudents);
+      window.removeEventListener(BROWSER_STORAGE_EVENT, onProgressChanged);
     };
-  }, []);
+  }, [token]);
 
 
 
@@ -167,6 +178,7 @@ export default function StudentSessionListCore({ role, token, prefix, hideTokenI
 
   const progressByIndex = useMemo(() => {
     if (!mounted) return {} as Record<number, { done: number; total: number; percent: number }>;
+    void progressTick;
     const out: Record<number, { done: number; total: number; percent: number }> = {};
     for (const s of sessions) {
       const baseKey = `mk3:${token}:session:${s.index}`;
@@ -186,7 +198,7 @@ export default function StudentSessionListCore({ role, token, prefix, hideTokenI
       out[s.index] = { done, total, percent };
     }
     return out;
-  }, [mounted, token, sessions]);
+  }, [mounted, token, sessions, progressTick]);
 
   const refundCompletedIndex = useMemo(() => {
     if (!student) return null;

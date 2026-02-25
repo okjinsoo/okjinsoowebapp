@@ -1,7 +1,7 @@
 // app/t/tmain/TeacherMainClient.tsx
 "use client";
 
-import { browserStorage } from "@/lib/storage/browserStorage";
+import { BROWSER_STORAGE_EVENT, browserStorage } from "@/lib/storage/browserStorage";
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -143,6 +143,13 @@ export default function TeacherMainClient({ initialRole = "t" }: { initialRole?:
     const onTimelineUpdated = () => {
       setTimelineTick((x) => x + 1);
     };
+    const onProgressChanged: EventListener = (event) => {
+      const ce = event as CustomEvent<{ key?: string | null }>;
+      const key = ce.detail?.key ?? "";
+      if (!key.startsWith("mk3:")) return;
+      if (!key.endsWith(":leafIds") && !key.endsWith(":progressByLeafId")) return;
+      onTimelineUpdated();
+    };
 
     window.addEventListener(GATE_EVENT, requestGateRefresh);
     window.addEventListener(AUTH_EVENT, requestGateRefresh);
@@ -151,6 +158,7 @@ export default function TeacherMainClient({ initialRole = "t" }: { initialRole?:
     window.addEventListener("tutorweb:sessionsUpdated", onTimelineUpdated);
     window.addEventListener("tutorweb:consultationsUpdated", onTimelineUpdated);
     window.addEventListener("tutorweb:metaMapUpdated", onTimelineUpdated);
+    window.addEventListener(BROWSER_STORAGE_EVENT, onProgressChanged);
     return () => {
       window.removeEventListener(GATE_EVENT, requestGateRefresh);
       window.removeEventListener(AUTH_EVENT, requestGateRefresh);
@@ -159,6 +167,7 @@ export default function TeacherMainClient({ initialRole = "t" }: { initialRole?:
       window.removeEventListener("tutorweb:sessionsUpdated", onTimelineUpdated);
       window.removeEventListener("tutorweb:consultationsUpdated", onTimelineUpdated);
       window.removeEventListener("tutorweb:metaMapUpdated", onTimelineUpdated);
+      window.removeEventListener(BROWSER_STORAGE_EVENT, onProgressChanged);
     };
   }, [initialRole, applyTeacherSelection]);
 

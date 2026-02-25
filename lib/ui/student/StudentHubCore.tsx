@@ -1,6 +1,6 @@
 "use client";
 
-import { browserStorage } from "@/lib/storage/browserStorage";
+import { BROWSER_STORAGE_EVENT, browserStorage } from "@/lib/storage/browserStorage";
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -267,6 +267,7 @@ export default function StudentHubCore({
   );
   const [scheduleError, setScheduleError] = useState("");
   const [actionMode, setActionMode] = useState<null | "edit" | "refundRequest" | "refundProcess">(null);
+  const [progressTick, setProgressTick] = useState(0);
 
   useEffect(() => {
     const id = setTimeout(() => setMounted(true), 0);
@@ -285,19 +286,29 @@ export default function StudentHubCore({
       if (se.key === "tutorweb_students_v1" || se.key === "tutorweb_sessions_v1") bump();
       if (se.key === "tutorweb_teachers_v1") setTeachers(loadTeachers());
     };
+    const onProgressChanged: EventListener = (event) => {
+      const ce = event as CustomEvent<{ key?: string | null }>;
+      const key = ce.detail?.key ?? "";
+      if (!key) return;
+      if (!key.startsWith(`mk3:${token}:session:`)) return;
+      if (!key.endsWith(":leafIds") && !key.endsWith(":progressByLeafId")) return;
+      setProgressTick((x) => x + 1);
+    };
 
     window.addEventListener("tutorweb:studentsUpdated", onStudents);
     window.addEventListener("tutorweb:sessionsUpdated", onSessions);
     window.addEventListener(TEACHERS_EVENT, onTeachers);
     window.addEventListener("storage", onStorage);
+    window.addEventListener(BROWSER_STORAGE_EVENT, onProgressChanged);
 
     return () => {
       window.removeEventListener("tutorweb:studentsUpdated", onStudents);
       window.removeEventListener("tutorweb:sessionsUpdated", onSessions);
       window.removeEventListener(TEACHERS_EVENT, onTeachers);
       window.removeEventListener("storage", onStorage);
+      window.removeEventListener(BROWSER_STORAGE_EVENT, onProgressChanged);
     };
-  }, []);
+  }, [token]);
 
   const student = useMemo<Student | null>(() => {
     void refreshTick;
@@ -543,6 +554,7 @@ export default function StudentHubCore({
   }, [editingRecordId, currentCount, baseCount, history, addedCount]);
 
   const progressPercent = useMemo(() => {
+    void progressTick;
     return (index: number) => {
       const baseKey = `mk3:${token}:session:${index}`;
       const leafIds = readJson<string[]>(`${baseKey}:leafIds`, []);
@@ -558,7 +570,7 @@ export default function StudentHubCore({
       }, 0);
       return total === 0 ? 0 : Math.round((done / total) * 100);
     };
-  }, [token]);
+  }, [token, progressTick]);
 
   const upcomingSessions = useMemo(() => {
     if (!student) return [];
