@@ -89,6 +89,19 @@ function toStateKv(raw: unknown): Record<string, string> {
   return out;
 }
 
+function lectureTreeUpdatedAtMs(raw: string | null): number | null {
+  if (typeof raw !== "string" || !raw.trim()) return null;
+  try {
+    const parsed = JSON.parse(raw) as { updatedAt?: unknown };
+    const updatedAt = typeof parsed?.updatedAt === "string" ? parsed.updatedAt : "";
+    if (!updatedAt) return null;
+    const ms = Date.parse(updatedAt);
+    return Number.isFinite(ms) ? ms : null;
+  } catch {
+    return null;
+  }
+}
+
 function readLocalStateKv(): Record<string, string> {
   if (typeof window === "undefined") return {};
   const out: Record<string, string> = {};
@@ -165,7 +178,18 @@ function applyStateKv(stateKv: Record<string, string> | null | undefined): {
 
   for (const [key, value] of Object.entries(stateKv)) {
     if (!shouldPersistKey(key)) continue;
-    if (browserStorage.getItem(key) === value) continue;
+    const current = browserStorage.getItem(key);
+    if (current === value) continue;
+
+    if (key === LECTURE_TREE_KEY) {
+      const currentMs = lectureTreeUpdatedAtMs(current);
+      const incomingMs = lectureTreeUpdatedAtMs(value);
+      // 로컬이 더 최신이면 원격의 오래된 값을 덮어쓰지 않음
+      if (currentMs !== null && incomingMs !== null && currentMs > incomingMs) {
+        continue;
+      }
+    }
+
     browserStorage.setItem(key, value);
     changed = true;
     if (key === CONSULTATIONS_KEY) hadConsultations = true;
