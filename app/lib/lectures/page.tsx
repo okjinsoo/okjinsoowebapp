@@ -341,6 +341,13 @@ export default function LecturesPage() {
     });
   }
 
+  function onEnterAdd(e: React.KeyboardEvent<HTMLInputElement>, action: () => void) {
+    if (e.key !== "Enter") return;
+    if (e.nativeEvent.isComposing) return;
+    e.preventDefault();
+    action();
+  }
+
   function onGradeDragStart(gradeId: string, e: React.DragEvent<HTMLButtonElement>) {
     if (!editMode) return;
     setDraggingGradeId(gradeId);
@@ -693,6 +700,7 @@ export default function LecturesPage() {
                     className="flex-1 rounded-lg border px-3 py-2 text-sm"
                     value={newGradeTitle}
                     onChange={(e) => setNewGradeTitle(e.target.value)}
+                    onKeyDown={(e) => onEnterAdd(e, onAddGrade)}
                     placeholder="예: 초 / 중 / 고"
                   />
                   <button className="px-3 py-2 rounded-lg border text-sm hover:bg-neutral-50" onClick={onAddGrade}>
@@ -708,6 +716,7 @@ export default function LecturesPage() {
                     className="flex-1 rounded-lg border px-3 py-2 text-sm"
                     value={newCurriculumTitle}
                     onChange={(e) => setNewCurriculumTitle(e.target.value)}
+                    onKeyDown={(e) => onEnterAdd(e, onAddCurriculum)}
                     placeholder="예: 공통수학1(22개정)"
                   />
                   <button
@@ -727,6 +736,7 @@ export default function LecturesPage() {
                     className="flex-1 rounded-lg border px-3 py-2 text-sm"
                     value={newSectionTitle}
                     onChange={(e) => setNewSectionTitle(e.target.value)}
+                    onKeyDown={(e) => onEnterAdd(e, onAddSection)}
                     placeholder="예: 도형의 방정식"
                   />
                   <button
@@ -746,6 +756,7 @@ export default function LecturesPage() {
                     className="flex-1 rounded-lg border px-3 py-2 text-sm"
                     value={newLectureTitle}
                     onChange={(e) => setNewLectureTitle(e.target.value)}
+                    onKeyDown={(e) => onEnterAdd(e, onAddLecture)}
                     placeholder="예: 두 점 사이의 거리"
                   />
                   <button
