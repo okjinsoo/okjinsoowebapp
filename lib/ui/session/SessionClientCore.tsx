@@ -6,16 +6,13 @@ import { pullSharedSnapshotAndHydrateWithOptions } from "@/lib/storage/sharedSna
 
 import { useEffect, useMemo, useState } from "react";
 import type {
-  LectureFolderNode,
   LectureLeafNode,
-  LectureNode,
   LectureTree,
 } from "@/lib/types/index";
 import {
   loadLectureTree,
   findLeafById,
   flattenLeaves,
-  getNextLeaf,
 } from "@/lib/storage/lectures";
 
 type Role = "s" | "t" | "a";
@@ -36,10 +33,6 @@ type LeafProgress = {
   lectureClicks: number;
 };
 type ProgressByLeafId = Record<string, LeafProgress>;
-type PickerLeafOption = {
-  leaf: LectureLeafNode;
-  pathLabel: string;
-};
 
 function baseKey(token: string, sessionIndex: number) {
   return `mk3:${token}:session:${sessionIndex}`;
@@ -56,50 +49,6 @@ function keyLastAdded(token: string, sessionIndex: number) {
 
 function defaultProgress(): LeafProgress {
   return { noteDone: false, solveDone: false, noteLink: "", solveLink: "", lectureClicks: 0 };
-}
-
-function safeFolderTitle(tree: LectureTree, folderId: string): string {
-  const stack: LectureNode[] = [tree.root];
-  while (stack.length) {
-    const n = stack.pop()!;
-    if (n.type === "folder") {
-      const f = n as LectureFolderNode;
-      if (f.id === folderId) return f.title;
-      for (let i = f.children.length - 1; i >= 0; i--) stack.push(f.children[i]);
-    }
-  }
-  return "(폴더)";
-}
-
-function findFolder(tree: LectureTree, folderId: string): LectureFolderNode | null {
-  const stack: LectureNode[] = [tree.root];
-  while (stack.length) {
-    const n = stack.pop()!;
-    if (n.type === "folder") {
-      const f = n as LectureFolderNode;
-      if (f.id === folderId) return f;
-      for (let i = f.children.length - 1; i >= 0; i--) stack.push(f.children[i]);
-    }
-  }
-  return null;
-}
-
-function collectPickerLeafOptions(
-  node: LectureFolderNode,
-  path: string[],
-  out: PickerLeafOption[]
-) {
-  for (const child of node.children) {
-    if (child.type === "leaf") {
-      out.push({
-        leaf: child as LectureLeafNode,
-        pathLabel: path.join(" / "),
-      });
-      continue;
-    }
-    const f = child as LectureFolderNode;
-    collectPickerLeafOptions(f, [...path, f.title], out);
-  }
 }
 
 export default function SessionClientCore({ token, sessionIndex, role, headerSlot }: Props) {
@@ -120,12 +69,8 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
 
   // picker
   const [pickerOpen, setPickerOpen] = useState(false);
-  const [pickerPath, setPickerPath] = useState<string[]>(() => [tree.root.id]);
   const [pickerQuery, setPickerQuery] = useState("");
   const [pickerSyncing, setPickerSyncing] = useState(false);
-
-  // recommend (not persisted)
-  const [hideRecommend, setHideRecommend] = useState(false);
 
   // load (final only)
   useEffect(() => {
@@ -134,7 +79,6 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
 
       const t = loadLectureTree();
       setTree(t);
-      setPickerPath([t.root.id]);
 
       const leafIdsRaw = browserStorage.getItem(keyLeafIds(token, sessionIndex));
       const progRaw = browserStorage.getItem(keyProgress(token, sessionIndex));
@@ -226,7 +170,7 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
     });
   }
 
-  function removeLeaf(leafId: string) {
+function removeLeaf(leafId: string) {
     if (!canAssignLectures) return; // ✅ 학생은 실행 자체 불가
 
     setLectureLeafIds((prev) => {
@@ -257,23 +201,7 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
       [leaf.leafId]: prev[leaf.leafId] ?? defaultProgress(),
     }));
     setLastAddedLeafId(leaf.leafId);
-    setHideRecommend(false);
   }
-
-  // ✅ recommend 기준: lastAddedLeafId (없으면 마지막 줄 fallback)
-  const recommended = useMemo(() => {
-    if (!canAssignLectures) return null; // ✅ 학생은 추천 자체를 안 씀(저장 불가이므로)
-    if (hideRecommend) return null;
-    const base = lastAddedLeafId || lectureLeafIds[lectureLeafIds.length - 1];
-    if (!base) return null;
-    return getNextLeaf(tree, base, Array.from(usedLeafIds));
-  }, [canAssignLectures, tree, lectureLeafIds, usedLeafIds, hideRecommend, lastAddedLeafId]);
-
-  // picker
-  const currentFolder = useMemo(() => {
-    const curId = pickerPath[pickerPath.length - 1];
-    return findFolder(tree, curId);
-  }, [tree, pickerPath]);
 
   async function openPicker() {
     if (!canAssignLectures) return;
@@ -287,7 +215,6 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
       const t = loadLectureTree();
       setTree(t);
       setPickerOpen(true);
-      setPickerPath([t.root.id]);
       setPickerQuery("");
     } finally {
       setPickerSyncing(false);
@@ -296,27 +223,10 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
   function closePicker() {
     setPickerOpen(false);
   }
-  function enterFolder(folderId: string) {
-    setPickerPath((prev) => [...prev, folderId]);
-  }
-  function goBack() {
-    setPickerPath((prev) => (prev.length > 1 ? prev.slice(0, -1) : prev));
-  }
-  function goToRoot() {
-    setPickerPath([tree.root.id]);
-  }
 
   const pickerLeafOptions = useMemo(() => {
-    const out: PickerLeafOption[] = [];
-    collectPickerLeafOptions(tree.root, [], out);
     const leavesSorted = flattenLeaves(tree, { sortByOrderKey: true });
-    const rank = new Map(leavesSorted.map((leaf, i) => [leaf.leafId, i]));
-    out.sort((a, b) => {
-      const ra = rank.get(a.leaf.leafId) ?? Number.MAX_SAFE_INTEGER;
-      const rb = rank.get(b.leaf.leafId) ?? Number.MAX_SAFE_INTEGER;
-      return ra - rb;
-    });
-    return out;
+    return leavesSorted.map((leaf) => ({ leaf }));
   }, [tree]);
 
   const filteredPickerLeafOptions = useMemo(() => {
@@ -324,8 +234,7 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
     if (!q) return pickerLeafOptions;
     return pickerLeafOptions.filter((item) => {
       const title = item.leaf.title.toLowerCase();
-      const path = item.pathLabel.toLowerCase();
-      return title.includes(q) || path.includes(q);
+      return title.includes(q);
     });
   }, [pickerLeafOptions, pickerQuery]);
 
@@ -349,54 +258,6 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
           </div>
         )}
       </div>
-
-      {recommended ? (
-        <div
-          style={{
-            border: "1px dashed #bbb",
-            borderRadius: 10,
-            padding: 12,
-            marginTop: 12,
-            marginBottom: 12,
-            background: "#fff",
-          }}
-        >
-          <div style={{ fontWeight: 600, marginBottom: 6 }}>
-            추천 다음 강의 · {recommended.title}
-          </div>
-
-          <div style={{ marginTop: 10, display: "flex", gap: 8 }}>
-            <button
-              onClick={() => addLectureLeaf(recommended)}
-              style={{
-                padding: "6px 10px",
-                borderRadius: 8,
-                border: "1px solid #000",
-                background: "#000",
-                color: "#fff",
-                cursor: "pointer",
-                fontWeight: 500,
-              }}
-            >
-              추가
-            </button>
-            <button
-              onClick={() => setHideRecommend(true)}
-              style={{
-                padding: "6px 10px",
-                borderRadius: 8,
-                border: "1px solid #ddd",
-                background: "#fff",
-                cursor: "pointer",
-                fontWeight: 500,
-              }}
-            >
-              취소
-            </button>
-          </div>
-
-        </div>
-      ) : null}
 
       <div style={{ display: "grid", gap: 12, marginTop: 12 }}>
         {lectureLeafIds.map((leafId, idx) => {
@@ -780,45 +641,12 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
               </button>
             </div>
 
-            <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
-              <button
-                onClick={goToRoot}
-                style={{ padding: "6px 10px", borderRadius: 10, border: "1px solid #ddd", background: "#fff" }}
-              >
-                루트로
-              </button>
-
-              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                <span style={{ alignSelf: "center", opacity: 0.6 }}>경로:</span>
-                <span style={{ alignSelf: "center", fontWeight: 700 }}>
-                  {safeFolderTitle(tree, pickerPath[pickerPath.length - 1])}
-                </span>
-                {pickerPath.length > 1 ? (
-                  <button
-                    onClick={goBack}
-                    style={{
-                      marginLeft: 8,
-                      padding: "4px 8px",
-                      borderRadius: 10,
-                      border: "1px solid #ddd",
-                      background: "#fff",
-                      cursor: "pointer",
-                    }}
-                  >
-                    ← 뒤로
-                  </button>
-                ) : (
-                  <span style={{ alignSelf: "center", opacity: 0.6 }}> (루트)</span>
-                )}
-              </div>
-            </div>
-
             <div style={{ marginTop: 12, border: "1px solid #eee", borderRadius: 12, padding: 10, background: "#fff" }}>
-              <div className="card-title">빠른 강의 추가</div>
+              <div className="card-title">강의 목록</div>
               <input
                 value={pickerQuery}
                 onChange={(e) => setPickerQuery(e.target.value)}
-                placeholder="강의명/폴더명 검색"
+                placeholder="강의명 검색"
                 style={{
                   width: "100%",
                   marginTop: 8,
@@ -860,8 +688,7 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
                       >
                         <div style={{ fontWeight: 700 }}>{leaf.title}</div>
                         <div style={{ opacity: 0.7, marginTop: 2 }}>
-                          {item.pathLabel ? `${item.pathLabel} · ` : ""}
-                          orderKey: {leaf.orderKey}
+                          순서: {leaf.orderKey}
                         </div>
                       </button>
                     );
@@ -870,93 +697,8 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
               </div>
             </div>
 
-            <div style={{ marginTop: 12 }}>
-              {!currentFolder ? (
-                <div style={{ opacity: 0.7 }}>폴더를 찾을 수 없습니다.</div>
-              ) : (
-                <div style={{ display: "grid", gap: 10 }}>
-                  {currentFolder.children
-                    .filter((c) => c.type === "folder")
-                    .map((c) => {
-                      const f = c as LectureFolderNode;
-                      return (
-                        <div
-                          key={f.id}
-                          style={{
-                            border: "1px solid #eee",
-                            borderRadius: 12,
-                            padding: 10,
-                            background: "#fff",
-                            display: "flex",
-                            justifyContent: "space-between",
-                            alignItems: "center",
-                            gap: 10,
-                          }}
-                        >
-                          <div>
-                            <div style={{ fontWeight: 700 }}>{f.title}</div>
-                            <div style={{ opacity: 0.7 }}>(folder)</div>
-                          </div>
-                          <button
-                            onClick={() => enterFolder(f.id)}
-                            style={{
-                              padding: "6px 10px",
-                              borderRadius: 10,
-                              border: "1px solid #ddd",
-                              background: "#fff",
-                              cursor: "pointer",
-                            }}
-                          >
-                            열기 →
-                          </button>
-                        </div>
-                      );
-                    })}
-
-                  {currentFolder.children
-                    .filter((c) => c.type === "leaf")
-                    .map((c) => {
-                      const leaf = c as LectureLeafNode;
-                      const disabled = usedLeafIds.has(leaf.leafId);
-                      return (
-                        <button
-                          key={leaf.id}
-                          onClick={() => {
-                            if (disabled) return;
-                            addLectureLeaf(leaf);
-                            closePicker();
-                          }}
-                          disabled={disabled}
-                          style={{
-                            textAlign: "left",
-                            border: "1px solid #eee",
-                            borderRadius: 12,
-                            padding: 10,
-                            background: disabled ? "#f3f3f3" : "#fff",
-                            cursor: disabled ? "not-allowed" : "pointer",
-                            opacity: disabled ? 0.6 : 1,
-                          }}
-                          title={disabled ? "이미 회차에 포함된 강의입니다(중복 불가)" : "선택하면 회차에 즉시 추가됩니다"}
-                        >
-                          <div style={{ fontWeight: 700 }}>
-                            {leaf.title} <span style={{ opacity: 0.7 }}>(leaf)</span>
-                          </div>
-                          <div style={{ opacity: 0.7, marginTop: 4 }}>
-                            leafId: {leaf.leafId} · orderKey: {leaf.orderKey}
-                          </div>
-                        </button>
-                      );
-                    })}
-
-                  {currentFolder.children.length === 0 ? (
-                    <div style={{ opacity: 0.7 }}>비어 있습니다.</div>
-                  ) : null}
-                </div>
-              )}
-            </div>
-
             <div style={{ marginTop: 10, opacity: 0.7 }}>
-              • 중복된 강의(이미 회차에 포함)는 선택할 수 없습니다. • 선택 즉시 저장됩니다.
+              • 중복 강의는 추가할 수 없습니다. • 선택 즉시 저장됩니다.
             </div>
           </div>
         </div>
