@@ -1,12 +1,20 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import type { LectureLeafNode } from "@/lib/types/index";
 import {
   createLectureLeaf,
   loadLectureCatalog,
+  loadLectureTree,
   saveLectureCatalog,
 } from "@/lib/storage/lectures";
+import {
+  pullSharedSnapshotAndHydrateWithOptions,
+  pushSharedSnapshot,
+} from "@/lib/storage/sharedSnapshot";
+
+const LECTURE_TREE_KEY = "mk3:lectureTree";
+const DB_SYNC_DEBOUNCE_MS = 500;
 
 function firstProblemUrl(leaf: LectureLeafNode): string {
   return leaf.problemUrls?.[0] ?? "";
@@ -17,6 +25,9 @@ export default function LecturesPage() {
   const [selectedLeafId, setSelectedLeafId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [newTitle, setNewTitle] = useState("");
+  const [dbSyncing, setDbSyncing] = useState(false);
+  const [dbSyncError, setDbSyncError] = useState<string | null>(null);
+  const dbSyncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const activeLeafId = useMemo(() => {
     if (selectedLeafId && lectures.some((leaf) => leaf.leafId === selectedLeafId)) return selectedLeafId;
@@ -39,9 +50,65 @@ export default function LecturesPage() {
     });
   }, [lectures, query]);
 
+  async function loadFromRemoteSnapshot() {
+    setDbSyncing(true);
+    setDbSyncError(null);
+    try {
+      await pullSharedSnapshotAndHydrateWithOptions({ forceRemote: true });
+      setLectures(loadLectureCatalog());
+    } catch (err) {
+      console.error("강의 저장소 원격 불러오기 실패:", err);
+      setDbSyncError("DB에서 강의 목록을 불러오지 못했어요. 잠시 후 다시 시도해주세요.");
+    } finally {
+      setDbSyncing(false);
+    }
+  }
+
+  async function pushLectureTreeToDbNow() {
+    setDbSyncing(true);
+    setDbSyncError(null);
+    try {
+      const rawTree = JSON.stringify(loadLectureTree());
+      const result = await pushSharedSnapshot({
+        stateKv: {
+          [LECTURE_TREE_KEY]: rawTree,
+        },
+      });
+      if (!result.stateKvSynced) {
+        throw new Error("state_kv sync failed");
+      }
+    } catch (err) {
+      console.error("강의 저장소 원격 저장 실패:", err);
+      setDbSyncError("DB 저장에 실패했어요. 인터넷 상태를 확인하고 다시 시도해주세요.");
+    } finally {
+      setDbSyncing(false);
+    }
+  }
+
+  function scheduleDbSync() {
+    if (dbSyncTimerRef.current) clearTimeout(dbSyncTimerRef.current);
+    dbSyncTimerRef.current = setTimeout(() => {
+      void pushLectureTreeToDbNow();
+    }, DB_SYNC_DEBOUNCE_MS);
+  }
+
+  useEffect(() => {
+    const id = setTimeout(() => {
+      void loadFromRemoteSnapshot();
+    }, 0);
+    return () => {
+      clearTimeout(id);
+      if (dbSyncTimerRef.current) {
+        clearTimeout(dbSyncTimerRef.current);
+        dbSyncTimerRef.current = null;
+      }
+    };
+  }, []);
+
   function persist(next: LectureLeafNode[]) {
     const saved = saveLectureCatalog(next);
     setLectures(saved);
+    scheduleDbSync();
   }
 
   function addLecture() {
@@ -103,7 +170,12 @@ export default function LecturesPage() {
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="page-title">강의 저장소 (재개편)</h1>
-          <p className="text-sm text-neutral-600">입력 즉시 저장됩니다. 복잡한 폴더 구조는 제거했습니다.</p>
+          <p className="text-sm text-neutral-600">
+            DB 우선으로 동작합니다. 복잡한 폴더 구조는 제거했습니다.
+          </p>
+          <p className="text-xs text-neutral-500 mt-1">
+            {dbSyncing ? "DB 동기화 중..." : dbSyncError ? dbSyncError : "DB 동기화 정상"}
+          </p>
         </div>
       </header>
 
