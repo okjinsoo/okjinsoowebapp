@@ -4,13 +4,16 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import type { LectureLeafNode } from "@/lib/types/index";
 import {
   createLectureLeaf,
+  flattenLeaves,
   loadLectureCatalog,
   loadLectureTree,
+  parseLectureTreeRaw,
   saveLectureCatalog,
 } from "@/lib/storage/lectures";
 import {
   pullSharedSnapshotAndHydrateWithOptions,
   pushSharedSnapshot,
+  readRemoteSharedStateKvValue,
 } from "@/lib/storage/sharedSnapshot";
 
 const LECTURE_TREE_KEY = "mk3:lectureTree";
@@ -55,7 +58,24 @@ export default function LecturesPage() {
     setDbSyncError(null);
     try {
       await pullSharedSnapshotAndHydrateWithOptions({ forceRemote: true });
+      const localTree = loadLectureTree();
       setLectures(loadLectureCatalog());
+
+      // DB에 과거 "빈 강의 트리"가 남아 있으면, 현재 로컬의 실제 강의 목록으로 1회 자동 복구
+      const remoteRaw = await readRemoteSharedStateKvValue(LECTURE_TREE_KEY);
+      const remoteTree = parseLectureTreeRaw(remoteRaw);
+      const localCount = flattenLeaves(localTree, { sortByOrderKey: false }).length;
+      const remoteCount = flattenLeaves(remoteTree, { sortByOrderKey: false }).length;
+      if (localCount > 0 && remoteCount === 0) {
+        const result = await pushSharedSnapshot({
+          stateKv: {
+            [LECTURE_TREE_KEY]: JSON.stringify(localTree),
+          },
+        });
+        if (!result.stateKvSynced) {
+          throw new Error("state_kv sync failed");
+        }
+      }
     } catch (err) {
       console.error("강의 저장소 원격 불러오기 실패:", err);
       setDbSyncError("DB에서 강의 목록을 불러오지 못했어요. 잠시 후 다시 시도해주세요.");

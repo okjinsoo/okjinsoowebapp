@@ -3,7 +3,7 @@
 
 import { browserStorage } from "@/lib/storage/browserStorage";
 import {
-  pullSharedSnapshotAndHydrateWithOptions,
+  pushSharedSnapshot,
   readRemoteSharedStateKvValue,
 } from "@/lib/storage/sharedSnapshot";
 
@@ -54,6 +54,56 @@ function keyLastAdded(token: string, sessionIndex: number) {
 
 function defaultProgress(): LeafProgress {
   return { noteDone: false, solveDone: false, noteLink: "", solveLink: "", lectureClicks: 0 };
+}
+
+function updatedAtMs(tree: LectureTree): number | null {
+  const ms = Date.parse(tree.updatedAt ?? "");
+  return Number.isFinite(ms) ? ms : null;
+}
+
+function leafCount(tree: LectureTree): number {
+  return flattenLeaves(tree, { sortByOrderKey: false }).length;
+}
+
+function pickLectureTree(localTree: LectureTree, remoteTree: LectureTree | null): {
+  pickedTree: LectureTree;
+  shouldBackfillRemote: boolean;
+} {
+  const localCount = leafCount(localTree);
+  if (!remoteTree) {
+    return {
+      pickedTree: localTree,
+      shouldBackfillRemote: localCount > 0,
+    };
+  }
+
+  const remoteCount = leafCount(remoteTree);
+  if (localCount > 0 && remoteCount === 0) {
+    return {
+      pickedTree: localTree,
+      shouldBackfillRemote: true,
+    };
+  }
+  if (localCount === 0 && remoteCount > 0) {
+    return {
+      pickedTree: remoteTree,
+      shouldBackfillRemote: false,
+    };
+  }
+
+  const localMs = updatedAtMs(localTree);
+  const remoteMs = updatedAtMs(remoteTree);
+  if (remoteMs !== null && (localMs === null || remoteMs >= localMs)) {
+    return {
+      pickedTree: remoteTree,
+      shouldBackfillRemote: false,
+    };
+  }
+
+  return {
+    pickedTree: localTree,
+    shouldBackfillRemote: localCount > 0,
+  };
 }
 
 export default function SessionClientCore({ token, sessionIndex, role, headerSlot }: Props) {
@@ -211,21 +261,31 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
   async function openPicker() {
     if (!canAssignLectures) return;
     setPickerSyncing(true);
-    let pickerTree: LectureTree | null = null;
+    const localTree = loadLectureTree();
+    let remoteTree: LectureTree | null = null;
     try {
-      await pullSharedSnapshotAndHydrateWithOptions({ forceRemote: true });
       const remoteLectureTree = await readRemoteSharedStateKvValue(LECTURE_TREE_KEY);
       if (typeof remoteLectureTree === "string" && remoteLectureTree.trim()) {
-        pickerTree = parseLectureTreeRaw(remoteLectureTree);
+        remoteTree = parseLectureTreeRaw(remoteLectureTree);
       }
     } catch (err) {
       console.error("강의 목록 원격 동기화 실패:", err);
     }
     try {
-      const t = pickerTree ?? loadLectureTree();
-      setTree(t);
+      const picked = pickLectureTree(localTree, remoteTree);
+      setTree(picked.pickedTree);
       setPickerOpen(true);
       setPickerQuery("");
+      if (picked.shouldBackfillRemote) {
+        const rawTree = JSON.stringify(picked.pickedTree);
+        void pushSharedSnapshot({
+          stateKv: {
+            [LECTURE_TREE_KEY]: rawTree,
+          },
+        }).catch((err) => {
+          console.error("강의 트리 자동 복구 업로드 실패:", err);
+        });
+      }
     } finally {
       setPickerSyncing(false);
     }
