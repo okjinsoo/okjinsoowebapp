@@ -100,6 +100,8 @@ export default function LecturesPage() {
       clearTimeout(id);
       if (dbSyncTimerRef.current) {
         clearTimeout(dbSyncTimerRef.current);
+        // 페이지를 바로 이동해도 마지막 변경을 DB에 남기기 위해 즉시 1회 동기화
+        void pushLectureTreeToDbNow();
         dbSyncTimerRef.current = null;
       }
     };

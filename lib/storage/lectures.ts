@@ -152,7 +152,13 @@ export function loadLectureTree(): LectureTree {
   const parsed = safeParseJson<unknown>(raw);
   const normalized = normalizeAnyTree(parsed);
 
-  if (!raw || JSON.stringify(parsed) !== JSON.stringify(normalized)) {
+  // 키가 아예 없을 때는 "읽기" 동작만 수행하고 저장하지 않음.
+  // (저장 이벤트가 발생하면 SharedSnapshotAgent가 빈 트리를 DB로 올릴 수 있어 덮어쓰기 위험)
+  if (!raw) {
+    return normalized;
+  }
+
+  if (JSON.stringify(parsed) !== JSON.stringify(normalized)) {
     persistTree(normalized);
   }
 
