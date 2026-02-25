@@ -109,6 +109,7 @@ function pickLectureTree(localTree: LectureTree, remoteTree: LectureTree | null)
 export default function SessionClientCore({ token, sessionIndex, role, headerSlot }: Props) {
   const canAssignLectures = role !== "s"; // ✅ t/a만 강의 배치(추가/삭제/추천저장) 가능
   const canEditProgress = true; // ✅ 학생도 체크/링크 입력은 가능
+  const canSeeInternalFields = role !== "s"; // ✅ 학생에게는 내부 식별값/제출 URL 숨김
 
   const [mounted, setMounted] = useState(false);
 
@@ -361,9 +362,11 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
                       [ 학습 횟수 : {p.lectureClicks ?? 0}회 ]
                     </span>
                   </div>
-                  <div style={{ opacity: 0.7, marginTop: 4 }}>
-                    leafId: {leafId} {leaf?.orderKey ? `· orderKey: ${leaf.orderKey}` : ""}
-                  </div>
+                  {canSeeInternalFields ? (
+                    <div style={{ opacity: 0.7, marginTop: 4 }}>
+                      leafId: {leafId} {leaf?.orderKey ? `· orderKey: ${leaf.orderKey}` : ""}
+                    </div>
+                  ) : null}
                 </div>
 
                 {canAssignLectures ? (
@@ -495,19 +498,23 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
                   );
                 })()}
 
-                <div style={{ color: "#666" }}>
-                  필기 URL:{" "}
-                  <span style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" }}>
-                    {p.noteLink ? p.noteLink : "-"}
-                  </span>
-                </div>
+                {canSeeInternalFields ? (
+                  <div style={{ color: "#666" }}>
+                    필기 URL:{" "}
+                    <span style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" }}>
+                      {p.noteLink ? p.noteLink : "-"}
+                    </span>
+                  </div>
+                ) : null}
 
-                <div style={{ color: "#666" }}>
-                  풀이 URL:{" "}
-                  <span style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" }}>
-                    {p.solveLink ? p.solveLink : "-"}
-                  </span>
-                </div>
+                {canSeeInternalFields ? (
+                  <div style={{ color: "#666" }}>
+                    풀이 URL:{" "}
+                    <span style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" }}>
+                      {p.solveLink ? p.solveLink : "-"}
+                    </span>
+                  </div>
+                ) : null}
               </div>
             </div>
           );
