@@ -2,7 +2,10 @@
 "use client";
 
 import { browserStorage } from "@/lib/storage/browserStorage";
-import { pullSharedSnapshotAndHydrateWithOptions } from "@/lib/storage/sharedSnapshot";
+import {
+  pullSharedSnapshotAndHydrateWithOptions,
+  readRemoteSharedStateKvValue,
+} from "@/lib/storage/sharedSnapshot";
 
 import { useEffect, useMemo, useState } from "react";
 import type {
@@ -33,6 +36,7 @@ type LeafProgress = {
   lectureClicks: number;
 };
 type ProgressByLeafId = Record<string, LeafProgress>;
+const LECTURE_TREE_KEY = "mk3:lectureTree";
 
 function baseKey(token: string, sessionIndex: number) {
   return `mk3:${token}:session:${sessionIndex}`;
@@ -49,6 +53,19 @@ function keyLastAdded(token: string, sessionIndex: number) {
 
 function defaultProgress(): LeafProgress {
   return { noteDone: false, solveDone: false, noteLink: "", solveLink: "", lectureClicks: 0 };
+}
+
+function parseTreeUpdatedAtMs(raw: string | null): number | null {
+  if (typeof raw !== "string" || !raw.trim()) return null;
+  try {
+    const parsed = JSON.parse(raw) as { updatedAt?: unknown };
+    const updatedAt = typeof parsed.updatedAt === "string" ? parsed.updatedAt : "";
+    if (!updatedAt) return null;
+    const ms = Date.parse(updatedAt);
+    return Number.isFinite(ms) ? ms : null;
+  } catch {
+    return null;
+  }
 }
 
 export default function SessionClientCore({ token, sessionIndex, role, headerSlot }: Props) {
@@ -208,6 +225,17 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
     setPickerSyncing(true);
     try {
       await pullSharedSnapshotAndHydrateWithOptions({ forceRemote: true });
+      const remoteLectureTree = await readRemoteSharedStateKvValue(LECTURE_TREE_KEY);
+      if (typeof remoteLectureTree === "string" && remoteLectureTree.trim()) {
+        const localLectureTree = browserStorage.getItem(LECTURE_TREE_KEY);
+        const localMs = parseTreeUpdatedAtMs(localLectureTree);
+        const remoteMs = parseTreeUpdatedAtMs(remoteLectureTree);
+        const shouldReplaceLocal =
+          localMs === null || remoteMs === null || remoteMs >= localMs;
+        if (shouldReplaceLocal && localLectureTree !== remoteLectureTree) {
+          browserStorage.setItem(LECTURE_TREE_KEY, remoteLectureTree);
+        }
+      }
     } catch (err) {
       console.error("강의 목록 원격 동기화 실패:", err);
     }

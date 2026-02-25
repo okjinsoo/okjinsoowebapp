@@ -308,6 +308,21 @@ async function fetchRemoteStateKv(args: {
   return toStateKv(row?.state_kv);
 }
 
+export async function readRemoteSharedStateKvValue(key: string): Promise<string | null> {
+  const cfg = getSupabaseConfig();
+  if (!cfg) return null;
+
+  const headers = await getHeaders();
+  if (!headers) return null;
+
+  const snapshotUrl = new URL("/rest/v1/app_state_snapshots", cfg.url);
+  const stateKv = await fetchRemoteStateKv({
+    url: snapshotUrl,
+    headers,
+  });
+  return stateKv[key] ?? null;
+}
+
 export async function pushSharedSnapshot(args?: {
   teachers?: Teacher[];
   students?: Student[];
