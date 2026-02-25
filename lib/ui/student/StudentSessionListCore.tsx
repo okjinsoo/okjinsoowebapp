@@ -22,6 +22,7 @@ import Badge from "@/lib/ui/common/Badge";
 import SessionQuickActions from "@/lib/ui/session/SessionQuickActions";
 import { buildConsultationMap, pickPrimaryConsultTag } from "@/lib/ui/session/consultationMap";
 import { findLastClassIndex } from "@/lib/ui/session/pauseHelpers";
+import { ACHIEVEMENT_BADGE_BG, ACHIEVEMENT_BADGE_TEXT } from "@/lib/ui/common/achievementBadge";
 import type { ConsultTag } from "@/lib/ui/session/consultationMap";
 import type { ConsultationRecord } from "@/lib/types/index";
 import { ConsultBadge, ConsultButton } from "@/lib/ui/common/ConsultParts";
@@ -489,15 +490,6 @@ export default function StudentSessionListCore({ role, token, prefix, hideTokenI
             const statusLabel =
               r.status === "present" ? "출석" : r.status === "absent" ? "결석" : "예정";
             const statusStyle = getStatusStyle(r.status);
-            const percentColor =
-              r.progress.percent >= 80
-                ? "#16a34a"
-                : r.progress.percent >= 75
-                  ? "#2563eb"
-                  : r.progress.percent >= 50
-                    ? "#ea580c"
-                    : "#dc2626";
-
             return (
               <div
                 key={`upcoming-${r.index}`}
@@ -532,7 +524,7 @@ export default function StudentSessionListCore({ role, token, prefix, hideTokenI
                     <div>
                       {r.dateText} {r.timeText}
                     </div>
-                    <Badge style={{ background: percentColor, color: "#fff" }}>{r.progress.percent}%</Badge>
+                    <Badge style={{ background: ACHIEVEMENT_BADGE_BG, color: ACHIEVEMENT_BADGE_TEXT }}>{r.progress.percent}%</Badge>
                     <Badge style={{ background: statusStyle.bg, color: statusStyle.text }}>{statusLabel}</Badge>
                     {!(
                       consultTag &&
@@ -597,15 +589,6 @@ export default function StudentSessionListCore({ role, token, prefix, hideTokenI
             const statusLabel =
               r.status === "present" ? "출석" : r.status === "absent" ? "결석" : "예정";
             const statusStyle = getStatusStyle(r.status);
-            const percentColor =
-              r.progress.percent >= 80
-                ? "#16a34a"
-                : r.progress.percent >= 75
-                  ? "#2563eb"
-                  : r.progress.percent >= 50
-                    ? "#ea580c"
-                    : "#dc2626";
-
             return (
               <div
                 key={`past-${r.index}`}
@@ -640,7 +623,7 @@ export default function StudentSessionListCore({ role, token, prefix, hideTokenI
                     <div>
                       {r.dateText} {r.timeText}
                     </div>
-                    <Badge style={{ background: percentColor, color: "#fff" }}>{r.progress.percent}%</Badge>
+                    <Badge style={{ background: ACHIEVEMENT_BADGE_BG, color: ACHIEVEMENT_BADGE_TEXT }}>{r.progress.percent}%</Badge>
                     <Badge style={{ background: statusStyle.bg, color: statusStyle.text }}>{statusLabel}</Badge>
                     {!(
                       consultTag &&

@@ -48,6 +48,7 @@ import Badge from "@/lib/ui/common/Badge";
 import SessionQuickActions from "@/lib/ui/session/SessionQuickActions";
 import AutoResizeTextarea from "@/lib/ui/common/AutoResizeTextarea";
 import { ConsultBadge, ConsultButton } from "@/lib/ui/common/ConsultParts";
+import { ACHIEVEMENT_BADGE_BG, ACHIEVEMENT_BADGE_TEXT } from "@/lib/ui/common/achievementBadge";
 import ConsultModal, { ConsultFormState } from "@/lib/ui/common/ConsultModal";
 import { makeId } from "@/lib/utils/id";
 import { kstDateMs, nowIso, todayYmdKST } from "@/lib/utils/date";
@@ -1602,7 +1603,7 @@ export default function StudentHubCore({
                     </div>
                     <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
                       <div>{fmtKST_yyyyMMdd_HHmm_noSeconds(item.iso)}</div>
-                      <Badge style={{ background: "#e5e7eb", color: "#111827" }}>{item.percent}%</Badge>
+                      <Badge style={{ background: ACHIEVEMENT_BADGE_BG, color: ACHIEVEMENT_BADGE_TEXT }}>{item.percent}%</Badge>
                       {item.refundCompleted ? (
                         <Badge style={{ background: "#fecaca", color: "#9f1239" }}>환불완료</Badge>
                       ) : item.refundRequested ? (

@@ -15,6 +15,7 @@ import {
 import { buildConsultationRecord, normalizeConsultPurpose, validateConsultForm } from "@/lib/factories/consultationFactory";
 import { fmtKST_yyyyMMdd_HHmm_noSeconds } from "@/lib/ui/session/format";
 import Badge from "@/lib/ui/common/Badge";
+import { ACHIEVEMENT_BADGE_BG, ACHIEVEMENT_BADGE_TEXT } from "@/lib/ui/common/achievementBadge";
 import { findStudentByToken, upsertStudent } from "@/lib/storage/students";
 import { sessionsByStudent } from "@/lib/storage/sessions";
 import { loadConsultationsByStudent, saveConsultationsByStudent } from "@/lib/storage/consultations";
@@ -234,15 +235,6 @@ export default function SessionTopBarCore({ role, token, index }: Props) {
     }, 0);
     return total === 0 ? 0 : Math.round((done / total) * 100);
   }, [mounted, token, index, progressTick]);
-
-  const achievementColor =
-    achievementPercent >= 80
-      ? "#16a34a"
-      : achievementPercent >= 75
-        ? "#2563eb"
-        : achievementPercent >= 50
-          ? "#ea580c"
-          : "#dc2626";
 
   const lastClassIndex = useMemo(() => {
     if (!student || (student.pauseStatus !== "confirmed" && student.pauseStatus !== "paused") || !student.pauseEffectiveDate) return null;
@@ -563,7 +555,7 @@ export default function SessionTopBarCore({ role, token, index }: Props) {
         <div className="flex items-center gap-2 flex-wrap text-dim">
           <div>{mounted ? (effectiveISO ? fmtKST_yyyyMMdd_HHmm_noSeconds(effectiveISO) : "예정일 없음") : "-"}</div>
           <Badge style={{ background: statusStyle.bg, color: statusStyle.text }}>{statusLabel}</Badge>
-          <Badge style={{ background: achievementColor, color: "#fff" }}>{achievementPercent}%</Badge>
+          <Badge style={{ background: ACHIEVEMENT_BADGE_BG, color: ACHIEVEMENT_BADGE_TEXT }}>{achievementPercent}%</Badge>
           {!(
             lastClassIndex &&
             index === lastClassIndex &&
