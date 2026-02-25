@@ -128,6 +128,11 @@ function normalizeAnyTree(raw: unknown): LectureTree {
   return buildTreeFromLeaves(legacyLeaves, typeof rec.updatedAt === "string" ? rec.updatedAt : undefined);
 }
 
+export function parseLectureTreeRaw(raw: string | null): LectureTree {
+  const parsed = safeParseJson<unknown>(raw);
+  return normalizeAnyTree(parsed);
+}
+
 function persistTree(tree: LectureTree): void {
   if (typeof window === "undefined") return;
   browserStorage.setItem(KEY_LECTURE_TREE, JSON.stringify(tree));
@@ -149,8 +154,7 @@ export function makeEmptyLectureTree(): LectureTree {
 
 export function loadLectureTree(): LectureTree {
   const raw = typeof window !== "undefined" ? browserStorage.getItem(KEY_LECTURE_TREE) : null;
-  const parsed = safeParseJson<unknown>(raw);
-  const normalized = normalizeAnyTree(parsed);
+  const normalized = parseLectureTreeRaw(raw);
 
   // 키가 아예 없을 때는 "읽기" 동작만 수행하고 저장하지 않음.
   // (저장 이벤트가 발생하면 SharedSnapshotAgent가 빈 트리를 DB로 올릴 수 있어 덮어쓰기 위험)
@@ -158,6 +162,7 @@ export function loadLectureTree(): LectureTree {
     return normalized;
   }
 
+  const parsed = safeParseJson<unknown>(raw);
   if (JSON.stringify(parsed) !== JSON.stringify(normalized)) {
     persistTree(normalized);
   }

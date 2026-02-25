@@ -16,6 +16,7 @@ import {
   loadLectureTree,
   findLeafById,
   flattenLeaves,
+  parseLectureTreeRaw,
 } from "@/lib/storage/lectures";
 
 type Role = "s" | "t" | "a";
@@ -53,33 +54,6 @@ function keyLastAdded(token: string, sessionIndex: number) {
 
 function defaultProgress(): LeafProgress {
   return { noteDone: false, solveDone: false, noteLink: "", solveLink: "", lectureClicks: 0 };
-}
-
-function parseTreeMeta(raw: string | null): { updatedAtMs: number | null; leafCount: number } {
-  if (typeof raw !== "string" || !raw.trim()) {
-    return { updatedAtMs: null, leafCount: 0 };
-  }
-  try {
-    const parsed = JSON.parse(raw) as { updatedAt?: unknown; root?: unknown };
-    const updatedAt = typeof parsed.updatedAt === "string" ? parsed.updatedAt : "";
-    const ms = updatedAt ? Date.parse(updatedAt) : NaN;
-    const updatedAtMs = Number.isFinite(ms) ? ms : null;
-
-    const countLeaves = (node: unknown): number => {
-      if (!node || typeof node !== "object") return 0;
-      const rec = node as Record<string, unknown>;
-      if (rec.type === "leaf") return 1;
-      if (rec.type !== "folder") return 0;
-      const children = Array.isArray(rec.children) ? rec.children : [];
-      let total = 0;
-      for (const child of children) total += countLeaves(child);
-      return total;
-    };
-
-    return { updatedAtMs, leafCount: countLeaves(parsed.root) };
-  } catch {
-    return { updatedAtMs: null, leafCount: 0 };
-  }
 }
 
 export default function SessionClientCore({ token, sessionIndex, role, headerSlot }: Props) {
@@ -237,28 +211,18 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
   async function openPicker() {
     if (!canAssignLectures) return;
     setPickerSyncing(true);
+    let pickerTree: LectureTree | null = null;
     try {
       await pullSharedSnapshotAndHydrateWithOptions({ forceRemote: true });
       const remoteLectureTree = await readRemoteSharedStateKvValue(LECTURE_TREE_KEY);
       if (typeof remoteLectureTree === "string" && remoteLectureTree.trim()) {
-        const localLectureTree = browserStorage.getItem(LECTURE_TREE_KEY);
-        const localMeta = parseTreeMeta(localLectureTree);
-        const remoteMeta = parseTreeMeta(remoteLectureTree);
-        const shouldReplaceLocal = (() => {
-          if (localMeta.leafCount === 0 && remoteMeta.leafCount > 0) return true;
-          if (localMeta.leafCount > 0 && remoteMeta.leafCount === 0) return false;
-          if (localMeta.updatedAtMs === null || remoteMeta.updatedAtMs === null) return true;
-          return remoteMeta.updatedAtMs >= localMeta.updatedAtMs;
-        })();
-        if (shouldReplaceLocal && localLectureTree !== remoteLectureTree) {
-          browserStorage.setItem(LECTURE_TREE_KEY, remoteLectureTree);
-        }
+        pickerTree = parseLectureTreeRaw(remoteLectureTree);
       }
     } catch (err) {
       console.error("강의 목록 원격 동기화 실패:", err);
     }
     try {
-      const t = loadLectureTree();
+      const t = pickerTree ?? loadLectureTree();
       setTree(t);
       setPickerOpen(true);
       setPickerQuery("");
