@@ -124,7 +124,7 @@ export default function StudentMainClient({ role }: { role: "a" | "t" | "s" }) {
     return (
       <main style={{ padding: 20 }}>
         <h1 className="page-title">학생 화면</h1>
-        <p style={{ marginTop: 8, color: "#666" }}>로딩 중...</p>
+        <p style={{ marginTop: 8, color: "var(--text-muted)" }}>로딩 중...</p>
       </main>
     );
   }
@@ -145,7 +145,7 @@ export default function StudentMainClient({ role }: { role: "a" | "t" | "s" }) {
 
       {!studentToken ? (
         <div style={{ padding: 20 }}>
-          <p style={{ color: "#666" }}>학생을 선택해야 페이지를 볼 수 있습니다.</p>
+          <p style={{ color: "var(--text-muted)" }}>학생을 선택해야 페이지를 볼 수 있습니다.</p>
         </div>
       ) : (
         <StudentHubCore role={role} token={studentToken} prefix={`/${role}/smain`} hideTokenInRoute />

@@ -532,10 +532,10 @@ export default function SessionTopBarCore({ role, token, index }: Props) {
   return (
     <div
       style={{
-        border: "1px solid #eee",
+        border: "1px solid var(--surface-border)",
         borderRadius: 10,
         padding: "8px 10px",
-        background: "#fff",
+        background: "var(--surface-bg)",
       }}
       className="flex items-center justify-between gap-3"
     >

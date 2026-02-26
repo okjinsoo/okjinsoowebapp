@@ -450,7 +450,7 @@ export default function StudentHubCore({
   const boxButton = {
     border: "1px solid #d1d5db",
     borderRadius: 6,
-    background: "#fff",
+    background: "var(--surface-bg)",
     cursor: "pointer",
   };
   const inputStyle = {
@@ -700,7 +700,7 @@ export default function StudentHubCore({
     return (
       <main style={{ padding: 20, maxWidth: 980, margin: "0 auto"}}>
         <h1 className="page-title">학생 페이지</h1>
-        <p style={{ marginTop: 8, color: "#666" }}>token이 없습니다.</p>
+        <p style={{ marginTop: 8, color: "var(--text-muted)" }}>token이 없습니다.</p>
       </main>
     );
   }
@@ -709,7 +709,7 @@ export default function StudentHubCore({
     return (
       <main style={{ padding: 20, maxWidth: 980, margin: "0 auto"}}>
         <h1 className="page-title">학생 페이지</h1>
-        <p style={{ marginTop: 8, color: "#666" }}>
+        <p style={{ marginTop: 8, color: "var(--text-muted)" }}>
           학생을 찾지 못했습니다. <code>{token}</code>
         </p>
       </main>
@@ -1425,7 +1425,7 @@ export default function StudentHubCore({
         </div>
       </section>
 
-      <section style={{ marginTop: 14, border: "1px solid #eee", borderRadius: 12, padding: 14, background: "#fff" }}>
+      <section style={{ marginTop: 14, border: "1px solid var(--surface-border)", borderRadius: 12, padding: 14, background: "var(--surface-bg)" }}>
         <div style={{ display: "grid", gap: 10 }}>
           <div
             style={{
@@ -1557,7 +1557,7 @@ export default function StudentHubCore({
         ) : null}
       </section>
 
-      <section style={{ marginTop: 12, border: "1px solid #eee", borderRadius: 12, padding: 14, background: "#fff" }}>
+      <section style={{ marginTop: 12, border: "1px solid var(--surface-border)", borderRadius: 12, padding: 14, background: "var(--surface-bg)" }}>
         <div className="card-title">예정 수업</div>
         {upcomingSessions.length === 0 ? (
           <div className="text-muted" style={{ marginTop: 8 }}>
@@ -1576,9 +1576,9 @@ export default function StudentHubCore({
                     gap: 12,
                     alignItems: "center",
                     padding: "8px 10px",
-                    border: "1px solid #eee",
+                    border: "1px solid var(--surface-border)",
                     borderRadius: 8,
-                    background: "#fff",
+                    background: "var(--surface-bg)",
                   }}
                   onMouseEnter={(e) => (e.currentTarget.style.background = "#f3f4f6")}
                   onMouseLeave={(e) => (e.currentTarget.style.background = "#fff")}
@@ -1646,7 +1646,7 @@ export default function StudentHubCore({
       </section>
 
       {student?.scheduleChangeEvents?.length ? (
-        <section style={{ marginTop: 12, border: "1px solid #eee", borderRadius: 12, padding: 14, background: "#fff" }}>
+        <section style={{ marginTop: 12, border: "1px solid var(--surface-border)", borderRadius: 12, padding: 14, background: "var(--surface-bg)" }}>
           <div className="card-title">시간 변경 기록</div>
           <div style={{ display: "grid", gap: 6, marginTop: 6 }}>
             {[...student.scheduleChangeEvents]
@@ -1660,9 +1660,9 @@ export default function StudentHubCore({
                     alignItems: "center",
                     gap: 12,
                     padding: "8px 10px",
-                    border: "1px solid #eee",
+                    border: "1px solid var(--surface-border)",
                     borderRadius: 8,
-                    background: "#fff",
+                    background: "var(--surface-bg)",
                   }}
                 >
                     <div
@@ -1699,7 +1699,7 @@ export default function StudentHubCore({
       ) : null}
 
       {canEdit ? (
-        <section style={{ marginTop: 12, border: "1px solid #eee", borderRadius: 12, padding: 14, background: "#fff" }}>
+        <section style={{ marginTop: 12, border: "1px solid var(--surface-border)", borderRadius: 12, padding: 14, background: "var(--surface-bg)" }}>
           <div className="card-title">상담 기록</div>
           {consultRecords.length === 0 ? (
             <div className="text-muted" style={{ marginTop: 8 }}>
@@ -1716,9 +1716,9 @@ export default function StudentHubCore({
                     gap: 12,
                     alignItems: "center",
                     padding: "8px 10px",
-                    border: "1px solid #eee",
+                    border: "1px solid var(--surface-border)",
                     borderRadius: 8,
-                    background: "#fff",
+                    background: "var(--surface-bg)",
                   }}
                 >
                   <div style={{ fontWeight: 700 }}>{formatYmdDot(r.date)}</div>
@@ -1825,7 +1825,7 @@ export default function StudentHubCore({
       ) : null}
 
       {isAdmin || accessRole === "t" ? (
-        <section style={{ marginTop: 14, border: "1px solid #eee", borderRadius: 12, padding: 14, background: "#fff" }}>
+        <section style={{ marginTop: 14, border: "1px solid var(--surface-border)", borderRadius: 12, padding: 14, background: "var(--surface-bg)" }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
             <div className="card-title">결제 기록</div>
             <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
@@ -1841,7 +1841,7 @@ export default function StudentHubCore({
             </div>
           </div>
           {displayRecords.length === 0 ? (
-            <div style={{ color: "#666", marginTop: 6 }}>기록이 없습니다.</div>
+            <div style={{ color: "var(--text-muted)", marginTop: 6 }}>기록이 없습니다.</div>
           ) : (
             <div style={{ display: "grid", gap: 6, marginTop: 6 }}>
               {displayRecords.map((h) => (
@@ -1853,9 +1853,9 @@ export default function StudentHubCore({
                     justifyContent: "space-between",
                     gap: 10,
                     padding: "8px 10px",
-                    border: "1px solid #eee",
+                    border: "1px solid var(--surface-border)",
                     borderRadius: 8,
-                    background: "#fff",
+                    background: "var(--surface-bg)",
                   }}
                 >
                   <div
@@ -1913,7 +1913,7 @@ export default function StudentHubCore({
             zIndex: 50,
           }}
         >
-          <div style={{ width: "100%", maxWidth: 350, background: "#fff", borderRadius: 12, padding: 12 }}>
+          <div style={{ width: "100%", maxWidth: 350, background: "var(--surface-bg)", borderRadius: 12, padding: 12 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <div style={{ fontWeight: 900 }}>
                 {editingRecordId ? "수업 현황 수정" : "추가 결제 등록"}
@@ -2019,7 +2019,7 @@ export default function StudentHubCore({
             zIndex: 60,
           }}
         >
-          <div style={{ width: "100%", maxWidth: 380, background: "#fff", borderRadius: 12, padding: 12 }}>
+          <div style={{ width: "100%", maxWidth: 380, background: "var(--surface-bg)", borderRadius: 12, padding: 12 }}>
             <div style={{ fontWeight: 900 }}>
               {refundMode === "process" ? "환불 처리" : "환불 요청"}
             </div>
@@ -2189,7 +2189,7 @@ export default function StudentHubCore({
             zIndex: 70,
           }}
         >
-          <div style={{ width: "100%", maxWidth: 420, background: "#fff", borderRadius: 12, padding: 12 }}>
+          <div style={{ width: "100%", maxWidth: 420, background: "var(--surface-bg)", borderRadius: 12, padding: 12 }}>
             <div style={{ fontWeight: 900 }}>수업 시간 변경</div>
 
             <div style={{ display: "grid", gap: 10, marginTop: 10 }}>
@@ -2248,7 +2248,7 @@ export default function StudentHubCore({
                   {[0, 1, 2, 3, 4, 5, 6]
                     .filter((d) => scheduleDays[d]?.on)
                     .map((d) => (
-                      <div key={d} style={{ padding: 8, border: "1px solid #eee", borderRadius: 8, background: "#fff" }}>
+                      <div key={d} style={{ padding: 8, border: "1px solid var(--surface-border)", borderRadius: 8, background: "var(--surface-bg)" }}>
                         <div
                           style={{
                             display: "grid",
@@ -2284,7 +2284,7 @@ export default function StudentHubCore({
                     ))}
 
                   {[0, 1, 2, 3, 4, 5, 6].every((d) => !scheduleDays[d]?.on) ? (
-                    <div style={{ color: "#666"}}>선택된 요일이 없습니다.</div>
+                    <div style={{ color: "var(--text-muted)"}}>선택된 요일이 없습니다.</div>
                   ) : null}
                 </div>
               </div>

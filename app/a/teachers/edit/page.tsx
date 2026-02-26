@@ -71,7 +71,7 @@ export default function AdminTeacherEditPage() {
         <div style={{ marginTop: 8, textAlign: "center" }} className="page-title">
           선생님 정보 수정
         </div>
-        <div style={{ marginTop: 10, color: "#666" }}>선생님을 찾지 못했습니다.</div>
+        <div style={{ marginTop: 10, color: "var(--text-muted)" }}>선생님을 찾지 못했습니다.</div>
       </main>
     );
   }
@@ -87,7 +87,7 @@ export default function AdminTeacherEditPage() {
         </div>
       </div>
 
-      <section style={{ marginTop: 14, border: "1px solid #eee", borderRadius: 10, padding: 12, background: "#fff" }}>
+      <section style={{ marginTop: 14, border: "1px solid var(--surface-border)", borderRadius: 10, padding: 12, background: "var(--surface-bg)" }}>
         <div style={{ display: "grid", gap: 10 }}>
           <div>
             <div style={{ fontWeight: 700 }}>이름 *</div>

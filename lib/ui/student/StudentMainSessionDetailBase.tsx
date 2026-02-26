@@ -154,7 +154,7 @@ export default function StudentMainSessionDetailBase({ role }: { role: "a" | "t"
             headerSlot={<SessionTopBarCore role={role} token={token} index={index} />}
           />
         ) : (
-          <div style={{ color: "#666" }}>학생을 먼저 선택해주세요.</div>
+          <div style={{ color: "var(--text-muted)" }}>학생을 먼저 선택해주세요.</div>
         )}
       </div>
     </main>

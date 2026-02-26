@@ -138,7 +138,7 @@ export default function StudentMainSessionListBase({ role }: { role: "a" | "t" |
       {token ? (
         <StudentSessionListCore role={role} token={token} prefix={`/${role}/smain`} hideTokenInRoute />
       ) : (
-        <div style={{ padding: 20, color: "#666" }}>먼저 학생을 선택해주세요.</div>
+        <div style={{ padding: 20, color: "var(--text-muted)" }}>먼저 학생을 선택해주세요.</div>
       )}
     </main>
   );

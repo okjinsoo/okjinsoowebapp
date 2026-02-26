@@ -180,10 +180,10 @@ export default function TodaySessionsCard({ rows, role }: Props) {
     <section
       style={{
         marginTop: 14,
-        border: "1px solid #eee",
+        border: "1px solid var(--surface-border)",
         borderRadius: 10,
         padding: 12,
-        background: "#fff",
+        background: "var(--surface-bg)",
       }}
     >
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
@@ -209,9 +209,9 @@ export default function TodaySessionsCard({ rows, role }: Props) {
                   gap: 30,
                   alignItems: "center",
                   padding: "8px 10px",
-                  border: "1px solid #eee",
+                  border: "1px solid var(--surface-border)",
                   borderRadius: 8,
-                  background: "#fff",
+                  background: "var(--surface-bg)",
                 }}
                 onMouseEnter={(e) => (e.currentTarget.style.background = "#f3f4f6")}
                 onMouseLeave={(e) => (e.currentTarget.style.background = "#fff")}

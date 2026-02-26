@@ -406,7 +406,7 @@ export default function AdminMainPage() {
       </section>
 
       <section
-        style={{ marginTop: 16, border: "1px solid #eee", borderRadius: 12, padding: 14, background: "#fff" }}
+        style={{ marginTop: 16, border: "1px solid var(--surface-border)", borderRadius: 12, padding: 14, background: "var(--surface-bg)" }}
       >
         <div className="card-title" style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <span>휴회 요청</span>
@@ -427,9 +427,9 @@ export default function AdminMainPage() {
                   gap: 12,
                   alignItems: "center",
                   padding: "8px 10px",
-                  border: "1px solid #eee",
+                  border: "1px solid var(--surface-border)",
                   borderRadius: 8,
-                  background: "#fff",
+                  background: "var(--surface-bg)",
                   cursor: "pointer",
                 }}
                 onMouseEnter={(e) => (e.currentTarget.style.background = "#f3f4f6")}
@@ -457,7 +457,7 @@ export default function AdminMainPage() {
       {sectionOrder.map((kind) => (
         <section
           key={kind}
-          style={{ marginTop: 16, border: "1px solid #eee", borderRadius: 12, padding: 14, background: "#fff" }}
+          style={{ marginTop: 16, border: "1px solid var(--surface-border)", borderRadius: 12, padding: 14, background: "var(--surface-bg)" }}
         >
           <div className="card-title" style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <span>{getStudentStatusSectionLabel(kind)}</span>
@@ -480,9 +480,9 @@ export default function AdminMainPage() {
                       gap: 12,
                       alignItems: "center",
                       padding: "8px 10px",
-                      border: "1px solid #eee",
+                      border: "1px solid var(--surface-border)",
                       borderRadius: 8,
-                      background: "#fff",
+                      background: "var(--surface-bg)",
                       cursor: "pointer",
                     }}
                     onMouseEnter={(e) => (e.currentTarget.style.background = "#f3f4f6")}

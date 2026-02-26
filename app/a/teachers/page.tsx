@@ -74,16 +74,16 @@ export default function AdminTeachersPage() {
         </div>
       </section>
 
-      <section style={{ marginTop: 16, border: "1px solid #eee", borderRadius: 12, padding: 14, background: "#fff" }}>
+      <section style={{ marginTop: 16, border: "1px solid var(--surface-border)", borderRadius: 12, padding: 14, background: "var(--surface-bg)" }}>
         <h2 className="card-title">선생님 목록</h2>
         <div style={{ display: "grid", gap: 10, marginTop: 10 }}>
           {teacherLinks.map((t) => (
-            <div key={t.id} style={{ border: "1px solid #eee", borderRadius: 8, padding: 12, background: "#fff" }}>
+            <div key={t.id} style={{ border: "1px solid var(--surface-border)", borderRadius: 8, padding: 12, background: "var(--surface-bg)" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 24, flexWrap: "wrap", textAlign: "left" }}>
                   <span style={{ fontWeight: 700 }}>{t.name}</span>
-                  <span style={{ color: "#666" }}>{t.phone || "-"}</span>
-                  <span style={{ color: "#666" }}>{t.email || "-"}</span>
+                  <span style={{ color: "var(--text-muted)" }}>{t.phone || "-"}</span>
+                  <span style={{ color: "var(--text-muted)" }}>{t.email || "-"}</span>
                 </div>
 
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
@@ -113,7 +113,7 @@ export default function AdminTeachersPage() {
             </div>
           ))}
 
-          {teachers.length === 0 ? <div style={{ color: "#666" }}>아직 선생님이 없습니다.</div> : null}
+          {teachers.length === 0 ? <div style={{ color: "var(--text-muted)" }}>아직 선생님이 없습니다.</div> : null}
         </div>
       </section>
     </main>

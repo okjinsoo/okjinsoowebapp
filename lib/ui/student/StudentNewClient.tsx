@@ -234,7 +234,7 @@ export default function StudentNewClient(props: {
       <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
         <div>
           <h1 className="page-title">신규 학생 등록 ({mode === "admin" ? "원장" : "선생님"})</h1>
-          <div style={{ color: "#666", marginTop: 6 }}>
+          <div style={{ color: "var(--text-muted)", marginTop: 6 }}>
             시작일을 선택할 수 있습니다. (기본값: 오늘)
           </div>
         </div>
@@ -248,7 +248,7 @@ export default function StudentNewClient(props: {
 
       <section style={{ marginTop: 14, display: "grid", gap: 14 }}>
         {/* start date */}
-        <div style={{ border: "1px solid #eee", borderRadius: 10, padding: 12, background: "#fff" }}>
+        <div style={{ border: "1px solid var(--surface-border)", borderRadius: 10, padding: 12, background: "var(--surface-bg)" }}>
           <div className="card-title">시작일</div>
           <input
             type="date"
@@ -257,7 +257,7 @@ export default function StudentNewClient(props: {
           />
         </div>
         {/* teacher */}
-        <div style={{ border: "1px solid #eee", borderRadius: 10, padding: 12, background: "#fff" }}>
+        <div style={{ border: "1px solid var(--surface-border)", borderRadius: 10, padding: 12, background: "var(--surface-bg)" }}>
           <div className="card-title">배정 선생님</div>
 
           {mode === "admin" ? (
@@ -287,13 +287,13 @@ export default function StudentNewClient(props: {
                 padding: 10,
                 border: "1px solid #ddd",
                 borderRadius: 8,
-                background: "#fff",
+                background: "var(--surface-bg)",
               }}
             >
               <div style={{ }}>
                 <b>{teacherLabel}</b>
               </div>
-              <div style={{ color: "#666", marginTop: 4 }}>
+              <div style={{ color: "var(--text-muted)", marginTop: 4 }}>
                 선생님 화면에서는 배정 선생님이 자동으로 고정됩니다.
               </div>
             </div>
@@ -301,7 +301,7 @@ export default function StudentNewClient(props: {
         </div>
 
         {/* 학생 기본 */}
-        <div style={{ border: "1px solid #eee", borderRadius: 10, padding: 12, background: "#fff" }}>
+        <div style={{ border: "1px solid var(--surface-border)", borderRadius: 10, padding: 12, background: "var(--surface-bg)" }}>
           <div className="card-title">학생 정보</div>
 
           <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
@@ -340,7 +340,7 @@ export default function StudentNewClient(props: {
               </div>
             </div>
 
-            <div style={{ color: "#666", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+            <div style={{ color: "var(--text-muted)", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
               <label style={{ display: "inline-flex", alignItems: "center" }}>
                 <input
                   type="radio"
@@ -427,7 +427,7 @@ export default function StudentNewClient(props: {
                   marginTop: 6,
                 }}
               />
-              <div style={{ color: "#666", marginTop: 6 }}>
+              <div style={{ color: "var(--text-muted)", marginTop: 6 }}>
                 저장 값: <code>{googleEmail.trim() || "입력 필요"}</code>
               </div>
             </div>
@@ -450,7 +450,7 @@ export default function StudentNewClient(props: {
                     marginTop: 6,
                   }}
                 />
-                <div style={{ color: "#666", marginTop: 6, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                <div style={{ color: "var(--text-muted)", marginTop: 6, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
                   <label style={{ display: "inline-flex", alignItems: "center" }}>
                     <input
                       type="radio"
@@ -485,9 +485,9 @@ export default function StudentNewClient(props: {
         </div>
 
         {/* 수업 시간 */}
-        <div style={{ border: "1px solid #eee", borderRadius: 10, padding: 12, background: "#fff" }}>
+        <div style={{ border: "1px solid var(--surface-border)", borderRadius: 10, padding: 12, background: "var(--surface-bg)" }}>
           <div className="card-title">수업 시간 설정 *</div>
-          <div style={{ marginTop: 6, color: "#666" }}>
+          <div style={{ marginTop: 6, color: "var(--text-muted)" }}>
             요일을 최소 1개 이상 선택하세요. 선택한 요일마다 시/분(00, 30)을 설정합니다.
           </div>
 
@@ -518,7 +518,7 @@ export default function StudentNewClient(props: {
             {[0, 1, 2, 3, 4, 5, 6]
               .filter((d) => days[d]?.on)
               .map((d) => (
-                <div key={d} style={{ padding: 10, border: "1px solid #eee", borderRadius: 10, background: "#fff" }}>
+                <div key={d} style={{ padding: 10, border: "1px solid var(--surface-border)", borderRadius: 10, background: "var(--surface-bg)" }}>
                   <div
                     style={{
                       display: "grid",
@@ -554,13 +554,13 @@ export default function StudentNewClient(props: {
               ))}
 
             {[0, 1, 2, 3, 4, 5, 6].every((d) => !days[d]?.on) ? (
-              <div style={{ color: "#666"}}>선택된 요일이 없습니다.</div>
+              <div style={{ color: "var(--text-muted)"}}>선택된 요일이 없습니다.</div>
             ) : null}
           </div>
         </div>
 
         {/* 회차 수 */}
-        <div style={{ border: "1px solid #eee", borderRadius: 10, padding: 12, background: "#fff" }}>
+        <div style={{ border: "1px solid var(--surface-border)", borderRadius: 10, padding: 12, background: "var(--surface-bg)" }}>
           <div className="card-title">회차 수 *</div>
           <input
             type="number"
@@ -577,7 +577,7 @@ export default function StudentNewClient(props: {
               marginTop: 8,
             }}
           />
-          <div style={{ marginTop: 6, color: "#666" }}>
+          <div style={{ marginTop: 6, color: "var(--text-muted)" }}>
             기본 12회 (1~60 범위). 생성과 동시에 회차가 자동 생성됩니다.
           </div>
         </div>

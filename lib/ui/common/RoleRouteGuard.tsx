@@ -99,7 +99,7 @@ export default function RoleRouteGuard({ requiredRole, children }: Props) {
           border: "1px solid #e5e7eb",
           borderRadius: 12,
           padding: 16,
-          background: "#fff",
+          background: "var(--surface-bg)",
         }}
       >
         <h1 style={{ fontSize: 24, fontWeight: 900 }}>

@@ -22,7 +22,7 @@ export default function BackToSessionList({
           onClick={() => router.push(hubHref)}
           style={{
             border: "1px solid #ddd",
-            background: "#fff",
+            background: "var(--surface-bg)",
             borderRadius: 10,
             padding: "8px 10px",
             cursor: "pointer",
@@ -37,7 +37,7 @@ export default function BackToSessionList({
         onClick={() => router.push(listHref)}
         style={{
           border: "1px solid #ddd",
-          background: "#fff",
+          background: "var(--surface-bg)",
           borderRadius: 10,
           padding: "8px 10px",
           cursor: "pointer",

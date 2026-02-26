@@ -61,7 +61,7 @@ export default function StudentEditBase({ role }: { role: "a" | "t" | "s" }) {
     return (
       <main style={{ padding: 20 }}>
         <h1 className="page-title">학생 정보 수정</h1>
-        <p style={{ marginTop: 8, color: "#666" }}>학생은 정보 편집 권한이 없습니다.</p>
+        <p style={{ marginTop: 8, color: "var(--text-muted)" }}>학생은 정보 편집 권한이 없습니다.</p>
       </main>
     );
   }
@@ -70,7 +70,7 @@ export default function StudentEditBase({ role }: { role: "a" | "t" | "s" }) {
     return (
       <main style={{ padding: 20 }}>
         <h1 className="page-title">학생 정보 수정</h1>
-        <p style={{ marginTop: 8, color: "#666" }}>학생을 먼저 선택해주세요.</p>
+        <p style={{ marginTop: 8, color: "var(--text-muted)" }}>학생을 먼저 선택해주세요.</p>
       </main>
     );
   }

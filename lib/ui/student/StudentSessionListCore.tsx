@@ -499,9 +499,9 @@ export default function StudentSessionListCore({ role, token, prefix, hideTokenI
                   gap: 12,
                   alignItems: "center",
                   padding: "8px 10px",
-                  border: "1px solid #eee",
+                  border: "1px solid var(--surface-border)",
                   borderRadius: 8,
-                  background: "#fff",
+                  background: "var(--surface-bg)",
                 }}
                 onMouseEnter={(e) => (e.currentTarget.style.background = "#f3f4f6")}
                 onMouseLeave={(e) => (e.currentTarget.style.background = "#fff")}
@@ -598,9 +598,9 @@ export default function StudentSessionListCore({ role, token, prefix, hideTokenI
                   gap: 12,
                   alignItems: "center",
                   padding: "8px 10px",
-                  border: "1px solid #eee",
+                  border: "1px solid var(--surface-border)",
                   borderRadius: 8,
-                  background: "#fff",
+                  background: "var(--surface-bg)",
                 }}
                 onMouseEnter={(e) => (e.currentTarget.style.background = "#f3f4f6")}
                 onMouseLeave={(e) => (e.currentTarget.style.background = "#fff")}

@@ -113,7 +113,7 @@ export default function HomePage() {
           width: "100%",
           maxWidth: 720,
           borderRadius: 18,
-          background: "#fff",
+          background: "var(--surface-bg)",
           border: "1px solid #e5e7eb",
           padding: 24,
           boxShadow: "0 10px 30px rgba(15, 23, 42, 0.08)",
@@ -227,7 +227,7 @@ export default function HomePage() {
                     padding: "10px 12px",
                     border: "1px solid #cbd5e1",
                     borderRadius: 10,
-                    background: "#fff",
+                    background: "var(--surface-bg)",
                     fontWeight: 700,
                     cursor: "pointer",
                   }}

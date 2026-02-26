@@ -285,7 +285,7 @@ export default function TeacherMainClient({ initialRole = "t" }: { initialRole?:
           studentToken={null}
           onTeacherChange={(next) => setTeacherId(next)}
         />
-        <div style={{ color: "#666", marginTop: 6 }}>
+        <div style={{ color: "var(--text-muted)", marginTop: 6 }}>
           teacherId 없는 상태에서는 학생을 표시하지 않습니다.
         </div>
       </div>
@@ -325,10 +325,10 @@ export default function TeacherMainClient({ initialRole = "t" }: { initialRole?:
         <section
           style={{
             marginTop: 14,
-            border: "1px solid #eee",
+            border: "1px solid var(--surface-border)",
             borderRadius: 10,
             padding: 12,
-            background: "#fff",
+            background: "var(--surface-bg)",
           }}
         >
           <div className="text-muted">

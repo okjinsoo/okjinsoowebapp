@@ -201,7 +201,7 @@ export default function StudentEditClient(props: {
         <div style={{ marginTop: 8, textAlign: "center" }} className="page-title">
           학생 정보 수정
         </div>
-        <div style={{ marginTop: 10, color: "#666"}}>학생을 찾지 못했습니다.</div>
+        <div style={{ marginTop: 10, color: "var(--text-muted)"}}>학생을 찾지 못했습니다.</div>
       </main>
     );
   }
@@ -218,7 +218,7 @@ export default function StudentEditClient(props: {
       </div>
 
       <section style={{ marginTop: 14, display: "grid", gap: 14 }}>
-        <div style={{ border: "1px solid #eee", borderRadius: 10, padding: 12, background: "#fff" }}>
+        <div style={{ border: "1px solid var(--surface-border)", borderRadius: 10, padding: 12, background: "var(--surface-bg)" }}>
           <div className="card-title">시작일</div>
           {mode === "admin" ? (
             <input
@@ -241,20 +241,20 @@ export default function StudentEditClient(props: {
                 padding: 10,
                 border: "1px solid #ddd",
                 borderRadius: 8,
-                background: "#fff",
+                background: "var(--surface-bg)",
               }}
             >
               <div>
                 <b>{startDate || "-"}</b>
               </div>
-              <div style={{ color: "#666", marginTop: 4 }}>
+              <div style={{ color: "var(--text-muted)", marginTop: 4 }}>
                 선생님 화면에서는 시작일이 고정됩니다.
               </div>
             </div>
           )}
         </div>
 
-        <div style={{ border: "1px solid #eee", borderRadius: 10, padding: 12, background: "#fff" }}>
+        <div style={{ border: "1px solid var(--surface-border)", borderRadius: 10, padding: 12, background: "var(--surface-bg)" }}>
           <div className="card-title">배정 선생님</div>
 
           {mode === "admin" ? (
@@ -284,20 +284,20 @@ export default function StudentEditClient(props: {
                 padding: 10,
                 border: "1px solid #ddd",
                 borderRadius: 8,
-                background: "#fff",
+                background: "var(--surface-bg)",
               }}
             >
               <div style={{ }}>
                 <b>{teacherLabel}</b>
               </div>
-              <div style={{ color: "#666", marginTop: 4 }}>
+              <div style={{ color: "var(--text-muted)", marginTop: 4 }}>
                 선생님 화면에서는 배정 선생님이 자동으로 고정됩니다.
               </div>
             </div>
           )}
         </div>
 
-        <div style={{ border: "1px solid #eee", borderRadius: 10, padding: 12, background: "#fff" }}>
+        <div style={{ border: "1px solid var(--surface-border)", borderRadius: 10, padding: 12, background: "var(--surface-bg)" }}>
           <div className="card-title">학생 정보</div>
 
           <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
@@ -336,7 +336,7 @@ export default function StudentEditClient(props: {
               </div>
             </div>
 
-            <div style={{ color: "#666", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+            <div style={{ color: "var(--text-muted)", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
               <label style={{ display: "inline-flex", alignItems: "center" }}>
                 <input
                   type="radio"
@@ -422,7 +422,7 @@ export default function StudentEditClient(props: {
                   marginTop: 6,
                 }}
               />
-              <div style={{ color: "#666", marginTop: 6 }}>
+              <div style={{ color: "var(--text-muted)", marginTop: 6 }}>
                 저장 값: <code>{googleEmail.trim() || "입력 필요"}</code>
               </div>
             </div>
@@ -445,7 +445,7 @@ export default function StudentEditClient(props: {
                     marginTop: 6,
                   }}
                 />
-                <div style={{ color: "#666", marginTop: 6, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                <div style={{ color: "var(--text-muted)", marginTop: 6, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
                   <label style={{ display: "inline-flex", alignItems: "center" }}>
                     <input
                       type="radio"
@@ -479,7 +479,7 @@ export default function StudentEditClient(props: {
           </div>
         </div>
 
-        <div style={{ border: "1px solid #eee", borderRadius: 10, padding: 12, background: "#fff" }}>
+        <div style={{ border: "1px solid var(--surface-border)", borderRadius: 10, padding: 12, background: "var(--surface-bg)" }}>
           <div className="card-title">회차 수</div>
           <input
             type="number"
@@ -534,7 +534,7 @@ export default function StudentEditClient(props: {
           <div
             style={{
               width: "min(420px, calc(100vw - 24px))",
-              background: "#fff",
+              background: "var(--surface-bg)",
               border: "1px solid #ddd",
               borderRadius: 10,
               padding: 14,

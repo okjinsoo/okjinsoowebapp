@@ -63,10 +63,10 @@ export default function TeacherStudentListCard({ students, onStudentClick, onAdd
     <section
       style={{
         marginTop: 14,
-        border: "1px solid #eee",
+        border: "1px solid var(--surface-border)",
         borderRadius: 10,
         padding: 12,
-        background: "#fff",
+        background: "var(--surface-bg)",
       }}
     >
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
@@ -81,7 +81,7 @@ export default function TeacherStudentListCard({ students, onStudentClick, onAdd
         ) : null}
       </div>
       {students.length === 0 ? (
-        <div style={{ marginTop: 8, color: "#666" }}>학생이 없습니다.</div>
+        <div style={{ marginTop: 8, color: "var(--text-muted)" }}>학생이 없습니다.</div>
       ) : (
         <div style={{ marginTop: 10, display: "grid", gap: 6 }}>
           {students.map((s) => (
@@ -92,9 +92,9 @@ export default function TeacherStudentListCard({ students, onStudentClick, onAdd
                 gridTemplateColumns: "0.8fr minmax(0, 1.2fr)",
                 gap: 6,
                 padding: "8px 10px",
-                border: "1px solid #eee",
+                border: "1px solid var(--surface-border)",
                 borderRadius: 8,
-                background: "#fff",
+                background: "var(--surface-bg)",
                 cursor: "pointer",
               }}
               onClick={() => handleClick(s)}

@@ -82,7 +82,7 @@ export default function AuthCallbackPage() {
           maxWidth: 560,
           border: "1px solid #e5e7eb",
           borderRadius: 14,
-          background: "#fff",
+          background: "var(--surface-bg)",
           padding: 20,
         }}
       >

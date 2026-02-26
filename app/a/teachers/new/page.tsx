@@ -62,7 +62,7 @@ export default function AdminTeacherNewPage() {
         </div>
       </div>
 
-      <section style={{ marginTop: 14, border: "1px solid #eee", borderRadius: 10, padding: 12, background: "#fff" }}>
+      <section style={{ marginTop: 14, border: "1px solid var(--surface-border)", borderRadius: 10, padding: 12, background: "var(--surface-bg)" }}>
         <div style={{ display: "grid", gap: 10 }}>
           <div>
             <div style={{ fontWeight: 700 }}>이름 *</div>

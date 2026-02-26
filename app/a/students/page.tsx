@@ -107,7 +107,7 @@ export default function AdminStudentsPage() {
         </div>
       </section>
 
-      <section style={{ marginTop: 16, border: "1px solid #eee", borderRadius: 12, padding: 14, background: "#fff" }}>
+      <section style={{ marginTop: 16, border: "1px solid var(--surface-border)", borderRadius: 12, padding: 14, background: "var(--surface-bg)" }}>
         <div className="card-title">재학생 리스트</div>
         {activeCards.length === 0 ? (
           <div className="text-muted" style={{ marginTop: 8 }}>
@@ -127,9 +127,9 @@ export default function AdminStudentsPage() {
                     gap: 12,
                     alignItems: "center",
                     padding: "8px 10px",
-                    border: "1px solid #eee",
+                    border: "1px solid var(--surface-border)",
                     borderRadius: 8,
-                    background: "#fff",
+                    background: "var(--surface-bg)",
                     cursor: "pointer",
                   }}
                   onMouseEnter={(e) => (e.currentTarget.style.background = "#f3f4f6")}
@@ -169,7 +169,7 @@ export default function AdminStudentsPage() {
         )}
       </section>
 
-      <section style={{ marginTop: 16, border: "1px solid #eee", borderRadius: 12, padding: 14, background: "#fff" }}>
+      <section style={{ marginTop: 16, border: "1px solid var(--surface-border)", borderRadius: 12, padding: 14, background: "var(--surface-bg)" }}>
         <div className="card-title">휴회생 리스트</div>
         {pausedCards.length === 0 ? (
           <div className="text-muted" style={{ marginTop: 8 }}>
@@ -189,9 +189,9 @@ export default function AdminStudentsPage() {
                     gap: 12,
                     alignItems: "center",
                     padding: "8px 10px",
-                    border: "1px solid #eee",
+                    border: "1px solid var(--surface-border)",
                     borderRadius: 8,
-                    background: "#fff",
+                    background: "var(--surface-bg)",
                     cursor: "pointer",
                   }}
                   onMouseEnter={(e) => (e.currentTarget.style.background = "#f3f4f6")}

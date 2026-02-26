@@ -3,6 +3,13 @@
 :root {
   --background: #fefefe;
   --foreground: #171717;
+  --surface-bg: #ffffff;
+  --surface-border: #e5e7eb;
+  --surface-hover: #f3f4f6;
+  --text-muted: #6b7280;
+  --text-subtle: #4b5563;
+  --control-border: #d1d5db;
+  --input-bg: #ffffff;
 }
 
 @theme inline {
@@ -14,8 +21,15 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --background: #0b1220;
+    --foreground: #e5e7eb;
+    --surface-bg: #111827;
+    --surface-border: #334155;
+    --surface-hover: #1f2937;
+    --text-muted: #94a3b8;
+    --text-subtle: #cbd5e1;
+    --control-border: #475569;
+    --input-bg: #0f172a;
   }
 }
 
@@ -46,12 +60,12 @@ h1 {
 }
 
 .text-muted {
-  color: #6b7280;
+  color: var(--text-muted);
   font-size: 12px !important;
 }
 
 .text-dim {
-  color: #6b7280;
+  color: var(--text-muted);
   font-size: 15px !important;
 }
 
@@ -73,7 +87,7 @@ button {
   font-size: 13px !important;
   padding: 4px 8px !important;
   border-radius: 8px !important;
-  border: 1px solid #d1d5db !important;
+  border: 1px solid var(--control-border) !important;
 }
 
 .brand-home-btn {
@@ -84,31 +98,31 @@ button {
   border: none !important;
   border-radius: 0 !important;
   background: transparent !important;
-  color: #6b7280 !important;
+  color: var(--text-muted) !important;
 }
 
 .brand-home-btn:hover {
-  color: #4b5563 !important;
+  color: var(--text-subtle) !important;
   background: transparent !important;
 }
 
 .btn {
   background: transparent;
-  color: #111827;
+  color: var(--foreground);
   font-weight: 400;
 }
 
 .btn:hover {
-  background: #f3f4f6;
+  background: var(--surface-hover);
 }
 
 .btn-white {
-  background: #ffffff;
-  color: #111827;
+  background: var(--surface-bg);
+  color: var(--foreground);
 }
 
 .btn-white:hover {
-  background: #f3f4f6;
+  background: var(--surface-hover);
 }
 
 .btn-gray {
@@ -189,9 +203,20 @@ input:not([type="checkbox"]):not([type="radio"]),
 select {
   font-size: 15px;
   height: 40px;
+  background: var(--input-bg);
+  color: var(--foreground);
+  border: 1px solid var(--control-border);
 }
 
 textarea {
   font-size: 15px;
   min-height: 40px;
+  background: var(--input-bg);
+  color: var(--foreground);
+  border: 1px solid var(--control-border);
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--text-muted);
 }

@@ -348,10 +348,10 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
             <div
               key={leafId}
               style={{
-                border: "1px solid #eee",
+                border: "1px solid var(--surface-border)",
                 borderRadius: 12,
                 padding: 12,
-                background: "#fff",
+                background: "var(--surface-bg)",
               }}
             >
               <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
@@ -381,7 +381,7 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
                         padding: "6px 10px",
                         borderRadius: 8,
                         border: "1px solid #ddd",
-                        background: "#fff",
+                        background: "var(--surface-bg)",
                         cursor: "pointer",
                         height: 32,
                         fontWeight: 500,
@@ -395,7 +395,7 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
                         padding: "6px 10px",
                         borderRadius: 8,
                         border: "1px solid #ddd",
-                        background: "#fff",
+                        background: "var(--surface-bg)",
                         cursor: "pointer",
                         height: 32,
                         fontWeight: 500,
@@ -499,7 +499,7 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
                 })()}
 
                 {canSeeInternalFields ? (
-                  <div style={{ color: "#666" }}>
+                  <div style={{ color: "var(--text-muted)" }}>
                     필기 URL:{" "}
                     <span style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" }}>
                       {p.noteLink ? p.noteLink : "-"}
@@ -508,7 +508,7 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
                 ) : null}
 
                 {canSeeInternalFields ? (
-                  <div style={{ color: "#666" }}>
+                  <div style={{ color: "var(--text-muted)" }}>
                     풀이 URL:{" "}
                     <span style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" }}>
                       {p.solveLink ? p.solveLink : "-"}
@@ -544,15 +544,15 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
           <div
             style={{
               width: "min(520px, 100%)",
-              background: "#fff",
+              background: "var(--surface-bg)",
               borderRadius: 14,
               padding: 16,
-              border: "1px solid #eee",
+              border: "1px solid var(--surface-border)",
             }}
             onClick={(e) => e.stopPropagation()}
           >
             <div style={{ fontWeight: 800, marginBottom: 8 }}>필기 제출</div>
-            <div style={{ color: "#666", marginBottom: 8 }}>
+            <div style={{ color: "var(--text-muted)", marginBottom: 8 }}>
               필기 제출 파일 URL을 입력하세요.
             </div>
             <input
@@ -596,7 +596,7 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
                   padding: "8px 12px",
                   borderRadius: 10,
                   border: "1px solid #ddd",
-                  background: "#fff",
+                  background: "var(--surface-bg)",
                 }}
               >
                 취소
@@ -623,15 +623,15 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
           <div
             style={{
               width: "min(520px, 100%)",
-              background: "#fff",
+              background: "var(--surface-bg)",
               borderRadius: 14,
               padding: 16,
-              border: "1px solid #eee",
+              border: "1px solid var(--surface-border)",
             }}
             onClick={(e) => e.stopPropagation()}
           >
             <div style={{ fontWeight: 800, marginBottom: 8 }}>풀이 제출</div>
-            <div style={{ color: "#666", marginBottom: 8 }}>
+            <div style={{ color: "var(--text-muted)", marginBottom: 8 }}>
               풀이 제출 파일 URL을 입력하세요.
             </div>
             <input
@@ -671,7 +671,7 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
                   padding: "8px 12px",
                   borderRadius: 10,
                   border: "1px solid #ddd",
-                  background: "#fff",
+                  background: "var(--surface-bg)",
                 }}
               >
                 취소
@@ -701,10 +701,10 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
               width: "min(720px, 100%)",
               maxHeight: "80vh",
               overflow: "auto",
-              background: "#fff",
+              background: "var(--surface-bg)",
               borderRadius: 14,
               padding: 14,
-              border: "1px solid #eee",
+              border: "1px solid var(--surface-border)",
             }}
             onClick={(e) => e.stopPropagation()}
           >
@@ -712,13 +712,13 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
             <div className="card-title">강의 선택</div>
               <button
                 onClick={closePicker}
-                style={{ border: "1px solid #ddd", background: "#fff", borderRadius: 10, padding: "6px 10px" }}
+                style={{ border: "1px solid #ddd", background: "var(--surface-bg)", borderRadius: 10, padding: "6px 10px" }}
               >
                 닫기
               </button>
             </div>
 
-            <div style={{ marginTop: 12, border: "1px solid #eee", borderRadius: 12, padding: 10, background: "#fff" }}>
+            <div style={{ marginTop: 12, border: "1px solid var(--surface-border)", borderRadius: 12, padding: 10, background: "var(--surface-bg)" }}>
               <div className="card-title">강의 목록</div>
               <input
                 value={pickerQuery}
@@ -754,7 +754,7 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
                         disabled={disabled}
                         style={{
                           textAlign: "left",
-                          border: "1px solid #eee",
+                          border: "1px solid var(--surface-border)",
                           borderRadius: 10,
                           padding: "8px 10px",
                           background: disabled ? "#f3f3f3" : "#fff",

@@ -32,7 +32,7 @@ export default function CurrentTeacherSelectionCard({
   const currentTeacherName = teachers.find((t) => t.id === teacherId)?.name ?? "미선택";
 
   return (
-    <div style={{ border: "1px solid #eee", borderRadius: 10, padding: 12, background: "#fff" }}>
+    <div style={{ border: "1px solid var(--surface-border)", borderRadius: 10, padding: 12, background: "var(--surface-bg)" }}>
       <div className="card-title">{title}</div>
       <div style={{ marginTop: 6 }}>
         <span style={{ fontWeight: 700 }}>현재 역할</span> · {role}
