@@ -15,6 +15,7 @@ import {
   useMetaMap,
   readMetaMap,
 } from "@/lib/factories/sessionFactories";
+import { syncSessionDisplayAtByToken } from "@/lib/ui/session/syncSessionDisplayAt";
 
 type Props = {
   role: "a" | "t" | "s";
@@ -41,6 +42,7 @@ export default function SessionQuickActions({ role, token, index }: Props) {
   useEffect(() => setMounted(true), []);
   const [students, setStudents] = useState(() => loadStudents());
   const [teacherId, setTeacherId] = useState<string | null>(null);
+  const [sessionsTick, setSessionsTick] = useState(0);
 
   useEffect(() => {
     const id = setTimeout(() => {
@@ -54,6 +56,12 @@ export default function SessionQuickActions({ role, token, index }: Props) {
     const onStudents = () => setStudents(loadStudents());
     window.addEventListener("tutorweb:studentsUpdated", onStudents);
     return () => window.removeEventListener("tutorweb:studentsUpdated", onStudents);
+  }, []);
+
+  useEffect(() => {
+    const onSessions = () => setSessionsTick((x) => x + 1);
+    window.addEventListener("tutorweb:sessionsUpdated", onSessions);
+    return () => window.removeEventListener("tutorweb:sessionsUpdated", onSessions);
   }, []);
 
   const metaMap = useMetaMap(token);
@@ -259,6 +267,32 @@ export default function SessionQuickActions({ role, token, index }: Props) {
     });
   }, [canEdit, draftOverrideDate, teacherId, students]);
 
+  const currentSession = useMemo(() => {
+    void sessionsTick;
+    const owner = students.find((s) => s.token === token);
+    if (!owner) return null;
+    return sessionsByStudent(owner.id).find((s) => s.index === index) ?? null;
+  }, [sessionsTick, students, token, index]);
+
+  const meetUrl = typeof currentSession?.googleMeetUrl === "string" ? currentSession.googleMeetUrl.trim() : "";
+  const calendarStatus = currentSession?.googleCalendarStatus ?? "pending";
+  const calendarError = typeof currentSession?.googleCalendarError === "string" ? currentSession.googleCalendarError.trim() : "";
+
+  const openMeet = () => {
+    if (!meetUrl) {
+      if (calendarStatus === "error") {
+        alert(
+          `Meet 링크 생성에 실패했어요.\n원인: ${calendarError || "알 수 없는 오류"}\n\n` +
+            "해결: Google Calendar API 활성화 + 다시 로그인(권한 동의) 후 다시 시도해주세요."
+        );
+        return;
+      }
+      alert("아직 Meet 링크가 준비되지 않았어요. 잠시 뒤 다시 시도해주세요.");
+      return;
+    }
+    window.open(meetUrl, "_blank", "noopener,noreferrer");
+  };
+
   const resetOverrideOnly = () => {
     setCheckOverride(false);
     setDraftOverrideDate("");
@@ -325,29 +359,36 @@ export default function SessionQuickActions({ role, token, index }: Props) {
       record: needReasonUI ? draftRecord : "",
     });
     syncSnapshotNow();
+    syncSessionDisplayAtByToken(token);
 
     setOpen(false);
   };
 
-  if (!canEdit) return null;
-
   return (
     <>
       <div className="flex items-center gap-2">
-        <button className={`${isPresent ? "btn btn-blue" : "btn btn-white"}`} onClick={togglePresent}>
-          출석
+        <button className={meetUrl ? "btn btn-green" : "btn btn-white"} onClick={openMeet} title="Google Meet 바로가기">
+          미트
         </button>
 
-        <button className={`${isAbsent ? "btn btn-red" : "btn btn-white"}`} onClick={toggleAbsent}>
-          결석
-        </button>
+        {canEdit ? (
+          <>
+            <button className={`${isPresent ? "btn btn-blue" : "btn btn-white"}`} onClick={togglePresent}>
+              출석
+            </button>
 
-        <button className="btn btn-white btn-bold" onClick={openAdjustModal}>
-          조정
-        </button>
+            <button className={`${isAbsent ? "btn btn-red" : "btn btn-white"}`} onClick={toggleAbsent}>
+              결석
+            </button>
+
+            <button className="btn btn-white btn-bold" onClick={openAdjustModal}>
+              조정
+            </button>
+          </>
+        ) : null}
       </div>
 
-      {open && (
+      {canEdit && open && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="w-full max-w-lg rounded bg-white p-4 shadow">
             <div className="card-title">회차 조정</div>

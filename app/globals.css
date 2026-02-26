@@ -13,6 +13,9 @@
   --text-subtle: #4b5563;
   --control-border: #d1d5db;
   --input-bg: #ffffff;
+  --home-hero-bg: linear-gradient(135deg, #eef3ff 0%, #e9f5ff 48%, #f3f0ff 100%);
+  --home-card-bg: #f8fafc;
+  --home-card-sub-bg: #f1f5f9;
 }
 
 @theme inline {
@@ -36,6 +39,9 @@
     --text-subtle: #cbd5e1;
     --control-border: #475569;
     --input-bg: #0f172a;
+    --home-hero-bg: linear-gradient(135deg, #0b1220 0%, #111a2c 48%, #1a1730 100%);
+    --home-card-bg: #0f172a;
+    --home-card-sub-bg: #111827;
   }
 }
 

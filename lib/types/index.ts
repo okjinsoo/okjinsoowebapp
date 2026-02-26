@@ -166,6 +166,13 @@ export type Session = {
 
   // 최종 구조: 회차에 배치된 강의 leafId 목록
   lectureLeafIds?: LectureLeafId[];
+
+  // Google Calendar/Meet 연동 메타(자동 동기화용)
+  googleCalendarEventId?: string;
+  googleMeetUrl?: string;
+  googleCalendarStatus?: "synced" | "pending" | "error";
+  googleCalendarError?: string;
+  googleCalendarSyncedAt?: string; // ISO string
 };
 
 // ===== 강의 트리(Lecture Tree) =====

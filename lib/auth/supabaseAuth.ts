@@ -14,12 +14,18 @@ export type AuthSession = {
   userId: string | null;
   email: string | null;
   provider: "google";
+  providerAccessToken?: string | null;
+  providerRefreshToken?: string | null;
+  providerExpiresAt?: number | null;
 };
 
 export type OAuthHashResult = {
   accessToken: string;
   refreshToken: string | null;
   expiresIn: number | null;
+  providerToken: string | null;
+  providerRefreshToken: string | null;
+  providerExpiresIn: number | null;
   error: string | null;
   errorDescription: string | null;
 };
@@ -117,8 +123,10 @@ export function buildGoogleAuthUrl(redirectTo: string): string | null {
   const url = new URL("/auth/v1/authorize", cfg.url);
   url.searchParams.set("provider", "google");
   url.searchParams.set("redirect_to", redirectTo);
-  url.searchParams.set("scopes", "email profile");
-  url.searchParams.set("prompt", "select_account");
+  url.searchParams.set("scopes", "email profile https://www.googleapis.com/auth/calendar.events");
+  url.searchParams.set("prompt", "select_account consent");
+  url.searchParams.set("access_type", "offline");
+  url.searchParams.set("include_granted_scopes", "true");
   return url.toString();
 }
 
@@ -132,11 +140,20 @@ export function parseOAuthHash(hash: string): OAuthHashResult | null {
 
   const expiresInRaw = Number(p.get("expires_in") ?? "");
   const expiresIn = Number.isFinite(expiresInRaw) ? Math.max(0, Math.floor(expiresInRaw)) : null;
+  const providerExpiresInRaw = Number(
+    p.get("provider_expires_in") ?? p.get("provider_token_expires_in") ?? ""
+  );
+  const providerExpiresIn = Number.isFinite(providerExpiresInRaw)
+    ? Math.max(0, Math.floor(providerExpiresInRaw))
+    : null;
 
   return {
     accessToken,
     refreshToken: p.get("refresh_token"),
     expiresIn,
+    providerToken: p.get("provider_token"),
+    providerRefreshToken: p.get("provider_refresh_token"),
+    providerExpiresIn,
     error: p.get("error"),
     errorDescription: p.get("error_description"),
   };
@@ -253,6 +270,9 @@ async function refreshAuthSessionOnce(session: AuthSession): Promise<AuthSession
     userId: typeof body.user?.id === "string" ? body.user.id : session.userId,
     email: typeof body.user?.email === "string" ? body.user.email : session.email,
     provider: "google",
+    providerAccessToken: session.providerAccessToken ?? null,
+    providerRefreshToken: session.providerRefreshToken ?? null,
+    providerExpiresAt: session.providerExpiresAt ?? null,
   };
 
   saveAuthSession(next);

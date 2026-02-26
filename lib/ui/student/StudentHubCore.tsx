@@ -46,6 +46,7 @@ import type {
 import { fmtKST_yyyyMMdd_HHmm_noSeconds } from "@/lib/ui/session/format";
 import Badge from "@/lib/ui/common/Badge";
 import SessionQuickActions from "@/lib/ui/session/SessionQuickActions";
+import { syncSessionDisplayAtByToken } from "@/lib/ui/session/syncSessionDisplayAt";
 import AutoResizeTextarea from "@/lib/ui/common/AutoResizeTextarea";
 import { ConsultBadge, ConsultButton } from "@/lib/ui/common/ConsultParts";
 import { getAchievementBadgeStyle } from "@/lib/ui/common/achievementBadge";
@@ -830,6 +831,7 @@ export default function StudentHubCore({
     nextEvents.sort((a, b) => a.startIndex - b.startIndex);
 
     upsertStudent({ ...student, scheduleChangeEvents: nextEvents });
+    syncSessionDisplayAtByToken(token);
     setRefreshTick((x) => x + 1);
     closeScheduleEdit();
   }
@@ -1632,12 +1634,12 @@ export default function StudentHubCore({
                       ) : null}
                     </div>
                   </div>
-                  {accessRole !== "s" ? (
-                    <div onClick={(e) => e.stopPropagation()} style={{ display: "flex", gap: 6 }}>
-                      <SessionQuickActions role={accessRole} token={token} index={item.index} />
+                  <div onClick={(e) => e.stopPropagation()} style={{ display: "flex", gap: 6 }}>
+                    <SessionQuickActions role={accessRole} token={token} index={item.index} />
+                    {accessRole !== "s" ? (
                       <ConsultButton tag={consultTag} onClick={() => openConsultForSession(consultTag)} />
-                    </div>
-                  ) : null}
+                    ) : null}
+                  </div>
                 </div>
               );
             })}
@@ -1685,6 +1687,7 @@ export default function StudentHubCore({
                         if (!ok) return;
                         const nextEvents = (student?.scheduleChangeEvents ?? []).filter((x) => x.id !== e.id);
                         upsertStudent({ ...student, scheduleChangeEvents: nextEvents });
+                        syncSessionDisplayAtByToken(token);
                         setRefreshTick((x) => x + 1);
                       }}
                       className="btn btn-bold"

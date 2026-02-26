@@ -26,6 +26,7 @@ import { computePauseLifecycle } from "@/lib/factories/studentStatusFactory";
 import { ConsultBadge, ConsultButton } from "@/lib/ui/common/ConsultParts";
 import ConsultModal, { ConsultFormState } from "@/lib/ui/common/ConsultModal";
 import { todayYmdKST } from "@/lib/utils/date";
+import { syncSessionDisplayAtByToken } from "@/lib/ui/session/syncSessionDisplayAt";
 
 type Props = {
   role: "a" | "t" | "s";
@@ -64,6 +65,7 @@ export default function SessionTopBarCore({ role, token, index }: Props) {
   const [consultOpen, setConsultOpen] = useState(false);
   const [consultEditingId, setConsultEditingId] = useState<string | null>(null);
   const [studentTick, setStudentTick] = useState(0);
+  const [sessionTick, setSessionTick] = useState(0);
   const [consultTick, setConsultTick] = useState(0);
   const [progressTick, setProgressTick] = useState(0);
   const [consultForm, setConsultForm] = useState<ConsultFormState>({
@@ -98,11 +100,14 @@ export default function SessionTopBarCore({ role, token, index }: Props) {
 
   useEffect(() => {
     const onStudents = () => setStudentTick((x) => x + 1);
+    const onSessions = () => setSessionTick((x) => x + 1);
     const onConsultations = () => setConsultTick((x) => x + 1);
     window.addEventListener("tutorweb:studentsUpdated", onStudents);
+    window.addEventListener("tutorweb:sessionsUpdated", onSessions);
     window.addEventListener("tutorweb:consultationsUpdated", onConsultations);
     return () => {
       window.removeEventListener("tutorweb:studentsUpdated", onStudents);
+      window.removeEventListener("tutorweb:sessionsUpdated", onSessions);
       window.removeEventListener("tutorweb:consultationsUpdated", onConsultations);
     };
   }, []);
@@ -132,7 +137,10 @@ export default function SessionTopBarCore({ role, token, index }: Props) {
     void studentTick;
     return findStudentByToken(token) ?? null;
   }, [token, studentTick]);
-  const sessions = useMemo(() => (student ? sessionsByStudent(student.id) : []), [student]);
+  const sessions = useMemo(() => {
+    void sessionTick;
+    return student ? sessionsByStudent(student.id) : [];
+  }, [student, sessionTick]);
   const consultRecords = useMemo(() => {
     void consultTick;
     return student ? loadConsultationsByStudent(student.id) : [];
@@ -246,6 +254,14 @@ export default function SessionTopBarCore({ role, token, index }: Props) {
       pauseEffectiveDate: student.pauseEffectiveDate,
     });
   }, [student, token, sessions, baseDatesISO, hydratedMetaMap]);
+
+  const currentSession = useMemo(() => {
+    return sessions.find((s) => s.index === index) ?? null;
+  }, [sessions, index]);
+
+  const meetUrl = typeof currentSession?.googleMeetUrl === "string" ? currentSession.googleMeetUrl.trim() : "";
+  const calendarStatus = currentSession?.googleCalendarStatus ?? "pending";
+  const calendarError = typeof currentSession?.googleCalendarError === "string" ? currentSession.googleCalendarError.trim() : "";
 
   // ===== 상단 버튼(토글) =====
   const isPresent = meta.status === "present";
@@ -525,8 +541,24 @@ export default function SessionTopBarCore({ role, token, index }: Props) {
       reason: needReasonUI ? draftReason : "",
       record: needReasonUI ? draftRecord : "",
     });
+    syncSessionDisplayAtByToken(token);
 
     setOpen(false);
+  };
+
+  const openMeet = () => {
+    if (!meetUrl) {
+      if (calendarStatus === "error") {
+        alert(
+          `Meet 링크 생성에 실패했어요.\n원인: ${calendarError || "알 수 없는 오류"}\n\n` +
+            "해결: Google Calendar API 활성화 + 다시 로그인(권한 동의) 후 다시 시도해주세요."
+        );
+        return;
+      }
+      alert("아직 Meet 링크가 준비되지 않았어요. 잠시 뒤 다시 시도해주세요.");
+      return;
+    }
+    window.open(meetUrl, "_blank", "noopener,noreferrer");
   };
 
   return (
@@ -578,26 +610,32 @@ export default function SessionTopBarCore({ role, token, index }: Props) {
       </div>
 
       {/* 우측 버튼 */}
-      {canEdit && (
-        <div className="flex items-center gap-2">
-          <button className={`rounded border ${isPresent ? "btn btn-blue" : "btn"}`} onClick={togglePresent}>
-            출석
-          </button>
+      <div className="flex items-center gap-2">
+        <button className={meetUrl ? "btn btn-green" : "btn"} onClick={openMeet} title="Google Meet 바로가기">
+          미트
+        </button>
 
-          <button className={`rounded border ${isAbsent ? "btn btn-red" : "btn"}`} onClick={toggleAbsent}>
-            결석
-          </button>
+        {canEdit ? (
+          <>
+            <button className={`rounded border ${isPresent ? "btn btn-blue" : "btn"}`} onClick={togglePresent}>
+              출석
+            </button>
 
-          <button
-            className="rounded border border-neutral-300 bg-transparent btn btn-bold"
-            onClick={openAdjustModal}
-          >
-            조정
-          </button>
+            <button className={`rounded border ${isAbsent ? "btn btn-red" : "btn"}`} onClick={toggleAbsent}>
+              결석
+            </button>
 
-          <ConsultButton tag={consultTag} onClick={openConsultModal} />
-        </div>
-      )}
+            <button
+              className="rounded border border-neutral-300 bg-transparent btn btn-bold"
+              onClick={openAdjustModal}
+            >
+              조정
+            </button>
+
+            <ConsultButton tag={consultTag} onClick={openConsultModal} />
+          </>
+        ) : null}
+      </div>
 
       {/* Modal */}
       {open && (

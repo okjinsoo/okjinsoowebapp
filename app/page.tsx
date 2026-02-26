@@ -104,8 +104,7 @@ export default function HomePage() {
         display: "grid",
         placeItems: "center",
         padding: 16,
-        background:
-          "linear-gradient(135deg, #f7f7f2 0%, #eef7ff 45%, #f8f1ff 100%)",
+        background: "var(--home-hero-bg)",
       }}
     >
       <section
@@ -113,19 +112,19 @@ export default function HomePage() {
           width: "100%",
           maxWidth: 720,
           borderRadius: 18,
-          background: "var(--surface-bg)",
-          border: "1px solid #e5e7eb",
+          background: "var(--home-card-bg)",
+          border: "1px solid var(--surface-border)",
           padding: 24,
           boxShadow: "0 10px 30px rgba(15, 23, 42, 0.08)",
         }}
       >
-        <div style={{ fontSize: 13, color: "#475569", fontWeight: 700 }}>
+        <div style={{ fontSize: 13, color: "var(--text-subtle)", fontWeight: 700 }}>
           OKJIN MATH
         </div>
         <h1 style={{ marginTop: 8, fontSize: 28, fontWeight: 900, lineHeight: 1.25 }}>
           옥진수학에 오신 것을 환영합니다.
         </h1>
-        <p style={{ marginTop: 10, color: "#475569", lineHeight: 1.6 }}>
+        <p style={{ marginTop: 10, color: "var(--text-subtle)", lineHeight: 1.6 }}>
           이 페이지는 웹앱의 시작 화면입니다.
           <br />
           로그인은 구글 계정으로만 진행합니다.
@@ -134,9 +133,9 @@ export default function HomePage() {
         <div
           style={{
             marginTop: 20,
-            border: "1px solid #e5e7eb",
+            border: "1px solid var(--surface-border)",
             borderRadius: 12,
-            background: "#f8fafc",
+            background: "var(--home-card-sub-bg)",
             padding: 14,
           }}
         >
@@ -159,7 +158,7 @@ export default function HomePage() {
               >
                 {busy ? "구글 로그인 화면으로 이동 중..." : "구글로 로그인하기"}
               </button>
-              <div style={{ marginTop: 8, fontSize: 12, color: "#64748b" }}>
+              <div style={{ marginTop: 8, fontSize: 12, color: "var(--text-muted)" }}>
                 처음 세팅이라면 `.env` 설정이 먼저 필요합니다.
               </div>
             </>
@@ -168,7 +167,7 @@ export default function HomePage() {
               <div style={{ fontWeight: 700 }}>
                 로그인 완료: <span style={{ color: "#2563eb" }}>{session?.email ?? "-"}</span>
               </div>
-              <div style={{ marginTop: 6, fontSize: 13, color: "#475569" }}>
+              <div style={{ marginTop: 6, fontSize: 13, color: "var(--text-subtle)" }}>
                 현재 권한: <b>{roleLoading ? "확인 중..." : roleLabel(role)}</b>
               </div>
               <div style={{ marginTop: 8, display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -225,9 +224,9 @@ export default function HomePage() {
                   onClick={onClickLogout}
                   style={{
                     padding: "10px 12px",
-                    border: "1px solid #cbd5e1",
+                    border: "1px solid var(--surface-border)",
                     borderRadius: 10,
-                    background: "var(--surface-bg)",
+                    background: "var(--home-card-bg)",
                     fontWeight: 700,
                     cursor: "pointer",
                   }}
@@ -286,7 +285,7 @@ export default function HomePage() {
           ) : null}
         </div>
 
-        <div style={{ marginTop: 16, fontSize: 13, color: "#64748b", lineHeight: 1.6 }}>
+        <div style={{ marginTop: 16, fontSize: 13, color: "var(--text-muted)", lineHeight: 1.6 }}>
           다음 단계:
           <br />
           1) Supabase/Google 키 설정

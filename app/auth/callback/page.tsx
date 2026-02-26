@@ -37,6 +37,8 @@ export default function AuthCallbackPage() {
         const user = await fetchSupabaseUser({ accessToken: parsed.accessToken });
         const expiresAt =
           parsed.expiresIn === null ? null : Date.now() + parsed.expiresIn * 1000;
+        const providerExpiresAt =
+          parsed.providerExpiresIn === null ? null : Date.now() + parsed.providerExpiresIn * 1000;
 
         saveAuthSession({
           accessToken: parsed.accessToken,
@@ -45,6 +47,9 @@ export default function AuthCallbackPage() {
           userId: user.id,
           email: user.email,
           provider: "google",
+          providerAccessToken: parsed.providerToken,
+          providerRefreshToken: parsed.providerRefreshToken,
+          providerExpiresAt,
         });
 
         if (cancelled) return;

@@ -4,6 +4,7 @@ import { useEffect, useRef } from "react";
 import { AUTH_EVENT } from "@/lib/auth/supabaseAuth";
 import { BROWSER_STORAGE_EVENT } from "@/lib/storage/browserStorage";
 import { pullSharedSnapshotAndHydrateWithOptions, pushSharedSnapshot } from "@/lib/storage/sharedSnapshot";
+import { syncGoogleCalendarForExistingSessions } from "@/lib/storage/sessions";
 
 const PUSH_DEBOUNCE_MS = 700;
 const PUSH_RETRY_MS = 1500;
@@ -91,7 +92,9 @@ export default function SharedSnapshotAgent() {
     };
 
     const onAuthChanged = () => {
-      void hydrate(true);
+      void hydrate(true).then(() => {
+        syncGoogleCalendarForExistingSessions();
+      });
     };
 
     const onFocus = () => {
@@ -104,7 +107,9 @@ export default function SharedSnapshotAgent() {
       }
     };
 
-    void hydrate();
+    void hydrate().then(() => {
+      syncGoogleCalendarForExistingSessions();
+    });
     const intervalId = window.setInterval(() => {
       void hydrate(true);
     }, REMOTE_PULL_INTERVAL_MS);

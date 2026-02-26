@@ -3,9 +3,14 @@
 
 import { browserStorage } from "@/lib/storage/browserStorage";
 import { pushSharedSnapshot, readLocalStudents, readLocalTeachers } from "@/lib/storage/sharedSnapshot";
+import { scheduleGoogleCalendarSync } from "@/lib/integrations/googleCalendarSync";
 import type { Session } from "@/lib/types/index";
 
 const KEY = "tutorweb_sessions_v1";
+
+type SaveSessionsOptions = {
+  suppressCalendarSync?: boolean;
+};
 
 function safeParse<T>(raw: string | null, fallback: T): T {
   if (!raw) return fallback;
@@ -31,11 +36,67 @@ function syncSharedSnapshot(nextSessions: Session[]): void {
   });
 }
 
-export function saveSessions(list: Session[]): void {
+function persistSessions(list: Session[]): void {
   if (typeof window === "undefined") return;
   browserStorage.setItem(KEY, JSON.stringify(list));
   window.dispatchEvent(new CustomEvent("tutorweb:sessionsUpdated"));
   syncSharedSnapshot(list);
+}
+
+function applySessionPatches(patches: Array<{ id: string; patch: Partial<Session> }>): void {
+  if (typeof window === "undefined") return;
+  if (!Array.isArray(patches) || patches.length === 0) return;
+
+  const patchById = new Map<string, Partial<Session>>();
+  for (const item of patches) {
+    if (!item || typeof item.id !== "string") continue;
+    const prev = patchById.get(item.id) ?? {};
+    patchById.set(item.id, { ...prev, ...(item.patch ?? {}) });
+  }
+  if (patchById.size === 0) return;
+
+  const current = loadSessions();
+  let changed = false;
+  const next = current.map((session) => {
+    const patch = patchById.get(session.id);
+    if (!patch) return session;
+    const merged = { ...session, ...patch };
+    const same = Object.entries(patch).every(([key, value]) => {
+      const k = key as keyof Session;
+      return session[k] === value;
+    });
+    if (same) return session;
+    changed = true;
+    return merged;
+  });
+
+  if (!changed) return;
+  persistSessions(next);
+}
+
+export function saveSessions(list: Session[], options?: SaveSessionsOptions): void {
+  const previous = loadSessions();
+  persistSessions(list);
+
+  if (options?.suppressCalendarSync) return;
+
+  scheduleGoogleCalendarSync({
+    previous,
+    next: list,
+    applyPatches: applySessionPatches,
+  });
+}
+
+export function syncGoogleCalendarForExistingSessions(): void {
+  const current = loadSessions();
+  if (current.length === 0) return;
+
+  // 기존 회차 중 eventId/meetUrl 미동기화 항목을 한 번에 동기화
+  scheduleGoogleCalendarSync({
+    previous: current,
+    next: current,
+    applyPatches: applySessionPatches,
+  });
 }
 
 export function upsertSession(session: Session): Session[] {
