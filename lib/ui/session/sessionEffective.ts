@@ -43,10 +43,16 @@ export type SessionMeta = {
   record?: string;
 };
 
+const SESSION_STATUS_BADGE_STYLES = {
+  present: { bg: "#2563eb", text: "#ffffff", border: "#2563eb" }, // 출석: 파란색
+  absent: { bg: "#dc2626", text: "#ffffff", border: "#dc2626" }, // 결석: 빨간색
+  planned: { bg: "#64748b", text: "#ffffff", border: "#64748b" },
+} as const;
+
 export function getStatusStyle(status?: SessionState): { bg: string; text: string; border: string } {
-  if (status === "present") return { bg: "#2563eb", text: "#ffffff", border: "#2563eb" };
-  if (status === "absent") return { bg: "#dc2626", text: "#ffffff", border: "#dc2626" };
-  return { bg: "#64748b", text: "#ffffff", border: "#64748b" };
+  if (status === "present") return SESSION_STATUS_BADGE_STYLES.present;
+  if (status === "absent") return SESSION_STATUS_BADGE_STYLES.absent;
+  return SESSION_STATUS_BADGE_STYLES.planned;
 }
 
 // -------------------- utils --------------------
