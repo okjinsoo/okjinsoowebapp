@@ -386,10 +386,10 @@ export default function AdminMainPage() {
       <section
         style={{
           marginTop: 12,
-          border: "1px solid #e5e7eb",
+          border: "1px solid var(--surface-border)",
           borderRadius: 12,
           padding: 12,
-          background: "#f8fafc",
+          background: "var(--surface-bg)",
         }}
       >
         <div style={{ fontWeight: 800, marginBottom: 8 }}>권한 동기화 테스트</div>
@@ -400,7 +400,7 @@ export default function AdminMainPage() {
         >
           {syncingRoles ? "동기화 중..." : "role_bindings 강제 동기화 실행"}
         </button>
-        <div style={{ marginTop: 8, color: "#334155", fontSize: 13, lineHeight: 1.5 }}>
+        <div style={{ marginTop: 8, color: "var(--text-muted)", fontSize: 13, lineHeight: 1.5 }}>
           {syncResult || "네트워크 탭 대신, 이 버튼으로 성공/실패 메시지를 바로 확인할 수 있어요."}
         </div>
       </section>
@@ -432,8 +432,8 @@ export default function AdminMainPage() {
                   background: "var(--surface-bg)",
                   cursor: "pointer",
                 }}
-                onMouseEnter={(e) => (e.currentTarget.style.background = "#f3f4f6")}
-                onMouseLeave={(e) => (e.currentTarget.style.background = "#fff")}
+                onMouseEnter={(e) => (e.currentTarget.style.background = "var(--surface-hover)")}
+                onMouseLeave={(e) => (e.currentTarget.style.background = "var(--surface-bg)")}
                 onClick={() => {
                   if (c.teacherId) saveCurrentTeacherId(c.teacherId);
                   saveCurrentStudentToken(c.token);
@@ -485,8 +485,8 @@ export default function AdminMainPage() {
                       background: "var(--surface-bg)",
                       cursor: "pointer",
                     }}
-                    onMouseEnter={(e) => (e.currentTarget.style.background = "#f3f4f6")}
-                    onMouseLeave={(e) => (e.currentTarget.style.background = "#fff")}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = "var(--surface-hover)")}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = "var(--surface-bg)")}
                     onClick={() => {
                       if (c.teacherId) saveCurrentTeacherId(c.teacherId);
                       saveCurrentStudentToken(c.token);

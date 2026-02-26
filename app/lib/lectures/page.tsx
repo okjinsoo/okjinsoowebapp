@@ -192,16 +192,19 @@ export default function LecturesPage() {
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="page-title">강의 저장소 (재개편)</h1>
-          <p className="text-sm text-neutral-600">
+          <p className="text-sm" style={{ color: "var(--text-muted)" }}>
             DB 우선으로 동작합니다. 복잡한 폴더 구조는 제거했습니다.
           </p>
-          <p className="text-xs text-neutral-500 mt-1">
+          <p className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>
             {dbSyncing ? "DB 동기화 중..." : dbSyncError ? dbSyncError : "DB 동기화 정상"}
           </p>
         </div>
       </header>
 
-      <div className="rounded-2xl border bg-white p-3 flex flex-wrap items-center gap-2">
+      <div
+        className="rounded-2xl border p-3 flex flex-wrap items-center gap-2"
+        style={{ borderColor: "var(--surface-border)", background: "var(--surface-bg)" }}
+      >
         <input
           className="flex-1 min-w-[220px] rounded-lg border px-3 py-2 text-sm"
           value={newTitle}
@@ -213,15 +216,23 @@ export default function LecturesPage() {
           }}
           placeholder="새 강의 제목"
         />
-        <button className="px-3 py-2 rounded-lg border text-sm hover:bg-neutral-50" onClick={addLecture}>
+        <button className="px-3 py-2 rounded-lg border text-sm btn-white" onClick={addLecture}>
           강의 추가
         </button>
       </div>
 
       <div className="grid gap-4 lg:grid-cols-[380px_minmax(0,1fr)]">
-        <section className="rounded-2xl border bg-white overflow-hidden">
-          <div className="px-4 py-3 border-b bg-neutral-50 text-sm font-semibold">강의 목록</div>
-          <div className="p-3 border-b">
+        <section
+          className="rounded-2xl border overflow-hidden"
+          style={{ borderColor: "var(--surface-border)", background: "var(--surface-bg)" }}
+        >
+          <div
+            className="px-4 py-3 border-b text-sm font-semibold"
+            style={{ borderColor: "var(--surface-border)", background: "var(--surface-hover)" }}
+          >
+            강의 목록
+          </div>
+          <div className="p-3 border-b" style={{ borderColor: "var(--surface-border)" }}>
             <input
               className="w-full rounded-lg border px-3 py-2 text-sm"
               value={query}
@@ -232,7 +243,7 @@ export default function LecturesPage() {
 
           <div className="max-h-[64vh] overflow-y-auto p-2 space-y-1">
             {filteredLectures.length === 0 ? (
-              <div className="px-2 py-2 text-sm text-neutral-500">
+              <div className="px-2 py-2 text-sm" style={{ color: "var(--text-muted)" }}>
                 {lectures.length === 0 ? "저장된 강의가 없습니다." : "검색 결과가 없습니다."}
               </div>
             ) : (
@@ -241,14 +252,24 @@ export default function LecturesPage() {
                 return (
                   <button
                     key={leaf.leafId}
-                    className={`w-full text-left rounded-lg px-3 py-2 border ${
-                      selected ? "bg-sky-100 border-sky-300" : "bg-white border-transparent hover:bg-neutral-50"
-                    }`}
+                    className="w-full text-left rounded-lg px-3 py-2 border"
+                    style={{
+                      background: selected ? "#dbeafe" : "var(--surface-bg)",
+                      borderColor: selected ? "#93c5fd" : "transparent",
+                    }}
+                    onMouseEnter={(e) => {
+                      if (selected) return;
+                      e.currentTarget.style.background = "var(--surface-hover)";
+                    }}
+                    onMouseLeave={(e) => {
+                      if (selected) return;
+                      e.currentTarget.style.background = "var(--surface-bg)";
+                    }}
                     onClick={() => setSelectedLeafId(leaf.leafId)}
                   >
-                    <div className="text-xs text-neutral-500">#{idx + 1}</div>
+                    <div className="text-xs" style={{ color: "var(--text-muted)" }}>#{idx + 1}</div>
                     <div className="font-medium truncate">{leaf.title || "제목 없는 강의"}</div>
-                    <div className="text-xs text-neutral-500 truncate">{leaf.lectureUrl || "강의 링크 없음"}</div>
+                    <div className="text-xs truncate" style={{ color: "var(--text-muted)" }}>{leaf.lectureUrl || "강의 링크 없음"}</div>
                   </button>
                 );
               })
@@ -256,15 +277,18 @@ export default function LecturesPage() {
           </div>
         </section>
 
-        <section className="rounded-2xl border bg-white p-4 space-y-4">
+        <section
+          className="rounded-2xl border p-4 space-y-4"
+          style={{ borderColor: "var(--surface-border)", background: "var(--surface-bg)" }}
+        >
           <div className="text-sm font-semibold">강의 상세</div>
 
           {!selectedLecture ? (
-            <div className="text-sm text-neutral-500">왼쪽에서 강의를 선택해주세요.</div>
+            <div className="text-sm" style={{ color: "var(--text-muted)" }}>왼쪽에서 강의를 선택해주세요.</div>
           ) : (
             <>
               <div className="space-y-1">
-                <label className="text-xs text-neutral-600">강의 제목</label>
+                <label className="text-xs" style={{ color: "var(--text-muted)" }}>강의 제목</label>
                 <input
                   className="w-full rounded-lg border px-3 py-2 text-sm"
                   value={selectedLecture.title}
@@ -273,7 +297,7 @@ export default function LecturesPage() {
               </div>
 
               <div className="space-y-1">
-                <label className="text-xs text-neutral-600">강의 URL</label>
+                <label className="text-xs" style={{ color: "var(--text-muted)" }}>강의 URL</label>
                 <input
                   className="w-full rounded-lg border px-3 py-2 text-sm"
                   value={selectedLecture.lectureUrl ?? ""}
@@ -283,7 +307,7 @@ export default function LecturesPage() {
               </div>
 
               <div className="space-y-1">
-                <label className="text-xs text-neutral-600">문제 URL</label>
+                <label className="text-xs" style={{ color: "var(--text-muted)" }}>문제 URL</label>
                 <input
                   className="w-full rounded-lg border px-3 py-2 text-sm"
                   value={firstProblemUrl(selectedLecture)}
@@ -293,18 +317,18 @@ export default function LecturesPage() {
               </div>
 
               <div className="flex flex-wrap gap-2 pt-1">
-                <button className="px-3 py-2 rounded-lg border text-sm hover:bg-neutral-50" onClick={() => moveSelected(-1)}>
+                <button className="px-3 py-2 rounded-lg border text-sm btn-white" onClick={() => moveSelected(-1)}>
                   위로
                 </button>
-                <button className="px-3 py-2 rounded-lg border text-sm hover:bg-neutral-50" onClick={() => moveSelected(1)}>
+                <button className="px-3 py-2 rounded-lg border text-sm btn-white" onClick={() => moveSelected(1)}>
                   아래로
                 </button>
-                <button className="px-3 py-2 rounded-lg border text-sm text-red-600 hover:bg-red-50" onClick={removeSelected}>
+                <button className="px-3 py-2 rounded-lg border text-sm text-red-600 btn-white" onClick={removeSelected}>
                   삭제
                 </button>
               </div>
 
-              <div className="text-xs text-neutral-500">
+              <div className="text-xs" style={{ color: "var(--text-muted)" }}>
                 강의 수정 내용은 자동 저장되며, 회차 상세의 &quot;강의 추가&quot; 목록에 바로 반영됩니다.
               </div>
             </>
