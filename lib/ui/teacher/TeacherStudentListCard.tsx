@@ -98,8 +98,8 @@ export default function TeacherStudentListCard({ students, onStudentClick, onAdd
                 cursor: "pointer",
               }}
               onClick={() => handleClick(s)}
-              onMouseEnter={(e) => (e.currentTarget.style.background = "#f3f4f6")}
-              onMouseLeave={(e) => (e.currentTarget.style.background = "#fff")}
+              onMouseEnter={(e) => (e.currentTarget.style.background = "var(--surface-hover)")}
+              onMouseLeave={(e) => (e.currentTarget.style.background = "var(--surface-bg)")}
             >
               <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                 <span>

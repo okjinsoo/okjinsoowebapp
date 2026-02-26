@@ -213,8 +213,8 @@ export default function TodaySessionsCard({ rows, role }: Props) {
                   borderRadius: 8,
                   background: "var(--surface-bg)",
                 }}
-                onMouseEnter={(e) => (e.currentTarget.style.background = "#f3f4f6")}
-                onMouseLeave={(e) => (e.currentTarget.style.background = "#fff")}
+                onMouseEnter={(e) => (e.currentTarget.style.background = "var(--surface-hover)")}
+                onMouseLeave={(e) => (e.currentTarget.style.background = "var(--surface-bg)")}
               >
                 <Link
                   href={`/${role}/smain/session/${r.index}`}

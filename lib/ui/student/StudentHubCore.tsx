@@ -1988,16 +1988,16 @@ export default function StudentHubCore({
                   </button>
                 ) : null}
                 <button
-                  onMouseEnter={(e) => (e.currentTarget.style.background = "#f1f5f9")}
-                  onMouseLeave={(e) => (e.currentTarget.style.background = "#fff")}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = "var(--surface-hover)")}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = "var(--surface-bg)")}
                   onClick={closePaymentPanel}
                   style={{ ...boxButton, padding: "10px 14px" }}
                 >
                   취소
                 </button>
                 <button
-                  onMouseEnter={(e) => (e.currentTarget.style.background = "#f1f5f9")}
-                  onMouseLeave={(e) => (e.currentTarget.style.background = "#fff")}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = "var(--surface-hover)")}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = "var(--surface-bg)")}
                   onClick={onApplyPayment}
                   style={{ ...boxButton, padding: "10px 14px", fontWeight: 800 }}
                 >
@@ -2082,16 +2082,16 @@ export default function StudentHubCore({
 
                 <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
                   <button
-                    onMouseEnter={(e) => (e.currentTarget.style.background = "#f1f5f9")}
-                    onMouseLeave={(e) => (e.currentTarget.style.background = "#fff")}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = "var(--surface-hover)")}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = "var(--surface-bg)")}
                     onClick={closeRefundPanel}
                     style={{ ...boxButton, padding: "8px 12px" }}
                   >
                     취소
                   </button>
                   <button
-                    onMouseEnter={(e) => (e.currentTarget.style.background = "#f1f5f9")}
-                    onMouseLeave={(e) => (e.currentTarget.style.background = "#fff")}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = "var(--surface-hover)")}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = "var(--surface-bg)")}
                     onClick={onCancelRefundRequest}
                     style={{ ...boxButton, padding: "8px 12px" }}
                   >
@@ -2140,8 +2140,8 @@ export default function StudentHubCore({
 
                 <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
                   <button
-                    onMouseEnter={(e) => (e.currentTarget.style.background = "#f1f5f9")}
-                    onMouseLeave={(e) => (e.currentTarget.style.background = "#fff")}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = "var(--surface-hover)")}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = "var(--surface-bg)")}
                     onClick={closeRefundPanel}
                     style={{ ...boxButton, padding: "8px 12px" }}
                   >
@@ -2300,16 +2300,16 @@ export default function StudentHubCore({
 
               <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
                 <button
-                  onMouseEnter={(e) => (e.currentTarget.style.background = "#f1f5f9")}
-                  onMouseLeave={(e) => (e.currentTarget.style.background = "#fff")}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = "var(--surface-hover)")}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = "var(--surface-bg)")}
                   onClick={closeScheduleEdit}
                   style={{ ...boxButton, padding: "8px 12px" }}
                 >
                   취소
                 </button>
                 <button
-                  onMouseEnter={(e) => (e.currentTarget.style.background = "#f1f5f9")}
-                  onMouseLeave={(e) => (e.currentTarget.style.background = "#fff")}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = "var(--surface-hover)")}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = "var(--surface-bg)")}
                   onClick={saveScheduleChange}
                   style={{ ...boxButton, padding: "8px 12px", fontWeight: 600 }}
                 >

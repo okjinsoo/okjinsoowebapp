@@ -132,8 +132,8 @@ export default function AdminStudentsPage() {
                     background: "var(--surface-bg)",
                     cursor: "pointer",
                   }}
-                  onMouseEnter={(e) => (e.currentTarget.style.background = "#f3f4f6")}
-                  onMouseLeave={(e) => (e.currentTarget.style.background = "#fff")}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = "var(--surface-hover)")}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = "var(--surface-bg)")}
                   onClick={() => openStudentMain(c)}
                 >
                   <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
@@ -148,11 +148,11 @@ export default function AdminStudentsPage() {
                       className="btn btn-white"
                       onMouseEnter={(e) => {
                         const row = e.currentTarget.closest("[data-student-row='true']") as HTMLDivElement | null;
-                        if (row) row.style.background = "#fff";
+                        if (row) row.style.background = "var(--surface-bg)";
                       }}
                       onMouseLeave={(e) => {
                         const row = e.currentTarget.closest("[data-student-row='true']") as HTMLDivElement | null;
-                        if (row) row.style.background = "#f3f4f6";
+                        if (row) row.style.background = "var(--surface-hover)";
                       }}
                       onClick={(e) => {
                         e.stopPropagation();
@@ -194,8 +194,8 @@ export default function AdminStudentsPage() {
                     background: "var(--surface-bg)",
                     cursor: "pointer",
                   }}
-                  onMouseEnter={(e) => (e.currentTarget.style.background = "#f3f4f6")}
-                  onMouseLeave={(e) => (e.currentTarget.style.background = "#fff")}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = "var(--surface-hover)")}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = "var(--surface-bg)")}
                   onClick={() => openStudentMain(c)}
                 >
                   <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
@@ -210,11 +210,11 @@ export default function AdminStudentsPage() {
                       className="btn btn-white"
                       onMouseEnter={(e) => {
                         const row = e.currentTarget.closest("[data-student-row='true']") as HTMLDivElement | null;
-                        if (row) row.style.background = "#fff";
+                        if (row) row.style.background = "var(--surface-bg)";
                       }}
                       onMouseLeave={(e) => {
                         const row = e.currentTarget.closest("[data-student-row='true']") as HTMLDivElement | null;
-                        if (row) row.style.background = "#f3f4f6";
+                        if (row) row.style.background = "var(--surface-hover)";
                       }}
                       onClick={(e) => {
                         e.stopPropagation();
