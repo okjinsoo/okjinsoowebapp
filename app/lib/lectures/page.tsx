@@ -254,8 +254,8 @@ export default function LecturesPage() {
                     key={leaf.leafId}
                     className="w-full text-left rounded-lg px-3 py-2 border"
                     style={{
-                      background: selected ? "#dbeafe" : "var(--surface-bg)",
-                      borderColor: selected ? "#93c5fd" : "transparent",
+                      background: selected ? "var(--surface-selected-bg)" : "var(--surface-bg)",
+                      borderColor: selected ? "var(--surface-selected-border)" : "transparent",
                     }}
                     onMouseEnter={(e) => {
                       if (selected) return;

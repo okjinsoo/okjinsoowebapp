@@ -394,6 +394,7 @@ export default function AdminMainPage() {
       >
         <div style={{ fontWeight: 800, marginBottom: 8 }}>권한 동기화 테스트</div>
         <button
+          className="btn-white"
           onClick={onClickRoleSyncTest}
           disabled={syncingRoles}
           style={{ padding: "10px 12px", fontWeight: 800 }}
