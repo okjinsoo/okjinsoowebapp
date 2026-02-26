@@ -475,7 +475,10 @@ export default function StudentSessionListCore({ role, token, prefix, hideTokenI
       </div>
 
       <div className="space-y-5">
-        <div className="space-y-2 rounded-xl border border-slate-200 bg-white p-3">
+        <div
+          className="space-y-2 rounded-xl border p-3"
+          style={{ borderColor: "var(--surface-border)", background: "var(--surface-bg)" }}
+        >
           <div className="card-title">예정 수업</div>
           {upcomingRows.length === 0 ? (
             <div className="text-muted">예정된 수업이 없습니다.</div>
@@ -503,8 +506,8 @@ export default function StudentSessionListCore({ role, token, prefix, hideTokenI
                   borderRadius: 8,
                   background: "var(--surface-bg)",
                 }}
-                onMouseEnter={(e) => (e.currentTarget.style.background = "#f3f4f6")}
-                onMouseLeave={(e) => (e.currentTarget.style.background = "#fff")}
+                onMouseEnter={(e) => (e.currentTarget.style.background = "var(--surface-hover)")}
+                onMouseLeave={(e) => (e.currentTarget.style.background = "var(--surface-bg)")}
               >
                 <Link
                   href={href}
@@ -567,14 +570,24 @@ export default function StudentSessionListCore({ role, token, prefix, hideTokenI
           {upcomingRows.length > 3 ? (
             <button
               onClick={() => setShowAllUpcoming((prev) => !prev)}
-              className="block w-full rounded-xl border border-slate-200 bg-white p-3 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+              className="block w-full rounded-xl border p-3 text-sm font-semibold"
+              style={{
+                borderColor: "var(--surface-border)",
+                background: "var(--surface-bg)",
+                color: "var(--text-subtle)",
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.background = "var(--surface-hover)")}
+              onMouseLeave={(e) => (e.currentTarget.style.background = "var(--surface-bg)")}
             >
               {showAllUpcoming ? "접기" : "펼치기"}
             </button>
           ) : null}
         </div>
 
-        <div className="space-y-2 rounded-xl border border-slate-200 bg-white p-3">
+        <div
+          className="space-y-2 rounded-xl border p-3"
+          style={{ borderColor: "var(--surface-border)", background: "var(--surface-bg)" }}
+        >
           <div className="card-title">지난 수업</div>
           {pastRows.length === 0 ? (
             <div className="text-muted">지난 수업이 없습니다.</div>
@@ -602,8 +615,8 @@ export default function StudentSessionListCore({ role, token, prefix, hideTokenI
                   borderRadius: 8,
                   background: "var(--surface-bg)",
                 }}
-                onMouseEnter={(e) => (e.currentTarget.style.background = "#f3f4f6")}
-                onMouseLeave={(e) => (e.currentTarget.style.background = "#fff")}
+                onMouseEnter={(e) => (e.currentTarget.style.background = "var(--surface-hover)")}
+                onMouseLeave={(e) => (e.currentTarget.style.background = "var(--surface-bg)")}
               >
                 <Link
                   href={href}
@@ -666,7 +679,14 @@ export default function StudentSessionListCore({ role, token, prefix, hideTokenI
           {pastDesc.length > 5 ? (
             <button
               onClick={() => setShowAllPast((prev) => !prev)}
-              className="block w-full rounded-xl border border-slate-200 bg-white p-3 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+              className="block w-full rounded-xl border p-3 text-sm font-semibold"
+              style={{
+                borderColor: "var(--surface-border)",
+                background: "var(--surface-bg)",
+                color: "var(--text-subtle)",
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.background = "var(--surface-hover)")}
+              onMouseLeave={(e) => (e.currentTarget.style.background = "var(--surface-bg)")}
             >
               {showAllPast ? "접기" : "펼치기"}
             </button>
