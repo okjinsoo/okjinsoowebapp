@@ -383,11 +383,16 @@ async function runSync(args: SyncArgs): Promise<void> {
     const teacher = student.teacherId ? teacherById.get(student.teacherId) ?? null : null;
     const teacherEmail = normalizeEmail(teacher?.email);
     const ownerEmail = teacherEmail;
+    const savedOwnerEmail = normalizeEmail(next.googleCalendarOwnerEmail);
+    const ownerMismatch = Boolean(savedOwnerEmail && savedOwnerEmail !== ownerEmail);
 
     if (!teacher || !ownerEmail || !isValidEmail(ownerEmail)) {
       patches.push({
         id: next.id,
         patch: {
+          googleCalendarEventId: undefined,
+          googleMeetUrl: undefined,
+          googleCalendarOwnerEmail: undefined,
           googleCalendarStatus: "error",
           googleCalendarError: "담당 선생님 이메일이 없어서 Meet를 만들 수 없습니다. 관리자에게 문의해주세요.",
         },
@@ -396,26 +401,43 @@ async function runSync(args: SyncArgs): Promise<void> {
     }
 
     if (ownerEmail !== currentEmail) {
+      // 과거에 잘못된 소유자로 저장된 이벤트가 현재 로그인 계정 소유라면 정리
+      if (ownerMismatch && savedOwnerEmail === currentEmail && next.googleCalendarEventId) {
+        try {
+          await deleteEvent({ token: providerToken, eventId: next.googleCalendarEventId });
+        } catch (err) {
+          console.error("잘못된 소유자 이벤트 정리 실패:", err);
+        }
+      }
+
       patches.push({
         id: next.id,
         patch: {
           googleCalendarOwnerEmail: ownerEmail,
-          googleCalendarStatus: next.googleCalendarEventId ? next.googleCalendarStatus ?? "pending" : "pending",
-          googleCalendarError: next.googleCalendarEventId
-            ? next.googleCalendarError ?? ""
-            : "이 회차 Meet는 담당 선생님 계정으로 로그인해야 생성됩니다.",
+          googleCalendarEventId: ownerMismatch ? undefined : next.googleCalendarEventId,
+          googleMeetUrl: ownerMismatch ? undefined : next.googleMeetUrl,
+          googleCalendarStatus: "pending",
+          googleCalendarError: "이 회차 Meet는 담당 선생님 계정으로 로그인해야 생성됩니다.",
         },
       });
       continue;
     }
 
     try {
+      const sessionForOwner = ownerMismatch
+        ? {
+            ...next,
+            googleCalendarEventId: undefined,
+            googleMeetUrl: undefined,
+          }
+        : next;
+
       let result: { eventId: string | null; meetUrl: string | null };
-      if (next.googleCalendarEventId) {
+      if (sessionForOwner.googleCalendarEventId) {
         try {
           result = await updateEvent({
             token: providerToken,
-            session: next,
+            session: sessionForOwner,
             student,
             teacher,
           });
@@ -425,7 +447,7 @@ async function runSync(args: SyncArgs): Promise<void> {
             // 과거 다른 계정에서 만든 eventId 또는 권한 변경으로 접근 불가면 새 이벤트로 복구
             result = await createEvent({
               token: providerToken,
-              session: { ...next, googleCalendarEventId: undefined },
+              session: { ...sessionForOwner, googleCalendarEventId: undefined, googleMeetUrl: undefined },
               student,
               teacher,
             });
@@ -436,7 +458,7 @@ async function runSync(args: SyncArgs): Promise<void> {
       } else {
         result = await createEvent({
           token: providerToken,
-          session: next,
+          session: sessionForOwner,
           student,
           teacher,
         });
