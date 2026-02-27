@@ -22,11 +22,15 @@ const SYNC_DEBOUNCE_MS = 900;
 const CREATE_PAST_GRACE_MS = 6 * 60 * 60 * 1000; // 6h
 const DUPLICATE_TIME_WINDOW_MS = 5 * 60 * 1000;
 const RECENT_CREATED_TTL_MS = 60 * 1000;
+const APP_CALENDAR_SUMMARY = "옥진수학";
+const APP_CALENDAR_DESCRIPTION = "옥진수학 자동 생성 수업 일정";
+const CALENDAR_CACHE_TTL_MS = 5 * 60 * 1000;
 
 let syncTimer: ReturnType<typeof setTimeout> | null = null;
 let pending: SyncArgs | null = null;
 let syncInFlight = false;
 const recentCreatedEventByOwnerSession = new Map<string, { eventId: string; ts: number }>();
+const ownerCalendarIdCache = new Map<string, { calendarId: string; ts: number }>();
 
 function text(v: unknown): string {
   return typeof v === "string" ? v.trim() : "";
@@ -127,6 +131,103 @@ function parseErrorText(body: unknown): string {
   return "Google Calendar API 오류";
 }
 
+type CalendarListItem = {
+  id: string;
+  summary: string;
+  accessRole: string;
+  primary: boolean;
+};
+
+function parseCalendarListItems(body: unknown): { items: CalendarListItem[]; nextPageToken: string | null } {
+  if (!body || typeof body !== "object") {
+    return { items: [], nextPageToken: null };
+  }
+  const rec = body as Record<string, unknown>;
+  const rows = Array.isArray(rec.items) ? rec.items : [];
+  const items: CalendarListItem[] = [];
+  for (const row of rows) {
+    if (!row || typeof row !== "object") continue;
+    const entry = row as Record<string, unknown>;
+    const id = text(entry.id);
+    if (!id) continue;
+    items.push({
+      id,
+      summary: text(entry.summary),
+      accessRole: text(entry.accessRole),
+      primary: Boolean(entry.primary),
+    });
+  }
+  const nextPageToken = text(rec.nextPageToken) || null;
+  return { items, nextPageToken };
+}
+
+async function findNamedCalendarId(args: { token: string; summary: string }): Promise<string | null> {
+  let pageToken = "";
+  for (let guard = 0; guard < 20; guard += 1) {
+    const body = await requestGoogle({
+      token: args.token,
+      method: "GET",
+      path: "/users/me/calendarList",
+      query: {
+        maxResults: "250",
+        showHidden: "true",
+        ...(pageToken ? { pageToken } : {}),
+      },
+    });
+    const parsed = parseCalendarListItems(body);
+    const matched = parsed.items.filter((item) => item.summary === args.summary);
+    const preferred =
+      matched.find((item) => item.accessRole === "owner") ??
+      matched.find((item) => item.accessRole === "writer") ??
+      matched[0];
+    if (preferred?.id) return preferred.id;
+    if (!parsed.nextPageToken) break;
+    pageToken = parsed.nextPageToken;
+  }
+  return null;
+}
+
+async function createNamedCalendar(args: { token: string; summary: string }): Promise<string> {
+  const body = await requestGoogle({
+    token: args.token,
+    method: "POST",
+    path: "/calendars",
+    body: {
+      summary: args.summary,
+      description: APP_CALENDAR_DESCRIPTION,
+      timeZone: "Asia/Seoul",
+    },
+  });
+  const id =
+    body && typeof body === "object" ? text((body as Record<string, unknown>).id) : "";
+  if (!id) throw new Error("캘린더 생성 후 id를 받지 못했습니다.");
+  return id;
+}
+
+async function ensureAppCalendarId(args: {
+  token: string;
+  ownerEmail: string;
+}): Promise<string> {
+  const cacheKey = normalizeEmail(args.ownerEmail);
+  const cached = ownerCalendarIdCache.get(cacheKey);
+  if (cached && Date.now() - cached.ts < CALENDAR_CACHE_TTL_MS && cached.calendarId) {
+    return cached.calendarId;
+  }
+
+  const foundId =
+    (await findNamedCalendarId({
+      token: args.token,
+      summary: APP_CALENDAR_SUMMARY,
+    })) ??
+    (await createNamedCalendar({
+      token: args.token,
+      summary: APP_CALENDAR_SUMMARY,
+    }));
+
+  ownerCalendarIdCache.set(cacheKey, { calendarId: foundId, ts: Date.now() });
+  return foundId;
+}
+
 async function requestGoogle(args: {
   token: string;
   method: "GET" | "POST" | "PATCH" | "DELETE";
@@ -172,6 +273,7 @@ function sessionNeedsUpsert(previous: Session | undefined, next: Session): boole
     previous.displayAt !== next.displayAt ||
     previous.index !== next.index ||
     previous.studentId !== next.studentId ||
+    (previous.googleCalendarId ?? "") !== (next.googleCalendarId ?? "") ||
     (previous.googleCalendarEventId ?? "") !== (next.googleCalendarEventId ?? "") ||
     (previous.googleCalendarOwnerEmail ?? "") !== (next.googleCalendarOwnerEmail ?? "") ||
     (previous.googleCalendarStatus ?? "") !== (next.googleCalendarStatus ?? "") ||
@@ -193,6 +295,10 @@ function hasDisplayAtChanged(previous: Session | undefined, next: Session): bool
   const nextIso = safeIso(next.displayAt);
   if (prevIso && nextIso) return prevIso !== nextIso;
   return previous.displayAt !== next.displayAt;
+}
+
+function calendarIdOf(session: Session | undefined): string {
+  return text(session?.googleCalendarId) || "primary";
 }
 
 function isPermissionOrNotFound(message: string): boolean {
@@ -240,6 +346,7 @@ function parseCandidateEvents(body: unknown): CandidateEvent[] {
 
 async function findSignatureEvents(args: {
   token: string;
+  calendarId: string;
   session: Session;
   student: Student;
 }): Promise<CandidateEvent[]> {
@@ -254,7 +361,7 @@ async function findSignatureEvents(args: {
   const body = await requestGoogle({
     token: args.token,
     method: "GET",
-    path: "/calendars/primary/events",
+    path: `/calendars/${encodeURIComponent(args.calendarId)}/events`,
     query: {
       singleEvents: "true",
       showDeleted: "false",
@@ -338,6 +445,7 @@ function buildEventPayload(args: {
 
 async function createEvent(args: {
   token: string;
+  calendarId: string;
   session: Session;
   student: Student;
   teacher: Teacher | null;
@@ -355,7 +463,7 @@ async function createEvent(args: {
   const body = await requestGoogle({
     token: args.token,
     method: "POST",
-    path: "/calendars/primary/events",
+    path: `/calendars/${encodeURIComponent(args.calendarId)}/events`,
     query: {
       conferenceDataVersion: "1",
       sendUpdates: "all",
@@ -373,6 +481,7 @@ async function createEvent(args: {
 
 async function updateEvent(args: {
   token: string;
+  calendarId: string;
   session: Session;
   student: Student;
   teacher: Teacher | null;
@@ -393,7 +502,7 @@ async function updateEvent(args: {
   const body = await requestGoogle({
     token: args.token,
     method: "PATCH",
-    path: `/calendars/primary/events/${encodeURIComponent(eventId)}`,
+    path: `/calendars/${encodeURIComponent(args.calendarId)}/events/${encodeURIComponent(eventId)}`,
     query: {
       conferenceDataVersion: "1",
       sendUpdates: "all",
@@ -412,6 +521,7 @@ async function updateEvent(args: {
 
 async function deleteEvent(args: {
   token: string;
+  calendarId: string;
   eventId: string;
   sendUpdates?: "all" | "none";
 }): Promise<void> {
@@ -422,7 +532,7 @@ async function deleteEvent(args: {
     await requestGoogle({
       token: args.token,
       method: "DELETE",
-      path: `/calendars/primary/events/${encodeURIComponent(eventId)}`,
+      path: `/calendars/${encodeURIComponent(args.calendarId)}/events/${encodeURIComponent(eventId)}`,
       query: {
         sendUpdates: args.sendUpdates ?? "all",
       },
@@ -504,7 +614,11 @@ async function runSync(args: SyncArgs): Promise<void> {
     const expectedOwnerEmail = normalizeEmail(prevTeacher?.email);
     if (!expectedOwnerEmail || expectedOwnerEmail !== currentEmail) continue;
     try {
-      await deleteEvent({ token: providerToken, eventId: prev.googleCalendarEventId });
+      await deleteEvent({
+        token: providerToken,
+        calendarId: calendarIdOf(prev),
+        eventId: prev.googleCalendarEventId,
+      });
     } catch (err) {
       console.error("Google Calendar 이벤트 삭제 실패:", err);
     }
@@ -541,6 +655,7 @@ async function runSync(args: SyncArgs): Promise<void> {
       patches.push({
         id: next.id,
         patch: {
+          googleCalendarId: undefined,
           googleCalendarEventId: undefined,
           googleMeetUrl: undefined,
           googleCalendarOwnerEmail: undefined,
@@ -555,7 +670,11 @@ async function runSync(args: SyncArgs): Promise<void> {
       // 과거에 잘못된 소유자로 저장된 이벤트가 현재 로그인 계정 소유라면 정리
       if (ownerMismatch && savedOwnerEmail === currentEmail && next.googleCalendarEventId) {
         try {
-          await deleteEvent({ token: providerToken, eventId: next.googleCalendarEventId });
+          await deleteEvent({
+            token: providerToken,
+            calendarId: calendarIdOf(next),
+            eventId: next.googleCalendarEventId,
+          });
         } catch (err) {
           console.error("잘못된 소유자 이벤트 정리 실패:", err);
         }
@@ -565,6 +684,7 @@ async function runSync(args: SyncArgs): Promise<void> {
         id: next.id,
         patch: {
           googleCalendarOwnerEmail: ownerEmail,
+          googleCalendarId: ownerMismatch ? undefined : next.googleCalendarId,
           googleCalendarEventId: ownerMismatch ? undefined : next.googleCalendarEventId,
           googleMeetUrl: ownerMismatch ? undefined : next.googleMeetUrl,
           googleCalendarStatus: "pending",
@@ -575,21 +695,52 @@ async function runSync(args: SyncArgs): Promise<void> {
     }
 
     try {
+      const targetCalendarId = await ensureAppCalendarId({
+        token: providerToken,
+        ownerEmail,
+      });
+
       let sessionForOwner: Session = ownerMismatch
         ? {
             ...next,
+            googleCalendarId: targetCalendarId,
             googleCalendarEventId: undefined,
             googleMeetUrl: undefined,
           }
         : next;
+      let sessionCalendarId = calendarIdOf(sessionForOwner);
+
+      if (sessionCalendarId !== targetCalendarId) {
+        if (sessionForOwner.googleCalendarEventId) {
+          try {
+            await deleteEvent({
+              token: providerToken,
+              calendarId: sessionCalendarId,
+              eventId: sessionForOwner.googleCalendarEventId,
+              sendUpdates: "none",
+            });
+          } catch (err) {
+            console.error("Google Calendar 캘린더 이동 중 기존 이벤트 삭제 실패:", err);
+          }
+        }
+        sessionForOwner = {
+          ...sessionForOwner,
+          googleCalendarId: targetCalendarId,
+          googleCalendarEventId: undefined,
+          googleMeetUrl: undefined,
+        };
+        sessionCalendarId = targetCalendarId;
+      }
 
       // 시간표 변경 등으로 회차 시간이 바뀐 경우:
       // 1) 이전 시간대에 남아있을 수 있는 기존 이벤트 정리
       // 2) 추적된 eventId도 재생성 흐름으로 강제 전환
       if (prev && hasDisplayAtChanged(prev, next)) {
+        const previousCalendarId = calendarIdOf(prev);
         try {
           const oldSlotEvents = await findSignatureEvents({
             token: providerToken,
+            calendarId: previousCalendarId,
             session: prev,
             student,
           });
@@ -597,6 +748,7 @@ async function runSync(args: SyncArgs): Promise<void> {
             try {
               await deleteEvent({
                 token: providerToken,
+                calendarId: previousCalendarId,
                 eventId: oldEvent.eventId,
                 sendUpdates: "none",
               });
@@ -612,6 +764,7 @@ async function runSync(args: SyncArgs): Promise<void> {
           try {
             await deleteEvent({
               token: providerToken,
+              calendarId: sessionCalendarId,
               eventId: sessionForOwner.googleCalendarEventId,
               sendUpdates: "none",
             });
@@ -622,6 +775,7 @@ async function runSync(args: SyncArgs): Promise<void> {
 
         sessionForOwner = {
           ...sessionForOwner,
+          googleCalendarId: sessionCalendarId,
           googleCalendarEventId: undefined,
           googleMeetUrl: undefined,
         };
@@ -642,6 +796,7 @@ async function runSync(args: SyncArgs): Promise<void> {
 
       const signatureEvents = await findSignatureEvents({
         token: providerToken,
+        calendarId: sessionCalendarId,
         session: sessionForOwner,
         student,
       });
@@ -663,6 +818,7 @@ async function runSync(args: SyncArgs): Promise<void> {
           try {
             await deleteEvent({
               token: providerToken,
+              calendarId: sessionCalendarId,
               eventId: dup.eventId,
               sendUpdates: "none",
             });
@@ -677,6 +833,7 @@ async function runSync(args: SyncArgs): Promise<void> {
         try {
           result = await updateEvent({
             token: providerToken,
+            calendarId: sessionCalendarId,
             session: sessionForOwner,
             student,
             teacher,
@@ -687,6 +844,7 @@ async function runSync(args: SyncArgs): Promise<void> {
             // 과거 다른 계정에서 만든 eventId 또는 권한 변경으로 접근 불가면 새 이벤트로 복구
             result = await createEvent({
               token: providerToken,
+              calendarId: sessionCalendarId,
               session: { ...sessionForOwner, googleCalendarEventId: undefined, googleMeetUrl: undefined },
               student,
               teacher,
@@ -698,6 +856,7 @@ async function runSync(args: SyncArgs): Promise<void> {
       } else {
         result = await createEvent({
           token: providerToken,
+          calendarId: sessionCalendarId,
           session: sessionForOwner,
           student,
           teacher,
@@ -714,6 +873,7 @@ async function runSync(args: SyncArgs): Promise<void> {
       patches.push({
         id: next.id,
         patch: {
+          googleCalendarId: sessionCalendarId,
           googleCalendarEventId: result.eventId ?? undefined,
           googleMeetUrl: result.meetUrl ?? undefined,
           googleCalendarOwnerEmail: ownerEmail,

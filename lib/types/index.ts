@@ -168,6 +168,7 @@ export type Session = {
   lectureLeafIds?: LectureLeafId[];
 
   // Google Calendar/Meet 연동 메타(자동 동기화용)
+  googleCalendarId?: string;
   googleCalendarEventId?: string;
   googleMeetUrl?: string;
   googleCalendarOwnerEmail?: string;
