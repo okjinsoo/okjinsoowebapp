@@ -731,7 +731,35 @@ async function runSync(args: SyncArgs): Promise<void> {
       let sessionCalendarId = calendarIdOf(sessionForOwner);
 
       if (sessionCalendarId !== targetCalendarId) {
-        if (sessionForOwner.googleCalendarEventId) {
+        // 캘린더 이동(primary -> 앱 전용) 시, 이전 캘린더에 남아있는 같은 회차 이벤트를 먼저 정리
+        let cleanedBySignature = false;
+        try {
+          const staleEvents = await findSignatureEvents({
+            token: providerToken,
+            calendarId: sessionCalendarId,
+            session: sessionForOwner,
+            student,
+          });
+          if (staleEvents.length > 0) {
+            cleanedBySignature = true;
+          }
+          for (const stale of staleEvents) {
+            try {
+              await deleteEvent({
+                token: providerToken,
+                calendarId: sessionCalendarId,
+                eventId: stale.eventId,
+                sendUpdates: "none",
+              });
+            } catch (err) {
+              console.error("Google Calendar 캘린더 이동 중 이전 캘린더 이벤트 정리 실패:", err);
+            }
+          }
+        } catch (err) {
+          console.error("Google Calendar 캘린더 이동 중 이전 캘린더 이벤트 조회 실패:", err);
+        }
+
+        if (!cleanedBySignature && sessionForOwner.googleCalendarEventId) {
           try {
             await deleteEvent({
               token: providerToken,
