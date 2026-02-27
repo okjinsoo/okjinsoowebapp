@@ -4,6 +4,7 @@
 import { browserStorage } from "@/lib/storage/browserStorage";
 import { syncRoleBindingEmails } from "@/lib/auth/roleBindings";
 import { pushSharedSnapshot, readLocalTeachers } from "@/lib/storage/sharedSnapshot";
+import { requestCalendarResyncForStudentIds } from "@/lib/storage/sessions";
 import type { Student, StudentStatus } from "@/lib/types/index";
 
 const KEY = "tutorweb_students_v1";
@@ -21,6 +22,23 @@ function extractStudentEmails(list: Student[]): string[] {
   return list
     .map((student) => (student.googleEmail ?? "").trim())
     .filter((email) => Boolean(email));
+}
+
+function normalizeEmail(email: string | undefined): string {
+  return (email ?? "").trim().toLowerCase();
+}
+
+function changedStudentEmailIds(previous: Student[], next: Student[]): string[] {
+  const prevById = new Map(previous.map((student) => [student.id, normalizeEmail(student.googleEmail)] as const));
+  const out: string[] = [];
+  for (const student of next) {
+    const prevEmail = prevById.get(student.id);
+    if (prevEmail === undefined) continue;
+    const nextEmail = normalizeEmail(student.googleEmail);
+    if (prevEmail === nextEmail) continue;
+    out.push(student.id);
+  }
+  return out;
 }
 
 function syncStudentRoleBindings(previous: Student[], next: Student[]): void {
@@ -50,10 +68,14 @@ export function loadStudents(): Student[] {
 export function saveStudents(list: Student[]): void {
   if (typeof window === "undefined") return;
   const previous = loadStudents();
+  const changedEmailIds = changedStudentEmailIds(previous, list);
   browserStorage.setItem(KEY, JSON.stringify(list));
   window.dispatchEvent(new CustomEvent("tutorweb:studentsUpdated"));
   syncStudentRoleBindings(previous, list);
   syncSharedSnapshot(list);
+  if (changedEmailIds.length > 0) {
+    requestCalendarResyncForStudentIds(changedEmailIds);
+  }
 }
 
 export function upsertStudent(student: Student): Student[] {

@@ -145,6 +145,10 @@ function sessionNeedsUpsert(previous: Session | undefined, next: Session): boole
     previous.displayAt !== next.displayAt ||
     previous.index !== next.index ||
     previous.studentId !== next.studentId ||
+    (previous.googleCalendarEventId ?? "") !== (next.googleCalendarEventId ?? "") ||
+    (previous.googleCalendarOwnerEmail ?? "") !== (next.googleCalendarOwnerEmail ?? "") ||
+    (previous.googleCalendarStatus ?? "") !== (next.googleCalendarStatus ?? "") ||
+    (previous.googleCalendarError ?? "") !== (next.googleCalendarError ?? "") ||
     (previous.title ?? "") !== (next.title ?? "") ||
     (previous.memo ?? "") !== (next.memo ?? "")
   );

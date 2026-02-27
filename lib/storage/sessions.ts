@@ -74,6 +74,46 @@ function applySessionPatches(patches: Array<{ id: string; patch: Partial<Session
   persistSessions(next);
 }
 
+function applyCalendarResyncPatch(args: {
+  studentIds: Set<string>;
+  teacherEmailChanged?: boolean;
+  reason: string;
+}): void {
+  if (args.studentIds.size === 0) return;
+  const current = loadSessions();
+  let changed = false;
+
+  const next = current.map((session) => {
+    if (!args.studentIds.has(session.studentId)) return session;
+
+    const patch: Partial<Session> = {
+      googleCalendarStatus: "pending",
+      googleCalendarError: args.reason,
+    };
+
+    if (args.teacherEmailChanged) {
+      patch.googleCalendarOwnerEmail = undefined;
+      patch.googleCalendarEventId = undefined;
+      patch.googleMeetUrl = undefined;
+    }
+
+    const same = Object.entries(patch).every(([key, value]) => {
+      const k = key as keyof Session;
+      return session[k] === value;
+    });
+    if (same) return session;
+
+    changed = true;
+    return {
+      ...session,
+      ...patch,
+    };
+  });
+
+  if (!changed) return;
+  saveSessions(next);
+}
+
 export function saveSessions(list: Session[], options?: SaveSessionsOptions): void {
   const previous = loadSessions();
   persistSessions(list);
@@ -96,6 +136,34 @@ export function syncGoogleCalendarForExistingSessions(): void {
     previous: current,
     next: current,
     applyPatches: applySessionPatches,
+  });
+}
+
+export function requestCalendarResyncForStudentIds(studentIds: string[]): void {
+  if (!Array.isArray(studentIds) || studentIds.length === 0) return;
+  const set = new Set(studentIds.filter((id) => typeof id === "string" && id.trim()));
+  if (set.size === 0) return;
+
+  applyCalendarResyncPatch({
+    studentIds: set,
+    reason: "학생 이메일 변경 반영을 위해 Meet 참석자를 다시 동기화합니다.",
+  });
+}
+
+export function requestCalendarResyncForTeacherIds(teacherIds: string[]): void {
+  if (!Array.isArray(teacherIds) || teacherIds.length === 0) return;
+  const teacherSet = new Set(teacherIds.filter((id) => typeof id === "string" && id.trim()));
+  if (teacherSet.size === 0) return;
+
+  const students = readLocalStudents();
+  const studentIds = students
+    .filter((student) => student.teacherId && teacherSet.has(student.teacherId))
+    .map((student) => student.id);
+
+  applyCalendarResyncPatch({
+    studentIds: new Set(studentIds),
+    teacherEmailChanged: true,
+    reason: "담당 선생님 이메일 변경으로 Meet 일정을 다시 생성합니다.",
   });
 }
 
