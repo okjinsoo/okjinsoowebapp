@@ -214,15 +214,26 @@ async function ensureAppCalendarId(args: {
     return cached.calendarId;
   }
 
-  const foundId =
-    (await findNamedCalendarId({
-      token: args.token,
-      summary: APP_CALENDAR_SUMMARY,
-    })) ??
-    (await createNamedCalendar({
-      token: args.token,
-      summary: APP_CALENDAR_SUMMARY,
-    }));
+  let foundId = "primary";
+  try {
+    foundId =
+      (await findNamedCalendarId({
+        token: args.token,
+        summary: APP_CALENDAR_SUMMARY,
+      })) ??
+      (await createNamedCalendar({
+        token: args.token,
+        summary: APP_CALENDAR_SUMMARY,
+      }));
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err ?? "");
+    if (!isInsufficientScopeError(message)) {
+      throw err;
+    }
+    // calendar scope가 빠진 토큰이면 전용 캘린더 대신 primary에라도 생성해 기능을 유지한다.
+    console.warn("Google Calendar scope 부족: primary 캘린더로 폴백합니다.");
+    foundId = "primary";
+  }
 
   ownerCalendarIdCache.set(cacheKey, { calendarId: foundId, ts: Date.now() });
   return foundId;
@@ -304,6 +315,15 @@ function calendarIdOf(session: Session | undefined): string {
 function isPermissionOrNotFound(message: string): boolean {
   const msg = text(message);
   return msg.startsWith("403") || msg.startsWith("404");
+}
+
+function isInsufficientScopeError(message: string): boolean {
+  const msg = text(message).toLowerCase();
+  return (
+    msg.includes("insufficient authentication scopes") ||
+    msg.includes("insufficient permission") ||
+    msg.includes("insufficientpermissions")
+  );
 }
 
 function expectedSummary(session: Session, student: Student): string {
