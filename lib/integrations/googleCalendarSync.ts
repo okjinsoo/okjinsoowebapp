@@ -326,11 +326,6 @@ async function runSync(args: SyncArgs): Promise<void> {
     return;
   }
 
-  if (auth?.providerExpiresAt && Date.now() >= auth.providerExpiresAt - 15 * 1000) {
-    applySyncErrorToTargets("구글 캘린더 권한이 만료되었습니다. 로그아웃 후 다시 로그인 해주세요.");
-    return;
-  }
-
   const students = loadStudents();
   const teachers = loadTeachers();
   const studentById = new Map(students.map((s) => [s.id, s] as const));
