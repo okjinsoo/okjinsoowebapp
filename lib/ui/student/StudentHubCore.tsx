@@ -449,18 +449,23 @@ export default function StudentHubCore({
   const editHrefBase = editPrefix ?? prefix;
   const editHref = hideTokenInRoute ? `${editHrefBase}/edit` : `${editHrefBase}/${encodeURIComponent(token)}/edit`;
   const boxButton = {
-    border: "1px solid #d1d5db",
+    border: "1px solid var(--control-border)",
     borderRadius: 6,
     background: "var(--surface-bg)",
+    color: "var(--foreground)",
     cursor: "pointer",
   };
   const inputStyle = {
-    border: "1px solid #d1d5db",
+    border: "1px solid var(--control-border)",
+    background: "var(--surface-bg)",
+    color: "var(--foreground)",
     borderRadius: 6,
     padding: "6px 8px",
   };
   const selectStyle = {
-    border: "1px solid #d1d5db",
+    border: "1px solid var(--control-border)",
+    background: "var(--surface-bg)",
+    color: "var(--foreground)",
     borderRadius: 8,
     padding: 8,
     width: "100%",
