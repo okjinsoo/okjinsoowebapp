@@ -3,7 +3,12 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Teacher } from "@/lib/types/index";
-import { findTeacherById, loadCurrentTeacherId, upsertTeacher } from "@/lib/storage/teachers";
+import {
+  findTeacherById,
+  loadCurrentTeacherId,
+  loadTeachers,
+  saveTeachersServerFirst,
+} from "@/lib/storage/teachers";
 import { todayYmdLocal } from "@/lib/utils/date";
 import { normalizePhoneDigits } from "@/lib/utils/phone";
 
@@ -16,6 +21,7 @@ export default function AdminTeacherEditPage() {
   const [email, setEmail] = useState("");
   const [workStartDate, setWorkStartDate] = useState(() => todayYmdLocal());
   const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -32,7 +38,7 @@ export default function AdminTeacherEditPage() {
     return () => clearTimeout(timer);
   }, []);
 
-  function onSave() {
+  async function onSave() {
     if (!teacher) return;
     setError("");
     const nm = name.trim();
@@ -43,14 +49,26 @@ export default function AdminTeacherEditPage() {
     if (!em) return setError("이메일을 입력해주세요.");
     if (!workStartDate) return setError("업무 시작일을 입력해주세요.");
 
-    upsertTeacher({
+    const nextTeacher: Teacher = {
       ...teacher,
       name: nm,
       phone: ph,
       email: em,
       workStartDate,
-    });
-    router.push("/a/teachers");
+    };
+
+    const nextTeachers = loadTeachers().map((row) => (row.id === teacher.id ? nextTeacher : row));
+
+    setSaving(true);
+    try {
+      await saveTeachersServerFirst(nextTeachers);
+      router.push("/a/teachers");
+    } catch (err) {
+      console.error("선생님 수정 서버 저장 실패:", err);
+      setError("서버 저장에 실패했어요. 잠시 뒤 다시 시도해주세요.");
+    } finally {
+      setSaving(false);
+    }
   }
 
   const inputStyle = {
@@ -111,11 +129,11 @@ export default function AdminTeacherEditPage() {
       {error ? <div style={{ marginTop: 10, color: "#dc2626" }}>{error}</div> : null}
 
       <div style={{ marginTop: 12, display: "flex", justifyContent: "flex-end", gap: 8 }}>
-        <button className="btn" onClick={() => router.push("/a/teachers")}>
+        <button className="btn" onClick={() => router.push("/a/teachers")} disabled={saving}>
           취소
         </button>
-        <button className="btn btn-bold" onClick={onSave}>
-          저장
+        <button className="btn btn-bold" onClick={() => void onSave()} disabled={saving}>
+          {saving ? "저장 중..." : "저장"}
         </button>
       </div>
     </main>

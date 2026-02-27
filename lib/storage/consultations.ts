@@ -1,28 +1,78 @@
 // lib/storage/consultations.ts
 "use client";
 
+import { TUTORWEB_EVENTS } from "@/lib/events/tutorwebEvents";
 import { browserStorage } from "@/lib/storage/browserStorage";
+import { pushSharedSnapshot } from "@/lib/storage/sharedSnapshot";
+import { fetchServerStudentConsultations } from "@/lib/storage/serverRead";
 import { safeParseJson } from "@/lib/storage/safeParse";
+import { SHARED_CONSULTATIONS_KEY } from "@/lib/storage/sharedStateKeys";
 import type { ConsultationRecord, Id } from "@/lib/types/index";
 
 const KEY = "tutorweb_consultations_v1";
 
 type Store = Record<Id, ConsultationRecord[]>;
+type SaveConsultationsOptions = {
+  skipSharedSnapshot?: boolean;
+};
 
 function loadAll(): Store {
   if (typeof window === "undefined") return {};
   return safeParseJson<Store>(browserStorage.getItem(KEY), {});
 }
 
-function saveAll(next: Store) {
+function saveAll(next: Store, options?: SaveConsultationsOptions) {
   if (typeof window === "undefined") return;
   browserStorage.setItem(KEY, JSON.stringify(next));
-  window.dispatchEvent(new CustomEvent("tutorweb:consultationsUpdated"));
+  window.dispatchEvent(new CustomEvent(TUTORWEB_EVENTS.consultationsUpdated));
+  if (!options?.skipSharedSnapshot) {
+    void pushSharedSnapshot({
+      stateKv: {
+        [SHARED_CONSULTATIONS_KEY]: JSON.stringify(next),
+      },
+    }).catch((err) => {
+      console.error("공유 스냅샷 동기화 실패(consultations):", err);
+    });
+  }
+}
+
+function replaceByStudentLocal(studentId: Id, list: ConsultationRecord[]): boolean {
+  if (typeof window === "undefined") return false;
+  const all = loadAll();
+  const prevRaw = JSON.stringify(all[studentId] ?? []);
+  const nextRaw = JSON.stringify(list);
+  if (prevRaw === nextRaw) return false;
+  all[studentId] = list;
+  saveAll(all);
+  return true;
 }
 
 export function loadConsultationsByStudent(studentId: Id): ConsultationRecord[] {
   const all = loadAll();
   return all[studentId] ?? [];
+}
+
+export function loadAllConsultationsStore(): Store {
+  return loadAll();
+}
+
+export function saveAllConsultationsStore(next: Store, options?: SaveConsultationsOptions): void {
+  saveAll(next, options);
+}
+
+export async function hydrateConsultationsByStudentFromServer(studentId: Id): Promise<ConsultationRecord[]> {
+  const remote = await fetchServerStudentConsultations(studentId);
+  if (!remote) return loadConsultationsByStudent(studentId);
+  replaceByStudentLocal(studentId, remote);
+  return remote;
+}
+
+export async function hydrateConsultationsForStudentsFromServer(studentIds: Id[]): Promise<void> {
+  const uniqueIds = Array.from(
+    new Set((studentIds ?? []).map((id) => (typeof id === "string" ? id.trim() : "")).filter(Boolean))
+  );
+  if (uniqueIds.length === 0) return;
+  await Promise.all(uniqueIds.map((studentId) => hydrateConsultationsByStudentFromServer(studentId)));
 }
 
 export function saveConsultationsByStudent(studentId: Id, list: ConsultationRecord[]) {

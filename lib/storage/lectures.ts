@@ -1,6 +1,7 @@
 "use client";
 
 import { browserStorage } from "@/lib/storage/browserStorage";
+import { SHARED_LECTURE_TREE_KEY } from "@/lib/storage/sharedStateKeys";
 import type {
   LectureTree,
   LectureNode,
@@ -10,7 +11,7 @@ import type {
   LectureNodeId,
 } from "@/lib/types/index";
 
-const KEY_LECTURE_TREE = "mk3:lectureTree";
+const KEY_LECTURE_TREE = SHARED_LECTURE_TREE_KEY;
 const ROOT_TITLE = "강의 저장소";
 
 function nowIso() {

@@ -6,11 +6,16 @@ import { browserStorage } from "@/lib/storage/browserStorage";
 import React, { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Id, Student, Teacher } from "@/lib/types/index";
-import { findStudentByToken, removeStudent, upsertStudent } from "@/lib/storage/students";
-import { loadSessions, removeSessionsByStudentId, saveSessions } from "@/lib/storage/sessions";
-import { clearConsultationsByStudent } from "@/lib/storage/consultations";
+import { pushSharedSnapshot } from "@/lib/storage/sharedSnapshot";
+import { findStudentByToken, loadStudents, saveStudents } from "@/lib/storage/students";
+import { loadSessions, saveSessions } from "@/lib/storage/sessions";
+import {
+  loadAllConsultationsStore,
+  saveAllConsultationsStore,
+} from "@/lib/storage/consultations";
 import { clearCurrentStudentToken } from "@/lib/ui/common/roleGateStorage";
 import { buildBaseDatesISO, metaMapKey } from "@/lib/ui/session/sessionEffective";
+import { SHARED_CONSULTATIONS_KEY } from "@/lib/storage/sharedStateKeys";
 import { makeId } from "@/lib/utils/id";
 import { nowIso } from "@/lib/utils/date";
 import { normalizePhoneDigits } from "@/lib/utils/phone";
@@ -22,8 +27,8 @@ function normalizePlanCount(n: number): number {
 
 export type StudentEditMode = "admin" | "teacher";
 
-function clearStudentScopedStorage(token: string) {
-  if (typeof window === "undefined" || !token) return;
+function collectStudentScopedStorageKeys(token: string): string[] {
+  if (typeof window === "undefined" || !token) return [];
   try {
     const prefix = `mk3:${token}:session:`;
     const removeKeys: string[] = [];
@@ -32,10 +37,18 @@ function clearStudentScopedStorage(token: string) {
       if (!key) continue;
       if (key.startsWith(prefix)) removeKeys.push(key);
     }
-    for (const k of removeKeys) browserStorage.removeItem(k);
-    browserStorage.removeItem(metaMapKey(token));
+    const metaKey = metaMapKey(token);
+    return [...removeKeys, metaKey];
   } catch {
-    // ignore
+    return [];
+  }
+}
+
+function removeStorageKeys(keys: string[]): void {
+  if (typeof window === "undefined") return;
+  for (const key of keys) {
+    if (!key) continue;
+    browserStorage.removeItem(key);
   }
 }
 
@@ -66,6 +79,7 @@ export default function StudentEditClient(props: {
   const [error, setError] = useState<string>("");
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   const gradeOptions = useMemo(() => {
     const out: Array<{ label: string; value: string }> = [];
@@ -132,7 +146,7 @@ export default function StudentEditClient(props: {
     }
   }
 
-  function onSubmit() {
+  async function onSubmit() {
     if (!student) return;
     if (!validate()) return;
     const nextPlanCount = normalizePlanCount(planCount);
@@ -152,7 +166,7 @@ export default function StudentEditClient(props: {
       parentPhone: normalizePhoneDigits(parentPhone),
     };
 
-    upsertStudent(updated);
+    const nextStudents = loadStudents().map((row) => (row.id === student.id ? updated : row));
     const all = loadSessions();
     const others = all.filter((s) => s.studentId !== student.id);
     const own = all.filter((s) => s.studentId === student.id);
@@ -172,23 +186,59 @@ export default function StudentEditClient(props: {
         }
       );
     }
-    saveSessions([...others, ...nextOwn]);
-    router.push(onDoneGoTo);
+    const nextSessions = [...others, ...nextOwn];
+
+    setSaving(true);
+    try {
+      await pushSharedSnapshot({
+        students: nextStudents,
+        sessions: nextSessions,
+      });
+      saveStudents(nextStudents, { skipSharedSnapshot: true });
+      saveSessions(nextSessions, { skipSharedSnapshot: true });
+      router.push(onDoneGoTo);
+    } catch (err) {
+      console.error("학생 수정 서버 저장 실패:", err);
+      setError("서버 저장에 실패했어요. 잠시 뒤 다시 시도해주세요.");
+    } finally {
+      setSaving(false);
+    }
   }
 
-  function onDeleteConfirm() {
+  async function onDeleteConfirm() {
     if (!student || mode !== "admin" || deleting) return;
     setDeleting(true);
+    let succeeded = false;
     try {
-      removeStudent(student.id);
-      removeSessionsByStudentId(student.id);
-      clearConsultationsByStudent(student.id);
-      clearStudentScopedStorage(student.token);
+      const nextStudents = loadStudents().filter((row) => row.id !== student.id);
+      const nextSessions = loadSessions().filter((row) => row.studentId !== student.id);
+      const nextConsultations = loadAllConsultationsStore();
+      delete nextConsultations[student.id];
+      const droppedKeys = collectStudentScopedStorageKeys(student.token);
+
+      await pushSharedSnapshot({
+        students: nextStudents,
+        sessions: nextSessions,
+        stateKv: {
+          [SHARED_CONSULTATIONS_KEY]: JSON.stringify(nextConsultations),
+        },
+        dropStateKeys: droppedKeys,
+      });
+      saveStudents(nextStudents, { skipSharedSnapshot: true });
+      saveSessions(nextSessions, { skipSharedSnapshot: true, suppressCalendarSync: true });
+      saveAllConsultationsStore(nextConsultations, { skipSharedSnapshot: true });
+      removeStorageKeys(droppedKeys);
       clearCurrentStudentToken();
+      succeeded = true;
       router.push("/a/students");
+    } catch (err) {
+      console.error("학생 삭제 서버 저장 실패:", err);
+      setError("서버 저장에 실패했어요. 잠시 뒤 다시 시도해주세요.");
     } finally {
       setDeleting(false);
-      setDeleteOpen(false);
+      if (succeeded) {
+        setDeleteOpen(false);
+      }
     }
   }
 
@@ -503,17 +553,17 @@ export default function StudentEditClient(props: {
         <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
           <div>
             {mode === "admin" ? (
-              <button className="btn btn-red" onClick={() => setDeleteOpen(true)}>
+              <button className="btn btn-red" onClick={() => setDeleteOpen(true)} disabled={saving || deleting}>
                 삭제
               </button>
             ) : null}
           </div>
           <div style={{ display: "flex", gap: 8 }}>
-          <button onClick={() => router.push(onDoneGoTo)} style={{ padding: "8px 12px" }}>
+          <button onClick={() => router.push(onDoneGoTo)} style={{ padding: "8px 12px" }} disabled={saving || deleting}>
             취소
           </button>
-          <button onClick={onSubmit} style={{ padding: "8px 12px", fontWeight: 800 }}>
-            저장
+          <button onClick={() => void onSubmit()} style={{ padding: "8px 12px", fontWeight: 800 }} disabled={saving || deleting}>
+            {saving ? "저장 중..." : "저장"}
           </button>
           </div>
         </div>
@@ -549,7 +599,7 @@ export default function StudentEditClient(props: {
               <button className="btn btn-bold" onClick={() => setDeleteOpen(false)} disabled={deleting}>
                 아니오
               </button>
-              <button className="btn btn-red" onClick={onDeleteConfirm} disabled={deleting}>
+              <button className="btn btn-red" onClick={() => void onDeleteConfirm()} disabled={deleting}>
                 예
               </button>
             </div>

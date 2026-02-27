@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Teacher } from "@/lib/types/index";
-import { upsertTeacher } from "@/lib/storage/teachers";
+import { loadTeachers, saveTeachersServerFirst } from "@/lib/storage/teachers";
 import { makeId, makeToken } from "@/lib/utils/id";
 import { nowIso, todayYmdLocal } from "@/lib/utils/date";
 import { normalizePhoneDigits } from "@/lib/utils/phone";
@@ -15,8 +15,9 @@ export default function AdminTeacherNewPage() {
   const [email, setEmail] = useState("");
   const [workStartDate, setWorkStartDate] = useState(() => todayYmdLocal());
   const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
 
-  function onSave() {
+  async function onSave() {
     setError("");
     const nm = name.trim();
     const ph = normalizePhoneDigits(phone);
@@ -38,8 +39,16 @@ export default function AdminTeacherNewPage() {
       active: true,
     };
 
-    upsertTeacher(teacher);
-    router.push("/a/teachers");
+    setSaving(true);
+    try {
+      await saveTeachersServerFirst([...loadTeachers(), teacher]);
+      router.push("/a/teachers");
+    } catch (err) {
+      console.error("선생님 생성 서버 저장 실패:", err);
+      setError("서버 저장에 실패했어요. 잠시 뒤 다시 시도해주세요.");
+    } finally {
+      setSaving(false);
+    }
   }
 
   const inputStyle = {
@@ -96,11 +105,11 @@ export default function AdminTeacherNewPage() {
       {error ? <div style={{ marginTop: 10, color: "#dc2626" }}>{error}</div> : null}
 
       <div style={{ marginTop: 12, display: "flex", justifyContent: "flex-end", gap: 8 }}>
-        <button className="btn" onClick={() => router.push("/a/teachers")}>
+        <button className="btn" onClick={() => router.push("/a/teachers")} disabled={saving}>
           취소
         </button>
-        <button className="btn btn-bold" onClick={onSave}>
-          저장
+        <button className="btn btn-bold" onClick={() => void onSave()} disabled={saving}>
+          {saving ? "저장 중..." : "저장"}
         </button>
       </div>
     </main>

@@ -4,11 +4,10 @@
 import { useEffect, useState } from "react";
 import { AUTH_EVENT } from "@/lib/auth/supabaseAuth";
 import { resolveSelectionForRole } from "@/lib/auth/loginSelection";
-import { pullSharedSnapshotAndHydrate } from "@/lib/storage/sharedSnapshot";
-import { loadStudents } from "@/lib/storage/students";
+import { hydrateStudentsFromServer } from "@/lib/storage/students";
 import {
   clearCurrentTeacherId,
-  loadTeachers,
+  hydrateTeachersFromServer,
   loadCurrentTeacherId,
   saveCurrentTeacherId,
   TEACHERS_EVENT,
@@ -34,16 +33,11 @@ export default function StudentMainClient({ role }: { role: "a" | "t" | "s" }) {
     let cancelled = false;
 
     async function bootstrap() {
-      try {
-        await pullSharedSnapshotAndHydrate();
-      } catch (err) {
-        console.error("공유 스냅샷 불러오기 실패(student):", err);
-      }
-
+      const [nextStudents, nextTeachers] = await Promise.all([
+        hydrateStudentsFromServer(),
+        hydrateTeachersFromServer(),
+      ]);
       if (cancelled) return;
-
-      const nextStudents = loadStudents();
-      const nextTeachers = loadTeachers();
       setStudents(nextStudents);
       setTeachers(nextTeachers);
 
@@ -75,14 +69,10 @@ export default function StudentMainClient({ role }: { role: "a" | "t" | "s" }) {
 
   useEffect(() => {
     const onGate = async () => {
-      try {
-        await pullSharedSnapshotAndHydrate();
-      } catch (err) {
-        console.error("공유 스냅샷 새로고침 실패(student):", err);
-      }
-
-      const nextStudents = loadStudents();
-      const nextTeachers = loadTeachers();
+      const [nextStudents, nextTeachers] = await Promise.all([
+        hydrateStudentsFromServer(),
+        hydrateTeachersFromServer(),
+      ]);
       setStudents(nextStudents);
       setTeachers(nextTeachers);
 

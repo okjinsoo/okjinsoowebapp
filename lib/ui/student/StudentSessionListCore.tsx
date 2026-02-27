@@ -1,6 +1,6 @@
 "use client";
 
-import { BROWSER_STORAGE_EVENT, browserStorage } from "@/lib/storage/browserStorage";
+import { BROWSER_STORAGE_EVENT } from "@/lib/storage/browserStorage";
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
@@ -11,7 +11,6 @@ import {
   buildBaseDatesISOByToken,
   computeEffectiveISO,
   buildBadges,
-  getStatusStyle,
   getSessionVisibility,
 } from "@/lib/factories/sessionFactories";
 import { useMetaMap, getDdayMeta } from "@/lib/factories/sessionFactories";
@@ -23,10 +22,18 @@ import SessionQuickActions from "@/lib/ui/session/SessionQuickActions";
 import { buildConsultationMap, pickPrimaryConsultTag } from "@/lib/ui/session/consultationMap";
 import { findLastClassIndex } from "@/lib/ui/session/pauseHelpers";
 import { getAchievementBadgeStyle } from "@/lib/ui/common/achievementBadge";
+import { getSessionStatusBadge } from "@/lib/ui/common/sessionStatusBadge";
+import { buildSessionContextBadges, getSessionExtraBadgeStyle } from "@/lib/ui/common/sessionExtraBadge";
 import type { ConsultTag } from "@/lib/ui/session/consultationMap";
 import type { ConsultationRecord } from "@/lib/types/index";
 import { ConsultBadge, ConsultButton } from "@/lib/ui/common/ConsultParts";
 import ConsultModal, { ConsultFormState } from "@/lib/ui/common/ConsultModal";
+import { TUTORWEB_EVENTS } from "@/lib/events/tutorwebEvents";
+import {
+  calculateSessionProgressSummary,
+  isSessionProgressEventKeyForToken,
+} from "@/lib/factories/sessionProgressFactory";
+import { canUseConsultFeatures } from "@/lib/policies/sessionRolePolicy";
 import { todayYmdKST, ymdFromISO_KST } from "@/lib/utils/date";
 
 type Props = {
@@ -57,17 +64,6 @@ function parseDateTime(iso: string | null | undefined) {
   const hh = parts.find((p) => p.type === "hour")?.value ?? "00";
   const mm = parts.find((p) => p.type === "minute")?.value ?? "00";
   return { dateText: `${y}. ${m}. ${d}.`, timeText: `${hh}시 ${mm}분` };
-}
-
-function readJson<T>(key: string, fallback: T): T {
-  if (typeof window === "undefined") return fallback;
-  try {
-    const raw = browserStorage.getItem(key);
-    if (!raw) return fallback;
-    return JSON.parse(raw) as T;
-  } catch {
-    return fallback;
-  }
 }
 
 function applyPauseStateFromConsultations(student: NonNullable<ReturnType<typeof findStudentByToken>>, records: ConsultationRecord[]) {
@@ -149,16 +145,15 @@ export default function StudentSessionListCore({ role, token, prefix, hideTokenI
       const ce = event as CustomEvent<{ key?: string | null }>;
       const key = ce.detail?.key ?? "";
       if (!key) return;
-      if (!key.startsWith(`mk3:${token}:session:`)) return;
-      if (!key.endsWith(":leafIds") && !key.endsWith(":progressByLeafId")) return;
+      if (!isSessionProgressEventKeyForToken(key, token)) return;
       setProgressTick((x) => x + 1);
     };
-    window.addEventListener("tutorweb:consultationsUpdated", onConsult);
-    window.addEventListener("tutorweb:studentsUpdated", onStudents);
+    window.addEventListener(TUTORWEB_EVENTS.consultationsUpdated, onConsult);
+    window.addEventListener(TUTORWEB_EVENTS.studentsUpdated, onStudents);
     window.addEventListener(BROWSER_STORAGE_EVENT, onProgressChanged);
     return () => {
-      window.removeEventListener("tutorweb:consultationsUpdated", onConsult);
-      window.removeEventListener("tutorweb:studentsUpdated", onStudents);
+      window.removeEventListener(TUTORWEB_EVENTS.consultationsUpdated, onConsult);
+      window.removeEventListener(TUTORWEB_EVENTS.studentsUpdated, onStudents);
       window.removeEventListener(BROWSER_STORAGE_EVENT, onProgressChanged);
     };
   }, [token]);
@@ -182,21 +177,10 @@ export default function StudentSessionListCore({ role, token, prefix, hideTokenI
     void progressTick;
     const out: Record<number, { done: number; total: number; percent: number }> = {};
     for (const s of sessions) {
-      const baseKey = `mk3:${token}:session:${s.index}`;
-      const leafIds = readJson<string[]>(`${baseKey}:leafIds`, []);
-      const progress = readJson<Record<string, { noteDone?: boolean; solveDone?: boolean }>>(
-        `${baseKey}:progressByLeafId`,
-        {}
-      );
-
-      const ids = Array.isArray(leafIds) ? leafIds : [];
-      const total = ids.length * 2;
-      const done = ids.reduce((acc, id) => {
-        const p = progress?.[id];
-        return acc + (p?.noteDone ? 1 : 0) + (p?.solveDone ? 1 : 0);
-      }, 0);
-      const percent = total === 0 ? 0 : Math.round((done / total) * 100);
-      out[s.index] = { done, total, percent };
+      out[s.index] = calculateSessionProgressSummary({
+        token,
+        sessionIndex: s.index,
+      });
     }
     return out;
   }, [mounted, token, sessions, progressTick]);
@@ -256,15 +240,16 @@ export default function StudentSessionListCore({ role, token, prefix, hideTokenI
         });
 
         const { dateText, timeText } = parseDateTime(effectiveISO);
-        const badges = buildBadges(meta);
-        if (lastClassIndex && s.index === lastClassIndex) {
-          badges.push("마지막 수업");
-        }
-        if (refundCompletedIndex && s.index === refundCompletedIndex) {
-          badges.push("환불완료");
-        } else if (refundRequestedIndex && s.index === refundRequestedIndex) {
-          badges.push("환불요청");
-        }
+        const badges = buildSessionContextBadges({
+          baseBadges: buildBadges(meta),
+          lastClass: Boolean(lastClassIndex && s.index === lastClassIndex),
+          refundStatus:
+            refundCompletedIndex && s.index === refundCompletedIndex
+              ? "completed"
+              : refundRequestedIndex && s.index === refundRequestedIndex
+                ? "requested"
+                : null,
+        });
 
         // ✅ D-day 레고: mounted 이전에는 diff를 만들지 않음(SSR mismatch 방지)
         const dday = mounted ? getDdayMeta(effectiveISO, new Date()) : null;
@@ -490,9 +475,7 @@ export default function StudentSessionListCore({ role, token, prefix, hideTokenI
             const cls = !r.dday || r.dday.diff === null ? "bg-slate-400" : r.dday.className;
             const label = !r.dday ? "-" : r.dday.label;
 
-            const statusLabel =
-              r.status === "present" ? "출석" : r.status === "absent" ? "결석" : "예정";
-            const statusStyle = getStatusStyle(r.status);
+            const statusBadge = getSessionStatusBadge(r.status);
             return (
               <div
                 key={`upcoming-${r.index}`}
@@ -528,7 +511,7 @@ export default function StudentSessionListCore({ role, token, prefix, hideTokenI
                       {r.dateText} {r.timeText}
                     </div>
                     <Badge style={getAchievementBadgeStyle(r.progress.percent)}>{r.progress.percent}%</Badge>
-                    <Badge style={{ background: statusStyle.bg, color: statusStyle.text }}>{statusLabel}</Badge>
+                    <Badge style={statusBadge.style}>{statusBadge.label}</Badge>
                     {!(
                       consultTag &&
                       consultTag.label === "휴회 예정" &&
@@ -539,18 +522,7 @@ export default function StudentSessionListCore({ role, token, prefix, hideTokenI
                     {r.badges.length > 0 ? (
                       <div className="flex items-center gap-2 flex-wrap">
                         {r.badges.map((b) => (
-                          <Badge
-                            key={`${r.index}:${b}`}
-                            style={
-                              b === "마지막 수업"
-                                ? { background: "#ef4444", color: "#fff" }
-                                : b === "환불완료"
-                                ? { background: "#fecaca", color: "#9f1239" }
-                                : b === "환불요청"
-                                  ? { background: "#fed7aa", color: "#9a3412" }
-                                    : { background: "#f1f5f9", color: "#334155" }
-                            }
-                          >
+                          <Badge key={`${r.index}:${b}`} style={getSessionExtraBadgeStyle(b)}>
                             {b}
                           </Badge>
                         ))}
@@ -558,7 +530,7 @@ export default function StudentSessionListCore({ role, token, prefix, hideTokenI
                     ) : null}
                   </div>
                 </Link>
-                {role !== "s" ? (
+                {canUseConsultFeatures(role) ? (
                   <div onClick={(e) => e.stopPropagation()} style={{ display: "flex", gap: 6 }}>
                     <SessionQuickActions role={role} token={token} index={r.index} />
                     <ConsultButton tag={consultTag} onClick={() => openConsultForSession(r.effectiveISO, consultTag)} />
@@ -599,9 +571,7 @@ export default function StudentSessionListCore({ role, token, prefix, hideTokenI
             const cls = !r.dday || r.dday.diff === null ? "bg-slate-400" : r.dday.className;
             const label = !r.dday ? "-" : r.dday.label;
 
-            const statusLabel =
-              r.status === "present" ? "출석" : r.status === "absent" ? "결석" : "예정";
-            const statusStyle = getStatusStyle(r.status);
+            const statusBadge = getSessionStatusBadge(r.status);
             return (
               <div
                 key={`past-${r.index}`}
@@ -637,7 +607,7 @@ export default function StudentSessionListCore({ role, token, prefix, hideTokenI
                       {r.dateText} {r.timeText}
                     </div>
                     <Badge style={getAchievementBadgeStyle(r.progress.percent)}>{r.progress.percent}%</Badge>
-                    <Badge style={{ background: statusStyle.bg, color: statusStyle.text }}>{statusLabel}</Badge>
+                    <Badge style={statusBadge.style}>{statusBadge.label}</Badge>
                     {!(
                       consultTag &&
                       consultTag.label === "휴회 예정" &&
@@ -648,18 +618,7 @@ export default function StudentSessionListCore({ role, token, prefix, hideTokenI
                     {r.badges.length > 0 ? (
                       <div className="flex items-center gap-2 flex-wrap">
                         {r.badges.map((b) => (
-                          <Badge
-                            key={`past-${r.index}:${b}`}
-                            style={
-                              b === "마지막 수업"
-                                ? { background: "#ef4444", color: "#fff" }
-                                : b === "환불완료"
-                                ? { background: "#fecaca", color: "#9f1239" }
-                                : b === "환불요청"
-                                  ? { background: "#fed7aa", color: "#9a3412" }
-                                    : { background: "#f1f5f9", color: "#334155" }
-                            }
-                          >
+                          <Badge key={`past-${r.index}:${b}`} style={getSessionExtraBadgeStyle(b)}>
                             {b}
                           </Badge>
                         ))}
@@ -667,7 +626,7 @@ export default function StudentSessionListCore({ role, token, prefix, hideTokenI
                     ) : null}
                   </div>
                 </Link>
-                {role !== "s" ? (
+                {canUseConsultFeatures(role) ? (
                   <div onClick={(e) => e.stopPropagation()} style={{ display: "flex", gap: 6 }}>
                     <SessionQuickActions role={role} token={token} index={r.index} />
                     <ConsultButton tag={consultTag} onClick={() => openConsultForSession(r.effectiveISO, consultTag)} />

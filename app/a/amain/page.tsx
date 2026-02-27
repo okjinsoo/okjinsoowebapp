@@ -29,6 +29,7 @@ import {
 } from "@/lib/factories/studentStatusFactory";
 import { fmtKST_yyyyMMdd_HHmm_noSeconds } from "@/lib/ui/session/format";
 import Badge from "@/lib/ui/common/Badge";
+import { TUTORWEB_EVENTS } from "@/lib/events/tutorwebEvents";
 import { kstDateMs, todayYmdKST, ymdFromISO_KST } from "@/lib/utils/date";
 
 type StudentStatusCard = {
@@ -131,16 +132,16 @@ export default function AdminMainPage() {
       setTeachers(loadTeachers());
     };
     const onMetaUpdated = () => setMetaTick((x) => x + 1);
-    window.addEventListener("tutorweb:studentsUpdated", refresh);
-    window.addEventListener("tutorweb:sessionsUpdated", refresh);
-    window.addEventListener("tutorweb:consultationsUpdated", refresh);
-    window.addEventListener("tutorweb:metaMapUpdated", onMetaUpdated);
+    window.addEventListener(TUTORWEB_EVENTS.studentsUpdated, refresh);
+    window.addEventListener(TUTORWEB_EVENTS.sessionsUpdated, refresh);
+    window.addEventListener(TUTORWEB_EVENTS.consultationsUpdated, refresh);
+    window.addEventListener(TUTORWEB_EVENTS.metaMapUpdated, onMetaUpdated);
     window.addEventListener(TEACHERS_EVENT, refresh);
     return () => {
-      window.removeEventListener("tutorweb:studentsUpdated", refresh);
-      window.removeEventListener("tutorweb:sessionsUpdated", refresh);
-      window.removeEventListener("tutorweb:consultationsUpdated", refresh);
-      window.removeEventListener("tutorweb:metaMapUpdated", onMetaUpdated);
+      window.removeEventListener(TUTORWEB_EVENTS.studentsUpdated, refresh);
+      window.removeEventListener(TUTORWEB_EVENTS.sessionsUpdated, refresh);
+      window.removeEventListener(TUTORWEB_EVENTS.consultationsUpdated, refresh);
+      window.removeEventListener(TUTORWEB_EVENTS.metaMapUpdated, onMetaUpdated);
       window.removeEventListener(TEACHERS_EVENT, refresh);
     };
   }, []);

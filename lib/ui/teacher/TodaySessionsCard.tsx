@@ -4,7 +4,6 @@
 import Link from "next/link";
 import { useState } from "react";
 import Badge from "@/lib/ui/common/Badge";
-import { getStatusStyle } from "@/lib/factories/sessionFactories";
 import { saveCurrentStudentToken } from "@/lib/ui/common/roleGateStorage";
 import SessionQuickActions from "@/lib/ui/session/SessionQuickActions";
 import { saveConsultationsByStudent, loadConsultationsByStudent } from "@/lib/storage/consultations";
@@ -13,6 +12,8 @@ import { buildConsultationRecord, validateConsultForm } from "@/lib/factories/co
 import { computePauseLifecycle } from "@/lib/factories/studentStatusFactory";
 import { ConsultBadge, ConsultButton } from "@/lib/ui/common/ConsultParts";
 import { getAchievementBadgeStyle } from "@/lib/ui/common/achievementBadge";
+import { getSessionStatusBadge } from "@/lib/ui/common/sessionStatusBadge";
+import { getSessionExtraBadgeStyle } from "@/lib/ui/common/sessionExtraBadge";
 import ConsultModal, { ConsultFormState } from "@/lib/ui/common/ConsultModal";
 import { makeId } from "@/lib/utils/id";
 import { nowIso, todayYmdKST, ymdFromISO_KST } from "@/lib/utils/date";
@@ -196,9 +197,7 @@ export default function TodaySessionsCard({ rows, role }: Props) {
       ) : (
         <div style={{ display: "grid", gap: 8 }}>
           {rows.map((r) => {
-            const statusLabel =
-              r.status === "present" ? "출석" : r.status === "absent" ? "결석" : "예정";
-            const statusStyle = getStatusStyle(r.status);
+            const statusBadge = getSessionStatusBadge(r.status);
 
             return (
               <div
@@ -238,9 +237,9 @@ export default function TodaySessionsCard({ rows, role }: Props) {
                       <Badge style={{ background: "#ef4444", color: "#fff" }}>마지막 수업</Badge>
                     ) : null}
                     <Badge style={getAchievementBadgeStyle(r.percent)}>{r.percent}%</Badge>
-                    <Badge style={{ background: statusStyle.bg, color: statusStyle.text }}>{statusLabel}</Badge>
+                    <Badge style={statusBadge.style}>{statusBadge.label}</Badge>
                     {(r.badges ?? []).map((badge) => (
-                      <Badge key={`${r.token}:${r.index}:${badge}`} style={{ background: "#f1f5f9", color: "#334155" }}>
+                      <Badge key={`${r.token}:${r.index}:${badge}`} style={getSessionExtraBadgeStyle(badge)}>
                         {badge}
                       </Badge>
                     ))}

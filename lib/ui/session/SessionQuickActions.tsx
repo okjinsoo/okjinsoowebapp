@@ -2,23 +2,22 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { browserStorage } from "@/lib/storage/browserStorage";
-import { loadStudents } from "@/lib/storage/students";
+import { TUTORWEB_EVENTS } from "@/lib/events/tutorwebEvents";
+import { hydrateStudentsFromServer, loadStudents } from "@/lib/storage/students";
 import { loadCurrentTeacherId } from "@/lib/storage/teachers";
 import { sessionsByStudent } from "@/lib/storage/sessions";
-import { pushSharedSnapshot } from "@/lib/storage/sharedSnapshot";
 import {
   buildBaseDatesISOByToken,
   computeEffectiveISO,
-  metaMapKey,
   upsertMeta,
   useMetaMap,
   readMetaMap,
 } from "@/lib/factories/sessionFactories";
 import { syncSessionDisplayAtByToken } from "@/lib/ui/session/syncSessionDisplayAt";
+import { canEditSessionMeta, type SessionRole } from "@/lib/policies/sessionRolePolicy";
 
 type Props = {
-  role: "a" | "t" | "s";
+  role: SessionRole;
   token: string;
   index: number;
 };
@@ -37,7 +36,7 @@ function ymdTodayLocal(): string {
 }
 
 export default function SessionQuickActions({ role, token, index }: Props) {
-  const canEdit = role === "a" || role === "t";
+  const canEdit = canEditSessionMeta(role);
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
   const [students, setStudents] = useState(() => loadStudents());
@@ -49,19 +48,24 @@ export default function SessionQuickActions({ role, token, index }: Props) {
       setStudents(loadStudents());
       setTeacherId(loadCurrentTeacherId());
     }, 0);
+    void hydrateStudentsFromServer()
+      .then((nextStudents) => setStudents(nextStudents))
+      .catch((err) => {
+        console.error("학생 목록 서버 새로고침 실패(quick actions):", err);
+      });
     return () => clearTimeout(id);
   }, []);
 
   useEffect(() => {
     const onStudents = () => setStudents(loadStudents());
-    window.addEventListener("tutorweb:studentsUpdated", onStudents);
-    return () => window.removeEventListener("tutorweb:studentsUpdated", onStudents);
+    window.addEventListener(TUTORWEB_EVENTS.studentsUpdated, onStudents);
+    return () => window.removeEventListener(TUTORWEB_EVENTS.studentsUpdated, onStudents);
   }, []);
 
   useEffect(() => {
     const onSessions = () => setSessionsTick((x) => x + 1);
-    window.addEventListener("tutorweb:sessionsUpdated", onSessions);
-    return () => window.removeEventListener("tutorweb:sessionsUpdated", onSessions);
+    window.addEventListener(TUTORWEB_EVENTS.sessionsUpdated, onSessions);
+    return () => window.removeEventListener(TUTORWEB_EVENTS.sessionsUpdated, onSessions);
   }, []);
 
   const metaMap = useMetaMap(token);
@@ -95,26 +99,15 @@ export default function SessionQuickActions({ role, token, index }: Props) {
   const [draftReason, setDraftReason] = useState<string>("");
   const [draftRecord, setDraftRecord] = useState<string>("");
 
-  const syncSnapshotNow = () => {
-    const key = metaMapKey(token);
-    const value = browserStorage.getItem(key);
-    if (typeof value !== "string") return;
-    void pushSharedSnapshot({ stateKv: { [key]: value } }).catch((err) => {
-      console.error("공유 스냅샷 즉시 동기화 실패(quick actions):", err);
-    });
-  };
-
   const togglePresent = () => {
     if (!canEdit) return;
     upsertMeta(token, index, { status: isPresent ? "planned" : "present" });
-    syncSnapshotNow();
   };
 
   const toggleAbsent = () => {
     if (!canEdit) return;
     if (isAbsent) {
       upsertMeta(token, index, { status: "planned" });
-      syncSnapshotNow();
       return;
     }
     setOpenMode("absent");
@@ -362,7 +355,6 @@ export default function SessionQuickActions({ role, token, index }: Props) {
       reason: needReasonUI ? draftReason : "",
       record: needReasonUI ? draftRecord : "",
     });
-    syncSnapshotNow();
     syncSessionDisplayAtByToken(token);
 
     setOpen(false);

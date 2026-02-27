@@ -15,8 +15,8 @@ import {
   pushSharedSnapshot,
   readRemoteSharedStateKvValue,
 } from "@/lib/storage/sharedSnapshot";
+import { SHARED_LECTURE_TREE_KEY } from "@/lib/storage/sharedStateKeys";
 
-const LECTURE_TREE_KEY = "mk3:lectureTree";
 const DB_SYNC_DEBOUNCE_MS = 500;
 
 function firstProblemUrl(leaf: LectureLeafNode): string {
@@ -62,14 +62,14 @@ export default function LecturesPage() {
       setLectures(loadLectureCatalog());
 
       // DB에 과거 "빈 강의 트리"가 남아 있으면, 현재 로컬의 실제 강의 목록으로 1회 자동 복구
-      const remoteRaw = await readRemoteSharedStateKvValue(LECTURE_TREE_KEY);
+      const remoteRaw = await readRemoteSharedStateKvValue(SHARED_LECTURE_TREE_KEY);
       const remoteTree = parseLectureTreeRaw(remoteRaw);
       const localCount = flattenLeaves(localTree, { sortByOrderKey: false }).length;
       const remoteCount = flattenLeaves(remoteTree, { sortByOrderKey: false }).length;
       if (localCount > 0 && remoteCount === 0) {
         const result = await pushSharedSnapshot({
           stateKv: {
-            [LECTURE_TREE_KEY]: JSON.stringify(localTree),
+            [SHARED_LECTURE_TREE_KEY]: JSON.stringify(localTree),
           },
         });
         if (!result.stateKvSynced) {
@@ -91,7 +91,7 @@ export default function LecturesPage() {
       const rawTree = JSON.stringify(loadLectureTree());
       const result = await pushSharedSnapshot({
         stateKv: {
-          [LECTURE_TREE_KEY]: rawTree,
+            [SHARED_LECTURE_TREE_KEY]: rawTree,
         },
       });
       if (!result.stateKvSynced) {

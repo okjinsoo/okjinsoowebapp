@@ -4,6 +4,7 @@
 
 import { browserStorage } from "@/lib/storage/browserStorage";
 import { syncRoleBindingEmails } from "@/lib/auth/roleBindings";
+import { fetchServerTeachers } from "@/lib/storage/serverRead";
 import { pushSharedSnapshot, readLocalStudents } from "@/lib/storage/sharedSnapshot";
 import { safeParseJson } from "@/lib/storage/safeParse";
 import { requestCalendarResyncForTeacherIds } from "@/lib/storage/sessions";
@@ -13,6 +14,10 @@ const KEY = "tutorweb_teachers_v1";
 
 const LS_CURRENT_TEACHER = "tutorweb_current_teacherId_v1";
 export const TEACHERS_EVENT = "tutorweb:teachersUpdated";
+
+type SaveTeachersOptions = {
+  skipSharedSnapshot?: boolean;
+};
 
 function dispatchTeachersUpdated() {
   if (typeof window === "undefined") return;
@@ -90,17 +95,43 @@ export function loadTeachers(): Teacher[] {
   return safeParseJson<Teacher[]>(browserStorage.getItem(KEY), []);
 }
 
-export function saveTeachers(list: Teacher[]): void {
+function replaceTeachersLocal(list: Teacher[]): boolean {
+  if (typeof window === "undefined") return false;
+  const nextRaw = JSON.stringify(list);
+  if (browserStorage.getItem(KEY) === nextRaw) return false;
+  browserStorage.setItem(KEY, nextRaw);
+  dispatchTeachersUpdated();
+  return true;
+}
+
+export async function hydrateTeachersFromServer(): Promise<Teacher[]> {
+  const remote = await fetchServerTeachers();
+  if (!remote) return loadTeachers();
+  replaceTeachersLocal(remote);
+  return remote;
+}
+
+export function saveTeachers(list: Teacher[], options?: SaveTeachersOptions): void {
   if (typeof window === "undefined") return;
   const previous = loadTeachers();
   const changedEmailIds = changedTeacherEmailIds(previous, list);
   browserStorage.setItem(KEY, JSON.stringify(list));
   dispatchTeachersUpdated();
   syncTeacherRoleBindings(previous, list);
-  syncSharedSnapshot(list);
+  if (!options?.skipSharedSnapshot) {
+    syncSharedSnapshot(list);
+  }
   if (changedEmailIds.length > 0) {
     requestCalendarResyncForTeacherIds(changedEmailIds);
   }
+}
+
+export async function saveTeachersServerFirst(list: Teacher[]): Promise<void> {
+  await pushSharedSnapshot({
+    teachers: list,
+    students: readLocalStudents(),
+  });
+  saveTeachers(list, { skipSharedSnapshot: true });
 }
 
 export function upsertTeacher(t: Teacher): Teacher[] {

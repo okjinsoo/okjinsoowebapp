@@ -3,12 +3,17 @@
 
 import { browserStorage } from "@/lib/storage/browserStorage";
 import { syncRoleBindingEmails } from "@/lib/auth/roleBindings";
+import { fetchServerStudents } from "@/lib/storage/serverRead";
 import { pushSharedSnapshot, readLocalTeachers } from "@/lib/storage/sharedSnapshot";
 import { requestCalendarResyncForStudentIds } from "@/lib/storage/sessions";
 import { safeParseJson } from "@/lib/storage/safeParse";
 import type { Student, StudentStatus } from "@/lib/types/index";
 
 const KEY = "tutorweb_students_v1";
+
+type SaveStudentsOptions = {
+  skipSharedSnapshot?: boolean;
+};
 
 function extractStudentEmails(list: Student[]): string[] {
   return list
@@ -57,17 +62,48 @@ export function loadStudents(): Student[] {
   return safeParseJson<Student[]>(browserStorage.getItem(KEY), []);
 }
 
-export function saveStudents(list: Student[]): void {
+function dispatchStudentsUpdated() {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new CustomEvent("tutorweb:studentsUpdated"));
+}
+
+function replaceStudentsLocal(list: Student[]): boolean {
+  if (typeof window === "undefined") return false;
+  const nextRaw = JSON.stringify(list);
+  if (browserStorage.getItem(KEY) === nextRaw) return false;
+  browserStorage.setItem(KEY, nextRaw);
+  dispatchStudentsUpdated();
+  return true;
+}
+
+export async function hydrateStudentsFromServer(): Promise<Student[]> {
+  const remote = await fetchServerStudents();
+  if (!remote) return loadStudents();
+  replaceStudentsLocal(remote);
+  return remote;
+}
+
+export function saveStudents(list: Student[], options?: SaveStudentsOptions): void {
   if (typeof window === "undefined") return;
   const previous = loadStudents();
   const changedEmailIds = changedStudentEmailIds(previous, list);
   browserStorage.setItem(KEY, JSON.stringify(list));
-  window.dispatchEvent(new CustomEvent("tutorweb:studentsUpdated"));
+  dispatchStudentsUpdated();
   syncStudentRoleBindings(previous, list);
-  syncSharedSnapshot(list);
+  if (!options?.skipSharedSnapshot) {
+    syncSharedSnapshot(list);
+  }
   if (changedEmailIds.length > 0) {
     requestCalendarResyncForStudentIds(changedEmailIds);
   }
+}
+
+export async function saveStudentsServerFirst(list: Student[]): Promise<void> {
+  await pushSharedSnapshot({
+    teachers: readLocalTeachers(),
+    students: list,
+  });
+  saveStudents(list, { skipSharedSnapshot: true });
 }
 
 export function upsertStudent(student: Student): Student[] {

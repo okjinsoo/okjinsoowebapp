@@ -2,6 +2,8 @@
 "use client";
 
 import { browserStorage } from "@/lib/storage/browserStorage";
+import { TUTORWEB_EVENTS } from "@/lib/events/tutorwebEvents";
+import { pushSharedSnapshot } from "@/lib/storage/sharedSnapshot";
 
 import type { ScheduleRule, Student } from "@/lib/types/index";
 import { findStudentByToken } from "@/lib/storage/students";
@@ -89,8 +91,17 @@ export function metaMapKey(token: string) {
 
 function writeMetaMap(token: string, metaMap: Record<number, SessionMeta>) {
   if (typeof window === "undefined") return;
-  browserStorage.setItem(metaMapKey(token), JSON.stringify(metaMap));
-  window.dispatchEvent(new CustomEvent("tutorweb:metaMapUpdated", { detail: { token } }));
+  const key = metaMapKey(token);
+  const raw = JSON.stringify(metaMap);
+  browserStorage.setItem(key, raw);
+  window.dispatchEvent(new CustomEvent(TUTORWEB_EVENTS.metaMapUpdated, { detail: { token } }));
+  void pushSharedSnapshot({
+    stateKv: {
+      [key]: raw,
+    },
+  }).catch((err) => {
+    console.error("공유 스냅샷 동기화 실패(metaMap):", err);
+  });
 }
 
 export function readMetaMap(token: string): Record<number, SessionMeta> {

@@ -4,11 +4,12 @@
 import { useEffect, useState } from "react";
 import { AUTH_EVENT } from "@/lib/auth/supabaseAuth";
 import { resolveSelectionForRole } from "@/lib/auth/loginSelection";
-import { pullSharedSnapshotAndHydrate } from "@/lib/storage/sharedSnapshot";
-import { loadStudents } from "@/lib/storage/students";
+import { hydrateStudentsFromServer } from "@/lib/storage/students";
+import { hydrateConsultationsByStudentFromServer } from "@/lib/storage/consultations";
+import { hydrateSessionsForStudentFromServer } from "@/lib/storage/sessions";
 import {
   clearCurrentTeacherId,
-  loadTeachers,
+  hydrateTeachersFromServer,
   loadCurrentTeacherId,
   saveCurrentTeacherId,
 } from "@/lib/storage/teachers";
@@ -32,16 +33,11 @@ export default function StudentMainSessionListBase({ role }: { role: "a" | "t" |
     let cancelled = false;
 
     async function bootstrap() {
-      try {
-        await pullSharedSnapshotAndHydrate();
-      } catch (err) {
-        console.error("공유 스냅샷 불러오기 실패(student session list):", err);
-      }
-
+      const [nextStudents, nextTeachers] = await Promise.all([
+        hydrateStudentsFromServer(),
+        hydrateTeachersFromServer(),
+      ]);
       if (cancelled) return;
-
-      const nextStudents = loadStudents();
-      const nextTeachers = loadTeachers();
       setStudents(nextStudents);
       setTeachers(nextTeachers);
 
@@ -55,6 +51,12 @@ export default function StudentMainSessionListBase({ role }: { role: "a" | "t" |
 
       setToken(selection.studentToken);
       setTeacherId(selection.teacherId);
+
+      const selectedStudent = nextStudents.find((student) => student.token === selection.studentToken);
+      if (selectedStudent) {
+        void hydrateSessionsForStudentFromServer(selectedStudent.id);
+        void hydrateConsultationsByStudentFromServer(selectedStudent.id);
+      }
 
       if (selection.studentToken) saveCurrentStudentToken(selection.studentToken);
       else clearCurrentStudentToken();
@@ -71,14 +73,10 @@ export default function StudentMainSessionListBase({ role }: { role: "a" | "t" |
 
   useEffect(() => {
     const onGate = async () => {
-      try {
-        await pullSharedSnapshotAndHydrate();
-      } catch (err) {
-        console.error("공유 스냅샷 새로고침 실패(student session list):", err);
-      }
-
-      const nextStudents = loadStudents();
-      const nextTeachers = loadTeachers();
+      const [nextStudents, nextTeachers] = await Promise.all([
+        hydrateStudentsFromServer(),
+        hydrateTeachersFromServer(),
+      ]);
       setStudents(nextStudents);
       setTeachers(nextTeachers);
 
@@ -92,6 +90,12 @@ export default function StudentMainSessionListBase({ role }: { role: "a" | "t" |
 
       setToken(selection.studentToken);
       setTeacherId(selection.teacherId);
+
+      const selectedStudent = nextStudents.find((student) => student.token === selection.studentToken);
+      if (selectedStudent) {
+        void hydrateSessionsForStudentFromServer(selectedStudent.id);
+        void hydrateConsultationsByStudentFromServer(selectedStudent.id);
+      }
 
       if (selection.studentToken) saveCurrentStudentToken(selection.studentToken);
       else clearCurrentStudentToken();

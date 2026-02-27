@@ -5,19 +5,24 @@ import { loadAuthSession } from "@/lib/auth/supabaseAuth";
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { findStudentByToken, upsertStudent } from "@/lib/storage/students";
-import { loadTeachers, TEACHERS_EVENT } from "@/lib/storage/teachers";
-import { loadConsultationsByStudent, saveConsultationsByStudent } from "@/lib/storage/consultations";
+import { findStudentByToken, loadStudents, saveStudents } from "@/lib/storage/students";
+import { hydrateTeachersFromServer, loadTeachers, TEACHERS_EVENT } from "@/lib/storage/teachers";
+import {
+  hydrateConsultationsByStudentFromServer,
+  loadAllConsultationsStore,
+  loadConsultationsByStudent,
+  saveAllConsultationsStore,
+} from "@/lib/storage/consultations";
 import { buildConsultationMap, pickPrimaryConsultTag, type ConsultTag } from "@/lib/ui/session/consultationMap";
 import { findClassIndexByDatePreferFuture, findLastClassIndex } from "@/lib/ui/session/pauseHelpers";
 import { formatGrade, formatPhone, formatSchedule } from "@/lib/ui/student/formatters";
 import {
+  hydrateSessionsForStudentFromServer,
   loadSessions,
   requestCalendarResyncForStudentIds,
   saveSessions,
   sessionsByStudent,
   syncGoogleCalendarForExistingSessions,
-  upsertSession,
 } from "@/lib/storage/sessions";
 import {
   buildBadges,
@@ -25,9 +30,8 @@ import {
   computeEffectiveISO,
   getDdayMeta,
   getSessionVisibility,
-  getStatusStyle,
+  metaMapKey,
   readMetaMap,
-  upsertMeta,
   useMetaMap,
 } from "@/lib/factories/sessionFactories";
 import {
@@ -54,15 +58,29 @@ import type {
 import { fmtKST_yyyyMMdd_HHmm_noSeconds } from "@/lib/ui/session/format";
 import Badge from "@/lib/ui/common/Badge";
 import SessionQuickActions from "@/lib/ui/session/SessionQuickActions";
-import { syncSessionDisplayAtByToken } from "@/lib/ui/session/syncSessionDisplayAt";
 import AutoResizeTextarea from "@/lib/ui/common/AutoResizeTextarea";
 import { ConsultBadge, ConsultButton } from "@/lib/ui/common/ConsultParts";
 import { getAchievementBadgeStyle } from "@/lib/ui/common/achievementBadge";
+import { getSessionStatusBadge } from "@/lib/ui/common/sessionStatusBadge";
+import { buildSessionContextBadges, getSessionExtraBadgeStyle } from "@/lib/ui/common/sessionExtraBadge";
 import ConsultModal, { ConsultFormState } from "@/lib/ui/common/ConsultModal";
+import {
+  calculateSessionAchievementPercent,
+  isSessionProgressEventKeyForToken,
+} from "@/lib/factories/sessionProgressFactory";
+import { TUTORWEB_EVENTS } from "@/lib/events/tutorwebEvents";
+import {
+  canEditSessionMeta,
+  canTriggerCalendarSync,
+  canUseConsultFeatures,
+  type SessionRole,
+} from "@/lib/policies/sessionRolePolicy";
+import { pushSharedSnapshot } from "@/lib/storage/sharedSnapshot";
+import { SHARED_CONSULTATIONS_KEY } from "@/lib/storage/sharedStateKeys";
 import { makeId } from "@/lib/utils/id";
 import { kstDateMs, nowIso, todayYmdKST } from "@/lib/utils/date";
 
-type Role = "s" | "t" | "a";
+type Role = SessionRole;
 
 function weekdayLabel(n: number) {
   return ["일", "월", "화", "수", "목", "금", "토"][n] ?? String(n);
@@ -170,7 +188,7 @@ function nextIsoFromRules(args: {
   return null;
 }
 
-function applyPauseStateFromConsultations(student: Student, records: ConsultationRecord[]) {
+function applyPauseStateFromConsultations(student: Student, records: ConsultationRecord[]): Student {
   const latestPause = [...records]
     .filter((r) => r.purpose === "pause_request" && (r.finalResult === "pause_confirm" || r.finalResult === "pause_cancel"))
     .sort((a, b) => {
@@ -183,32 +201,20 @@ function applyPauseStateFromConsultations(student: Student, records: Consultatio
   if (latestPause?.finalResult === "pause_confirm" && latestPause.pauseEffectiveDate) {
     const today = todayYmdKST();
     const pauseStatus = computePauseLifecycle(today, latestPause.pauseEffectiveDate) === "paused" ? "paused" : "confirmed";
-    upsertStudent({
+    return {
       ...student,
       status: "paused",
       pauseEffectiveDate: latestPause.pauseEffectiveDate,
       pauseStatus,
-    });
-    return;
+    };
   }
 
-  upsertStudent({
+  return {
     ...student,
     status: "active",
     pauseEffectiveDate: undefined,
     pauseStatus: "none",
-  });
-}
-
-function readJson<T>(key: string, fallback: T): T {
-  if (typeof window === "undefined") return fallback;
-  try {
-    const raw = browserStorage.getItem(key);
-    if (!raw) return fallback;
-    return JSON.parse(raw) as T;
-  } catch {
-    return fallback;
-  }
+  };
 }
 
 export default function StudentHubCore({
@@ -287,6 +293,14 @@ export default function StudentHubCore({
   }, []);
 
   useEffect(() => {
+    void hydrateTeachersFromServer()
+      .then((nextTeachers) => setTeachers(nextTeachers))
+      .catch((err) => {
+        console.error("선생님 목록 서버 새로고침 실패(student hub):", err);
+      });
+  }, []);
+
+  useEffect(() => {
     const bump = () => setRefreshTick((x) => x + 1);
 
     const onStudents = () => bump();
@@ -302,20 +316,19 @@ export default function StudentHubCore({
       const ce = event as CustomEvent<{ key?: string | null }>;
       const key = ce.detail?.key ?? "";
       if (!key) return;
-      if (!key.startsWith(`mk3:${token}:session:`)) return;
-      if (!key.endsWith(":leafIds") && !key.endsWith(":progressByLeafId")) return;
+      if (!isSessionProgressEventKeyForToken(key, token)) return;
       setProgressTick((x) => x + 1);
     };
 
-    window.addEventListener("tutorweb:studentsUpdated", onStudents);
-    window.addEventListener("tutorweb:sessionsUpdated", onSessions);
+    window.addEventListener(TUTORWEB_EVENTS.studentsUpdated, onStudents);
+    window.addEventListener(TUTORWEB_EVENTS.sessionsUpdated, onSessions);
     window.addEventListener(TEACHERS_EVENT, onTeachers);
     window.addEventListener("storage", onStorage);
     window.addEventListener(BROWSER_STORAGE_EVENT, onProgressChanged);
 
     return () => {
-      window.removeEventListener("tutorweb:studentsUpdated", onStudents);
-      window.removeEventListener("tutorweb:sessionsUpdated", onSessions);
+      window.removeEventListener(TUTORWEB_EVENTS.studentsUpdated, onStudents);
+      window.removeEventListener(TUTORWEB_EVENTS.sessionsUpdated, onSessions);
       window.removeEventListener(TEACHERS_EVENT, onTeachers);
       window.removeEventListener("storage", onStorage);
       window.removeEventListener(BROWSER_STORAGE_EVENT, onProgressChanged);
@@ -380,6 +393,12 @@ export default function StudentHubCore({
       return;
     }
     setConsultRecords(loadConsultationsByStudent(student.id));
+    void hydrateSessionsForStudentFromServer(student.id).catch((err) => {
+      console.error("회차 목록 서버 새로고침 실패(student hub):", err);
+    });
+    void hydrateConsultationsByStudentFromServer(student.id).catch((err) => {
+      console.error("상담 목록 서버 새로고침 실패(student hub):", err);
+    });
   }, [student]);
 
   useEffect(() => {
@@ -387,8 +406,8 @@ export default function StudentHubCore({
       if (!student) return;
       setConsultRecords(loadConsultationsByStudent(student.id));
     };
-    window.addEventListener("tutorweb:consultationsUpdated", onConsult);
-    return () => window.removeEventListener("tutorweb:consultationsUpdated", onConsult);
+    window.addEventListener(TUTORWEB_EVENTS.consultationsUpdated, onConsult);
+    return () => window.removeEventListener(TUTORWEB_EVENTS.consultationsUpdated, onConsult);
   }, [student]);
 
   const studentStatusView = useMemo(() => {
@@ -452,8 +471,8 @@ export default function StudentHubCore({
     return { label: meta.label, bg: meta.bg, color: meta.color };
   }, [student, sessions, token, baseDatesISO, metaMap, currentCount, consultRecords]);
 
-  const showParentPhone = accessRole !== "s"; // 학생은 숨김(정책 확정)
-  const canEdit = accessRole !== "s"; // 학생 편집 없음(정책 확정)
+  const showParentPhone = canUseConsultFeatures(accessRole); // 학생은 숨김(정책 확정)
+  const canEdit = canEditSessionMeta(accessRole); // 학생 편집 없음(정책 확정)
 
   const sessionListHref = hideTokenInRoute ? `${prefix}/session` : `${prefix}/${encodeURIComponent(token)}/session`;
   const editHrefBase = editPrefix ?? prefix;
@@ -622,19 +641,10 @@ export default function StudentHubCore({
   const progressPercent = useMemo(() => {
     void progressTick;
     return (index: number) => {
-      const baseKey = `mk3:${token}:session:${index}`;
-      const leafIds = readJson<string[]>(`${baseKey}:leafIds`, []);
-      const progress = readJson<Record<string, { noteDone?: boolean; solveDone?: boolean }>>(
-        `${baseKey}:progressByLeafId`,
-        {}
-      );
-      const ids = Array.isArray(leafIds) ? leafIds : [];
-      const total = ids.length * 2;
-      const done = ids.reduce((acc, id) => {
-        const p = progress?.[id];
-        return acc + (p?.noteDone ? 1 : 0) + (p?.solveDone ? 1 : 0);
-      }, 0);
-      return total === 0 ? 0 : Math.round((done / total) * 100);
+      return calculateSessionAchievementPercent({
+        token,
+        sessionIndex: index,
+      });
     };
   }, [token, progressTick]);
 
@@ -657,8 +667,6 @@ export default function StudentHubCore({
       status?: string;
       badges: string[];
       percent: number;
-      refundCompleted?: boolean;
-      refundRequested?: boolean;
       lastClass?: boolean;
     }[] = [];
 
@@ -682,15 +690,24 @@ export default function StudentHubCore({
       if (dday.diff === null) continue;
       if (dday.diff < 0) continue;
       const meta = metaMap[s.index] ?? {};
+      const isLastClass = Boolean(lastClassIndex ? s.index === lastClassIndex : false);
+      const refundStatus =
+        refundCompletedIndex && s.index === refundCompletedIndex
+          ? "completed"
+          : refundRequestedIndex && s.index === refundRequestedIndex
+            ? "requested"
+            : null;
       candidates.push({
         index: s.index,
         iso: effectiveISO,
         status: meta.status,
-        badges: buildBadges(meta),
+        badges: buildSessionContextBadges({
+          baseBadges: buildBadges(meta),
+          lastClass: isLastClass,
+          refundStatus,
+        }),
         percent: progressPercent(s.index),
-        refundCompleted: refundCompletedIndex ? s.index === refundCompletedIndex : false,
-        refundRequested: refundRequestedIndex ? s.index === refundRequestedIndex : false,
-        lastClass: lastClassIndex ? s.index === lastClassIndex : false,
+        lastClass: isLastClass,
       });
     }
 
@@ -838,6 +855,94 @@ export default function StudentHubCore({
     setScheduleError("");
   }
 
+  function buildNextStudentsList(updatedStudent: Student): Student[] {
+    const currentStudents = loadStudents();
+    return currentStudents.some((row) => row.id === updatedStudent.id)
+      ? currentStudents.map((row) => (row.id === updatedStudent.id ? updatedStudent : row))
+      : [...currentStudents, updatedStudent];
+  }
+
+  function buildSyncedSessionsForStudent(updatedStudent: Student): { list: Session[]; changed: boolean } {
+    const all = loadSessions();
+    const own = all.filter((session) => session.studentId === updatedStudent.id);
+    if (own.length === 0) return { list: all, changed: false };
+
+    const maxIndex = own.reduce((max, session) => Math.max(max, session.index), 0);
+    const nextBaseDatesISO = buildBaseDatesISO(updatedStudent, Math.max(120, updatedStudent.planCount ?? 0, maxIndex));
+    const localMetaMap = readMetaMap(token);
+
+    let changed = false;
+    const next = all.map((session) => {
+      if (session.studentId !== updatedStudent.id) return session;
+
+      const { effectiveISO } = computeEffectiveISO({
+        token,
+        index: session.index,
+        baseDatesISO: nextBaseDatesISO,
+        metaMap: localMetaMap,
+      });
+      if (!effectiveISO || effectiveISO === session.displayAt) return session;
+      changed = true;
+      return {
+        ...session,
+        displayAt: effectiveISO,
+      };
+    });
+
+    return { list: next, changed };
+  }
+
+  async function persistScheduleState(updatedStudent: Student): Promise<boolean> {
+    const nextStudents = buildNextStudentsList(updatedStudent);
+    const { list: nextSessions, changed: sessionsChanged } = buildSyncedSessionsForStudent(updatedStudent);
+
+    try {
+      await pushSharedSnapshot({
+        students: nextStudents,
+        ...(sessionsChanged ? { sessions: nextSessions } : {}),
+      });
+
+      saveStudents(nextStudents, { skipSharedSnapshot: true });
+      if (sessionsChanged) {
+        saveSessions(nextSessions, { skipSharedSnapshot: true });
+      }
+      return true;
+    } catch (err) {
+      console.error("시간 변경 서버 저장 실패:", err);
+      return false;
+    }
+  }
+
+  async function persistConsultationState(nextConsultRecords: ConsultationRecord[], nextStudentOverride?: Student): Promise<boolean> {
+    if (!student) return false;
+
+    const nextStore = {
+      ...loadAllConsultationsStore(),
+      [student.id]: nextConsultRecords,
+    };
+    const nextStudents = nextStudentOverride ? buildNextStudentsList(nextStudentOverride) : null;
+
+    try {
+      await pushSharedSnapshot({
+        ...(nextStudents ? { students: nextStudents } : {}),
+        stateKv: {
+          [SHARED_CONSULTATIONS_KEY]: JSON.stringify(nextStore),
+        },
+      });
+
+      if (nextStudents) {
+        saveStudents(nextStudents, { skipSharedSnapshot: true });
+      }
+      saveAllConsultationsStore(nextStore, { skipSharedSnapshot: true });
+      setConsultRecords(nextConsultRecords);
+      return true;
+    } catch (err) {
+      console.error("상담 서버 저장 실패:", err);
+      setConsultError("서버 저장에 실패했어요. 잠시 뒤 다시 시도해주세요.");
+      return false;
+    }
+  }
+
   function toggleScheduleDay(d: number) {
     setScheduleDays((prev) => ({ ...prev, [d]: { ...prev[d], on: !prev[d].on } }));
   }
@@ -850,7 +955,7 @@ export default function StudentHubCore({
     setScheduleDays((prev) => ({ ...prev, [d]: { ...prev[d], minute: normalizeMinute(minute) } }));
   }
 
-  function saveScheduleChange() {
+  async function saveScheduleChange() {
     if (!student) return;
     setScheduleError("");
     const computedStart = scheduleStartDate
@@ -894,9 +999,11 @@ export default function StudentHubCore({
     });
     nextEvents.sort((a, b) => a.startIndex - b.startIndex);
 
-    upsertStudent({ ...student, scheduleChangeEvents: nextEvents });
-    syncSessionDisplayAtByToken(token);
-    setRefreshTick((x) => x + 1);
+    const ok = await persistScheduleState({ ...student, scheduleChangeEvents: nextEvents });
+    if (!ok) {
+      setScheduleError("서버 저장에 실패했어요. 잠시 뒤 다시 시도해주세요.");
+      return;
+    }
     closeScheduleEdit();
   }
   function openEditPayment(record: PaymentRecord) {
@@ -974,7 +1081,7 @@ export default function StudentHubCore({
     openConsultNew();
   }
 
-  function saveConsultRecord() {
+  async function saveConsultRecord() {
     if (!student) return;
     const err = validateConsultForm(consultForm, isAdmin);
     if (err) return setConsultError(err);
@@ -990,6 +1097,7 @@ export default function StudentHubCore({
     const wantsExtended = consultForm.purpose === "extension" && consultForm.extensionResult === "extended";
     const paymentConfirmed = Boolean(consultForm.extensionPaymentConfirmed);
     const prevApplied = Boolean(existing?.extensionAppliedAt && existing?.extensionPaymentRecordId);
+    let nextStudentOverride: Student | undefined;
 
     let nextConsultRecords = updated;
     if (!wantsExtended || !paymentConfirmed) {
@@ -1027,38 +1135,34 @@ export default function StudentHubCore({
               }
             : r
         );
-
-        const today = todayYmdKST();
-        const pauseStatus = computePauseLifecycle(today, lastYmd) === "paused" ? "paused" : "confirmed";
-        upsertStudent({
-          ...student,
-          status: "paused",
-          pauseEffectiveDate: lastYmd,
-          pauseStatus,
-        });
-      } else if (consultForm.finalResult === "pause_cancel") {
-        upsertStudent({
-          ...student,
-          status: "active",
-          pauseEffectiveDate: undefined,
-          pauseStatus: "none",
-        });
       }
-    }
 
-    saveConsultationsByStudent(student.id, nextConsultRecords);
-    setConsultRecords(nextConsultRecords);
-    setConsultOpen(false);
+      nextStudentOverride = applyPauseStateFromConsultations(student, nextConsultRecords);
+    }
+    const nextStudentPatch = nextStudentOverride
+      ? {
+          status: nextStudentOverride.status,
+          pauseEffectiveDate: nextStudentOverride.pauseEffectiveDate,
+          pauseStatus: nextStudentOverride.pauseStatus,
+        }
+      : undefined;
 
     if (isAdmin && prevApplied && (!wantsExtended || !paymentConfirmed) && existing?.extensionPaymentRecordId) {
       const nextHistory = history.filter((h) => h.id !== existing.extensionPaymentRecordId);
-      applyHistory(nextHistory, undefined, false);
+      const ok = await applyHistory(nextHistory, nextStudentPatch, false, {
+        consultationRecords: nextConsultRecords,
+      });
+      if (!ok) return;
+      setConsultOpen(false);
+      return;
     }
 
     if (isAdmin && wantsExtended && paymentConfirmed) {
       const cnt = Math.max(1, Math.floor(Number(consultForm.extensionAddedCount) || 0));
       const nextPaymentDate = consultForm.extensionPaymentDate;
       const nextMemo = consultForm.content.trim() || "연장 상담";
+      let nextHistory: PaymentRecord[] | null = null;
+      let refreshed = nextConsultRecords;
 
       if (prevApplied && existing?.extensionPaymentRecordId) {
         const recId = existing.extensionPaymentRecordId;
@@ -1072,10 +1176,8 @@ export default function StudentHubCore({
             addedCount: cnt,
             memo: nextMemo,
           };
-          const nextHistory = history.map((h, i) => (i === recIdx ? patched : h));
-          applyHistory(nextHistory, undefined, false);
-
-          const refreshed = loadConsultationsByStudent(student.id).map((r) =>
+          nextHistory = history.map((h, i) => (i === recIdx ? patched : h));
+          refreshed = nextConsultRecords.map((r) =>
             r.id === next.id
               ? {
                   ...r,
@@ -1084,10 +1186,7 @@ export default function StudentHubCore({
                 }
               : r
           );
-          saveConsultationsByStudent(student.id, refreshed);
-          setConsultRecords(refreshed);
         } else {
-          // 연결된 결제기록이 유실된 경우: 신규 생성으로 복구
           const paymentRecord: PaymentRecord = {
             id: makeId(),
             paymentDate: nextPaymentDate,
@@ -1097,14 +1196,10 @@ export default function StudentHubCore({
             memo: nextMemo,
             createdAt: nowIso(),
           };
-          const nextHistory = [...history, paymentRecord];
-          applyHistory(nextHistory, undefined, false);
-
-          const refreshed = loadConsultationsByStudent(student.id).map((r) =>
+          nextHistory = [...history, paymentRecord];
+          refreshed = nextConsultRecords.map((r) =>
             r.id === next.id ? { ...r, extensionAppliedAt: nowIso(), extensionPaymentRecordId: paymentRecord.id } : r
           );
-          saveConsultationsByStudent(student.id, refreshed);
-          setConsultRecords(refreshed);
         }
       } else {
         const paymentRecord: PaymentRecord = {
@@ -1116,39 +1211,59 @@ export default function StudentHubCore({
           memo: nextMemo,
           createdAt: nowIso(),
         };
-        const nextHistory = [...history, paymentRecord];
-        applyHistory(nextHistory, undefined, false);
-
-        const refreshed = loadConsultationsByStudent(student.id).map((r) =>
+        nextHistory = [...history, paymentRecord];
+        refreshed = nextConsultRecords.map((r) =>
           r.id === next.id ? { ...r, extensionAppliedAt: nowIso(), extensionPaymentRecordId: paymentRecord.id } : r
         );
-        saveConsultationsByStudent(student.id, refreshed);
-        setConsultRecords(refreshed);
       }
+
+      if (!nextHistory) {
+        setConsultError("연장 결제 기록을 준비하지 못했어요. 다시 시도해주세요.");
+        return;
+      }
+      const ok = await applyHistory(nextHistory, nextStudentPatch, false, {
+        consultationRecords: refreshed,
+      });
+      if (!ok) return;
+      setConsultOpen(false);
+      return;
     }
 
+    const ok = await persistConsultationState(nextConsultRecords, nextStudentOverride);
+    if (!ok) return;
+    setConsultOpen(false);
   }
 
-  function deleteConsultRecord() {
+  async function deleteConsultRecord() {
     if (!student || !consultEditingId) return;
     const list = consultRecords ?? [];
     const deleting = list.find((r) => r.id === consultEditingId);
     const updated = list.filter((r) => r.id !== consultEditingId);
-    saveConsultationsByStudent(student.id, updated);
-    setConsultRecords(updated);
+    const nextStudentOverride =
+      isAdmin && deleting?.purpose === "pause_request" ? applyPauseStateFromConsultations(student, updated) : undefined;
+    const nextStudentPatch = nextStudentOverride
+      ? {
+          status: nextStudentOverride.status,
+          pauseEffectiveDate: nextStudentOverride.pauseEffectiveDate,
+          pauseStatus: nextStudentOverride.pauseStatus,
+        }
+      : undefined;
 
     if (deleting?.purpose === "extension" && deleting.extensionPaymentRecordId) {
       const nextHistory = history.filter((h) => h.id !== deleting.extensionPaymentRecordId);
-      applyHistory(nextHistory);
-    }
-    if (isAdmin && deleting?.purpose === "pause_request") {
-      applyPauseStateFromConsultations(student, updated);
+      const ok = await applyHistory(nextHistory, nextStudentPatch, false, {
+        consultationRecords: updated,
+      });
+      if (!ok) return;
+    } else {
+      const ok = await persistConsultationState(updated, nextStudentOverride);
+      if (!ok) return;
     }
 
     setConsultOpen(false);
   }
 
-  function onSubmitRefundRequest() {
+  async function onSubmitRefundRequest() {
     if (!refundRecordId) return;
     setRefundError("");
 
@@ -1164,7 +1279,7 @@ export default function StudentHubCore({
 
     const ratio = computeRefundRatio(record, req, Boolean(record.isBase));
     if (record.isBase) {
-      applyHistory(
+      const ok = await applyHistory(
         history,
         {
         baseRefundStatus: "requested",
@@ -1175,6 +1290,10 @@ export default function StudentHubCore({
         },
         true
       );
+      if (!ok) {
+        setRefundError("서버 저장에 실패했어요. 잠시 뒤 다시 시도해주세요.");
+        return;
+      }
     } else {
       const nextHistory = history.map((h) =>
         h.id === record.id
@@ -1188,12 +1307,16 @@ export default function StudentHubCore({
             }
           : h
       );
-      applyHistory(nextHistory, undefined, true);
+      const ok = await applyHistory(nextHistory, undefined, true);
+      if (!ok) {
+        setRefundError("서버 저장에 실패했어요. 잠시 뒤 다시 시도해주세요.");
+        return;
+      }
     }
     closeRefundPanel();
   }
 
-  function onSubmitRefundProcess() {
+  async function onSubmitRefundProcess() {
     if (!refundRecordId) return;
     setRefundError("");
 
@@ -1211,7 +1334,7 @@ export default function StudentHubCore({
 
     if (record.isBase) {
       const ratio = computeRefundRatio(record, req, Boolean(record.isBase));
-      applyHistory(
+      const ok = await applyHistory(
         history,
         {
           baseRefundStatus: "completed",
@@ -1225,6 +1348,10 @@ export default function StudentHubCore({
         },
         true
       );
+      if (!ok) {
+        setRefundError("서버 저장에 실패했어요. 잠시 뒤 다시 시도해주세요.");
+        return;
+      }
     } else {
       const ratio = computeRefundRatio(record, req, Boolean(record.isBase));
       const nextHistory = history.map((h) =>
@@ -1242,17 +1369,21 @@ export default function StudentHubCore({
             }
           : h
       );
-      applyHistory(nextHistory, undefined, true);
+      const ok = await applyHistory(nextHistory, undefined, true);
+      if (!ok) {
+        setRefundError("서버 저장에 실패했어요. 잠시 뒤 다시 시도해주세요.");
+        return;
+      }
     }
     closeRefundPanel();
   }
 
-  function onCancelRefundRequest() {
+  async function onCancelRefundRequest() {
     if (!refundRecordId) return;
     const record = refundRecord;
     if (!record) return;
     if (record.isBase) {
-      applyHistory(
+      const ok = await applyHistory(
         history,
         {
         baseRefundStatus: undefined,
@@ -1266,6 +1397,10 @@ export default function StudentHubCore({
         },
         true
       );
+      if (!ok) {
+        setRefundError("서버 저장에 실패했어요. 잠시 뒤 다시 시도해주세요.");
+        return;
+      }
     } else {
       const nextHistory = history.map((h) =>
         h.id === record.id
@@ -1282,13 +1417,22 @@ export default function StudentHubCore({
             }
           : h
       );
-      applyHistory(nextHistory, undefined, true);
+      const ok = await applyHistory(nextHistory, undefined, true);
+      if (!ok) return;
     }
     closeRefundPanel();
   }
 
-  function applyHistory(records: PaymentRecord[], basePatch?: Partial<Student>, skipSessions = false) {
-    if (!student) return;
+  async function applyHistory(
+    records: PaymentRecord[],
+    basePatch?: Partial<Student>,
+    skipSessions = false,
+    options?: {
+      consultationRecords?: ConsultationRecord[];
+    }
+  ): Promise<boolean> {
+    if (!student) return false;
+
     const normalized = normalizePaymentHistoryRanges(records, baseCount);
     const nextTotal = baseCount + normalized.reduce((sum, r) => sum + r.addedCount, 0);
     const updatedStudent = {
@@ -1298,136 +1442,198 @@ export default function StudentHubCore({
       paymentHistory: normalized,
     } as Student;
 
-    upsertStudent(updatedStudent);
+    const currentStudents = loadStudents();
+    const nextStudents = currentStudents.some((row) => row.id === updatedStudent.id)
+      ? currentStudents.map((row) => (row.id === updatedStudent.id ? updatedStudent : row))
+      : [...currentStudents, updatedStudent];
 
-    if (skipSessions) {
-      setRefreshTick((x) => x + 1);
-      return;
-    }
+    let nextAllSessions = loadSessions();
+    let nextMetaMap = readMetaMap(token);
+    const nextConsultStore = options?.consultationRecords
+      ? {
+          ...loadAllConsultationsStore(),
+          [student.id]: options.consultationRecords,
+        }
+      : null;
 
-    const all = loadSessions();
-    const prevStudentSessions = all.filter((s) => s.studentId === updatedStudent.id);
-    const prevMaxIndex = prevStudentSessions.reduce((m, s) => Math.max(m, s.index), 0);
-    const kept = all.filter((s) => s.studentId !== updatedStudent.id || s.index <= nextTotal);
-    saveSessions(kept);
+    const applyMetaPatch = (index: number, patch: Partial<NonNullable<typeof nextMetaMap[number]>>) => {
+      const prev = nextMetaMap[index] ?? {};
+      const merged = { ...prev, ...patch };
+      nextMetaMap = {
+        ...nextMetaMap,
+        [index]: {
+          status:
+            merged.status === "present" || merged.status === "absent" || merged.status === "planned"
+              ? merged.status
+              : undefined,
+          carry:
+            merged.carry === undefined || merged.carry === null
+              ? 0
+              : Math.max(0, Math.floor(Number(merged.carry) || 0)),
+          overrideDate: typeof merged.overrideDate === "string" ? merged.overrideDate : "",
+          overrideHour:
+            merged.overrideHour === undefined || merged.overrideHour === null
+              ? null
+              : Math.max(0, Math.min(23, Math.floor(Number(merged.overrideHour) || 0))),
+          overrideMinute:
+            merged.overrideMinute === undefined || merged.overrideMinute === null
+              ? null
+              : Math.max(0, Math.min(59, Math.floor(Number(merged.overrideMinute) || 0))),
+          reason: typeof merged.reason === "string" ? merged.reason : "",
+          record: typeof merged.record === "string" ? merged.record : "",
+        },
+      };
+    };
 
-    const maxIndex = kept
-      .filter((s) => s.studentId === updatedStudent.id)
-      .reduce((m, s) => Math.max(m, s.index), 0);
+    if (!skipSessions) {
+      const all = loadSessions();
+      const prevStudentSessions = all.filter((s) => s.studentId === updatedStudent.id);
+      const prevMaxIndex = prevStudentSessions.reduce((m, s) => Math.max(m, s.index), 0);
+      const kept = all.filter((s) => s.studentId !== updatedStudent.id || s.index <= nextTotal);
+      const workingSessions = [...kept];
 
-    if (nextTotal > maxIndex) {
-      const existing = kept
+      const maxIndex = workingSessions
+        .filter((s) => s.studentId === updatedStudent.id)
+        .reduce((m, s) => Math.max(m, s.index), 0);
+
+      if (nextTotal > maxIndex) {
+        const existing = workingSessions
+          .filter((s) => s.studentId === updatedStudent.id)
+          .sort((a, b) => a.index - b.index);
+        let lastISO = existing.length > 0 ? existing[existing.length - 1].displayAt : null;
+
+        for (let idx = maxIndex + 1; idx <= nextTotal; idx++) {
+          const rules = rulesForIndex(updatedStudent, idx);
+          const ownerRecord = normalized.find((r) => idx >= r.startIndex && idx <= r.endIndex);
+
+          let displayAt: string | null = null;
+          if (ownerRecord && idx === ownerRecord.startIndex && ownerRecord.paymentDate) {
+            const lastYmd = lastISO ? ymdFromISO_KST(lastISO) : null;
+            if (!lastYmd || ownerRecord.paymentDate > lastYmd) {
+              displayAt = nextIsoFromRules({
+                rules,
+                fromYmd: ownerRecord.paymentDate,
+              });
+            }
+          }
+
+          if (!displayAt) {
+            if (lastISO) {
+              displayAt = nextIsoFromRules({ rules, afterISO: lastISO });
+            } else {
+              const baseDatesISO = buildBaseDatesISO(updatedStudent, 0);
+              displayAt = baseDatesISO[idx - 1] ?? null;
+            }
+          }
+
+          if (!displayAt) displayAt = new Date().toISOString();
+          workingSessions.push({
+            id: makeId(),
+            studentId: updatedStudent.id,
+            index: idx,
+            displayAt,
+            state: "normal",
+            createdAt: nowIso(),
+          });
+          lastISO = displayAt;
+        }
+      }
+
+      const sessionsNow = workingSessions
         .filter((s) => s.studentId === updatedStudent.id)
         .sort((a, b) => a.index - b.index);
-      let lastISO = existing.length > 0 ? existing[existing.length - 1].displayAt : null;
+      const byIndex = new Map(sessionsNow.map((s) => [s.index, s] as const));
+      let cursorISO = byIndex.get(baseCount)?.displayAt ?? null;
 
-      for (let idx = maxIndex + 1; idx <= nextTotal; idx++) {
-        const rules = rulesForIndex(updatedStudent, idx);
-        const ownerRecord = normalized.find((r) => idx >= r.startIndex && idx <= r.endIndex);
+      for (const rec of normalized) {
+        if (!Number.isFinite(rec.startIndex) || !Number.isFinite(rec.endIndex) || rec.addedCount <= 0) continue;
+        const rules = rulesForIndex(updatedStudent, rec.startIndex);
+        let startISO: string | null = null;
+        if (cursorISO) {
+          const lastYmd = ymdFromISO_KST(cursorISO);
+          if (rec.paymentDate && lastYmd && rec.paymentDate > lastYmd) {
+            startISO = nextIsoFromRules({ rules, fromYmd: rec.paymentDate });
+          } else {
+            startISO = nextIsoFromRules({ rules, afterISO: cursorISO });
+          }
+        } else {
+          startISO = nextIsoFromRules({ rules, fromYmd: rec.paymentDate || updatedStudent.startDate });
+        }
+        if (!startISO) continue;
 
-        // 결제일이 마지막 회차를 지난 경우: 결제일(당일/이후 첫 수업)부터 시작
-        let displayAt: string | null = null;
-        if (ownerRecord && idx === ownerRecord.startIndex && ownerRecord.paymentDate) {
-          const lastYmd = lastISO ? ymdFromISO_KST(lastISO) : null;
-          if (!lastYmd || ownerRecord.paymentDate > lastYmd) {
-            displayAt = nextIsoFromRules({
-              rules,
-              fromYmd: ownerRecord.paymentDate,
+        let iso = startISO;
+        for (let idx = rec.startIndex; idx <= rec.endIndex; idx++) {
+          const ymd = ymdFromISO_KST(iso);
+          const hm = hmFromISO_KST(iso);
+          if (ymd && hm) {
+            applyMetaPatch(idx, {
+              overrideDate: ymd,
+              overrideHour: hm.hour,
+              overrideMinute: hm.minute,
             });
           }
+          const nextRules = rulesForIndex(updatedStudent, idx + 1);
+          const next = nextIsoFromRules({ rules: nextRules, afterISO: iso });
+          if (!next) break;
+          iso = next;
         }
-
-        if (!displayAt) {
-          if (lastISO) {
-            displayAt = nextIsoFromRules({ rules, afterISO: lastISO });
-          } else {
-            const baseDatesISO = buildBaseDatesISO(updatedStudent, 0);
-            displayAt = baseDatesISO[idx - 1] ?? null;
-          }
-        }
-
-        if (!displayAt) displayAt = new Date().toISOString();
-        const sess: Session = {
-          id: makeId(),
-          studentId: updatedStudent.id,
-          index: idx,
-          displayAt,
-          state: "normal",
-          createdAt: nowIso(),
-        };
-        upsertSession(sess);
-        lastISO = displayAt;
+        cursorISO = iso;
       }
-    }
 
-    // 연장 회차(기본 회차 이후)는 결제일 규칙을 반영하기 위해 override를 고정한다.
-    // - 결제일이 마지막 회차를 넘기면 결제일(당일/이후 첫 수업)부터 시작
-    // - 아니면 직전 회차 다음 수업으로 연결
-    const sessionsNow = sessionsByStudent(updatedStudent.id);
-    const byIndex = new Map(sessionsNow.map((s) => [s.index, s]));
-    let cursorISO = byIndex.get(baseCount)?.displayAt ?? null;
-
-    for (const rec of normalized) {
-      if (!Number.isFinite(rec.startIndex) || !Number.isFinite(rec.endIndex) || rec.addedCount <= 0) continue;
-      const rules = rulesForIndex(updatedStudent, rec.startIndex);
-      let startISO: string | null = null;
-      if (cursorISO) {
-        const lastYmd = ymdFromISO_KST(cursorISO);
-        if (rec.paymentDate && lastYmd && rec.paymentDate > lastYmd) {
-          startISO = nextIsoFromRules({ rules, fromYmd: rec.paymentDate });
-        } else {
-          startISO = nextIsoFromRules({ rules, afterISO: cursorISO });
-        }
-      } else {
-        startISO = nextIsoFromRules({ rules, fromYmd: rec.paymentDate || updatedStudent.startDate });
+      for (let idx = nextTotal + 1; idx <= prevMaxIndex; idx++) {
+        applyMetaPatch(idx, { overrideDate: "", overrideHour: null, overrideMinute: null });
       }
-      if (!startISO) continue;
 
-      let iso = startISO;
-      for (let idx = rec.startIndex; idx <= rec.endIndex; idx++) {
-        const ymd = ymdFromISO_KST(iso);
-        const hm = hmFromISO_KST(iso);
-        if (ymd && hm) {
-          upsertMeta(token, idx, {
-            overrideDate: ymd,
-            overrideHour: hm.hour,
-            overrideMinute: hm.minute,
-          });
-        }
-        const nextRules = rulesForIndex(updatedStudent, idx + 1);
-        const next = nextIsoFromRules({ rules: nextRules, afterISO: iso });
-        if (!next) break;
-        iso = next;
-      }
-      cursorISO = iso;
-    }
-
-    // 줄어든 구간의 override는 비운다.
-    for (let idx = nextTotal + 1; idx <= prevMaxIndex; idx++) {
-      upsertMeta(token, idx, { overrideDate: "", overrideHour: null, overrideMinute: null });
-    }
-
-    // 저장된 세션 displayAt도 최종 계산값으로 동기화해서
-    // 화면/저장소가 같은 날짜를 바라보게 한다.
-    const syncedMetaMap = readMetaMap(token);
-    const syncedBaseDates = buildBaseDatesISO(updatedStudent, 60);
-    const syncedAll = loadSessions().map((s) => {
-      if (s.studentId !== updatedStudent.id) return s;
-      const { effectiveISO } = computeEffectiveISO({
-        token,
-        index: s.index,
-        baseDatesISO: syncedBaseDates,
-        metaMap: syncedMetaMap,
+      const syncedBaseDates = buildBaseDatesISO(updatedStudent, 60);
+      nextAllSessions = workingSessions.map((s) => {
+        if (s.studentId !== updatedStudent.id) return s;
+        const { effectiveISO } = computeEffectiveISO({
+          token,
+          index: s.index,
+          baseDatesISO: syncedBaseDates,
+          metaMap: nextMetaMap,
+        });
+        if (!effectiveISO) return s;
+        return { ...s, displayAt: effectiveISO };
       });
-      if (!effectiveISO) return s;
-      return { ...s, displayAt: effectiveISO };
-    });
-    saveSessions(syncedAll);
+    }
 
-    setRefreshTick((x) => x + 1);
+    try {
+      const nextStateKv: Record<string, string> = {};
+      if (!skipSessions) {
+        nextStateKv[metaMapKey(token)] = JSON.stringify(nextMetaMap);
+      }
+      if (nextConsultStore) {
+        nextStateKv[SHARED_CONSULTATIONS_KEY] = JSON.stringify(nextConsultStore);
+      }
+
+      await pushSharedSnapshot({
+        students: nextStudents,
+        ...(skipSessions ? {} : { sessions: nextAllSessions }),
+        ...(Object.keys(nextStateKv).length > 0 ? { stateKv: nextStateKv } : {}),
+      });
+
+      saveStudents(nextStudents, { skipSharedSnapshot: true });
+      if (!skipSessions) {
+        browserStorage.setItem(metaMapKey(token), JSON.stringify(nextMetaMap));
+        window.dispatchEvent(new CustomEvent(TUTORWEB_EVENTS.metaMapUpdated, { detail: { token } }));
+        saveSessions(nextAllSessions, { skipSharedSnapshot: true });
+      }
+      if (nextConsultStore && options?.consultationRecords) {
+        saveAllConsultationsStore(nextConsultStore, { skipSharedSnapshot: true });
+        setConsultRecords(options.consultationRecords);
+      }
+
+      setRefreshTick((x) => x + 1);
+      return true;
+    } catch (err) {
+      console.error("결제/환불 서버 저장 실패:", err);
+      setPaymentError("서버 저장에 실패했어요. 잠시 뒤 다시 시도해주세요.");
+      return false;
+    }
   }
 
-  function onApplyPayment() {
+  async function onApplyPayment() {
     if (!isAdmin) return;
     setPaymentError("");
 
@@ -1452,7 +1658,8 @@ export default function StudentHubCore({
       ? history.map((h) => (h.id === editingRecordId ? record : h))
       : [...history, record];
 
-    applyHistory(nextHistory);
+    const ok = await applyHistory(nextHistory);
+    if (!ok) return;
 
     setPaymentConfirmed(false);
     setPaymentMemo("");
@@ -1462,10 +1669,11 @@ export default function StudentHubCore({
     setEditingRecordId(null);
   }
 
-  function onDeletePaymentRecord() {
+  async function onDeletePaymentRecord() {
     if (!editingRecordId) return;
     const nextHistory = history.filter((h) => h.id !== editingRecordId);
-    applyHistory(nextHistory);
+    const ok = await applyHistory(nextHistory);
+    if (!ok) return;
     setPaymentConfirmed(false);
     setPaymentMemo("");
     setAddedCount(12);
@@ -1504,13 +1712,13 @@ export default function StudentHubCore({
             <div style={{ fontWeight: 900 }}>학생 이름</div>
             <div style={{ fontWeight: 900, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
               {student?.name ?? "-"}
-              {accessRole !== "s" ? (
+              {canUseConsultFeatures(accessRole) ? (
                 <Badge style={{ background: studentStatusView.bg, color: studentStatusView.color }}>
                   {studentStatusView.label}
                 </Badge>
               ) : null}
             </div>
-            {accessRole !== "s" ? (
+            {canUseConsultFeatures(accessRole) ? (
               <>
                 <div style={{ fontWeight: 900 }}>학생 기수</div>
                 <div>{String(student?.cohort ?? "-")}</div>
@@ -1606,7 +1814,7 @@ export default function StudentHubCore({
           수업 목록
         </button>
 
-        {canEdit ? (
+        {canTriggerCalendarSync(accessRole) ? (
           <button
             className="btn btn-white"
             onClick={onClickCalendarResync}
@@ -1685,25 +1893,16 @@ export default function StudentHubCore({
                     <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
                       <div>{fmtKST_yyyyMMdd_HHmm_noSeconds(item.iso)}</div>
                       <Badge style={getAchievementBadgeStyle(item.percent)}>{item.percent}%</Badge>
-                      {item.refundCompleted ? (
-                        <Badge style={{ background: "#fecaca", color: "#9f1239" }}>환불완료</Badge>
-                      ) : item.refundRequested ? (
-                        <Badge style={{ background: "#fed7aa", color: "#9a3412" }}>환불요청</Badge>
-                      ) : null}
                       {(() => {
-                        const statusLabel = item.status === "present" ? "출석" : item.status === "absent" ? "결석" : "예정";
-                        const style = getStatusStyle(item.status as "present" | "absent" | "planned");
-                        return <Badge style={{ background: style.bg, color: style.text }}>{statusLabel}</Badge>;
+                        const statusBadge = getSessionStatusBadge(item.status as "present" | "absent" | "planned");
+                        return <Badge style={statusBadge.style}>{statusBadge.label}</Badge>;
                       })()}
-                      {item.lastClass ? (
-                        <Badge style={{ background: "#ef4444", color: "#fff" }}>마지막 수업</Badge>
-                      ) : null}
                       {item.badges.map((badge) => (
-                        <Badge key={`${item.index}:${badge}`} style={{ background: "#f1f5f9", color: "#334155" }}>
+                        <Badge key={`${item.index}:${badge}`} style={getSessionExtraBadgeStyle(badge)}>
                           {badge}
                         </Badge>
                       ))}
-                      {accessRole !== "s" &&
+                      {canUseConsultFeatures(accessRole) &&
                       !(
                         item.lastClass &&
                         consultTag &&
@@ -1715,7 +1914,7 @@ export default function StudentHubCore({
                   </div>
                   <div onClick={(e) => e.stopPropagation()} style={{ display: "flex", gap: 6 }}>
                     <SessionQuickActions role={accessRole} token={token} index={item.index} />
-                    {accessRole !== "s" ? (
+                    {canUseConsultFeatures(accessRole) ? (
                       <ConsultButton tag={consultTag} onClick={() => openConsultForSession(consultTag)} />
                     ) : null}
                   </div>
@@ -1761,13 +1960,14 @@ export default function StudentHubCore({
                   </div>
                   {canEdit ? (
                     <button
-                      onClick={() => {
+                      onClick={async () => {
                         const ok = confirm("이 시간 변경 기록을 삭제하시겠습니까?");
                         if (!ok) return;
                         const nextEvents = (student?.scheduleChangeEvents ?? []).filter((x) => x.id !== e.id);
-                        upsertStudent({ ...student, scheduleChangeEvents: nextEvents });
-                        syncSessionDisplayAtByToken(token);
-                        setRefreshTick((x) => x + 1);
+                        const saved = await persistScheduleState({ ...student, scheduleChangeEvents: nextEvents });
+                        if (!saved) {
+                          alert("시간 변경 삭제를 서버에 저장하지 못했어요. 잠시 뒤 다시 시도해주세요.");
+                        }
                       }}
                       className="btn btn-bold"
                     >

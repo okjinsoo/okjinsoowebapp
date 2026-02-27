@@ -6,6 +6,17 @@ import {
   pushSharedSnapshot,
   readRemoteSharedStateKvValue,
 } from "@/lib/storage/sharedSnapshot";
+import {
+  buildSessionStorageBaseKey,
+  sessionLeafIdsKey,
+  sessionProgressByLeafIdKey,
+  SHARED_LECTURE_TREE_KEY,
+} from "@/lib/storage/sharedStateKeys";
+import {
+  canAssignSessionLectures,
+  canSeeSessionInternalFields,
+  type SessionRole,
+} from "@/lib/policies/sessionRolePolicy";
 
 import { useEffect, useMemo, useState } from "react";
 import type {
@@ -19,12 +30,10 @@ import {
   parseLectureTreeRaw,
 } from "@/lib/storage/lectures";
 
-type Role = "s" | "t" | "a";
-
 type Props = {
   token: string;
   sessionIndex: number; // 1-based
-  role: Role;
+  role: SessionRole;
   headerSlot?: React.ReactNode;
 };
 
@@ -37,19 +46,14 @@ type LeafProgress = {
   lectureClicks: number;
 };
 type ProgressByLeafId = Record<string, LeafProgress>;
-const LECTURE_TREE_KEY = "mk3:lectureTree";
-
-function baseKey(token: string, sessionIndex: number) {
-  return `mk3:${token}:session:${sessionIndex}`;
-}
 function keyLeafIds(token: string, sessionIndex: number) {
-  return `${baseKey(token, sessionIndex)}:leafIds`;
+  return sessionLeafIdsKey(token, sessionIndex);
 }
 function keyProgress(token: string, sessionIndex: number) {
-  return `${baseKey(token, sessionIndex)}:progressByLeafId`;
+  return sessionProgressByLeafIdKey(token, sessionIndex);
 }
 function keyLastAdded(token: string, sessionIndex: number) {
-  return `${baseKey(token, sessionIndex)}:lastAddedLeafId`;
+  return `${buildSessionStorageBaseKey(token, sessionIndex)}:lastAddedLeafId`;
 }
 
 function defaultProgress(): LeafProgress {
@@ -107,9 +111,9 @@ function pickLectureTree(localTree: LectureTree, remoteTree: LectureTree | null)
 }
 
 export default function SessionClientCore({ token, sessionIndex, role, headerSlot }: Props) {
-  const canAssignLectures = role !== "s"; // ✅ t/a만 강의 배치(추가/삭제/추천저장) 가능
+  const canAssignLectures = canAssignSessionLectures(role); // ✅ t/a만 강의 배치(추가/삭제/추천저장) 가능
   const canEditProgress = true; // ✅ 학생도 체크/링크 입력은 가능
-  const canSeeInternalFields = role !== "s"; // ✅ 학생에게는 내부 식별값/제출 URL 숨김
+  const canSeeInternalFields = canSeeSessionInternalFields(role); // ✅ 학생에게는 내부 식별값/제출 URL 숨김
 
   const [mounted, setMounted] = useState(false);
 
@@ -265,7 +269,7 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
     const localTree = loadLectureTree();
     let remoteTree: LectureTree | null = null;
     try {
-      const remoteLectureTree = await readRemoteSharedStateKvValue(LECTURE_TREE_KEY);
+      const remoteLectureTree = await readRemoteSharedStateKvValue(SHARED_LECTURE_TREE_KEY);
       if (typeof remoteLectureTree === "string" && remoteLectureTree.trim()) {
         remoteTree = parseLectureTreeRaw(remoteLectureTree);
       }
@@ -281,7 +285,7 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
         const rawTree = JSON.stringify(picked.pickedTree);
         void pushSharedSnapshot({
           stateKv: {
-            [LECTURE_TREE_KEY]: rawTree,
+            [SHARED_LECTURE_TREE_KEY]: rawTree,
           },
         }).catch((err) => {
           console.error("강의 트리 자동 복구 업로드 실패:", err);

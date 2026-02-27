@@ -2,6 +2,7 @@
 "use client";
 
 import { browserStorage } from "@/lib/storage/browserStorage";
+import { fetchServerStudentSessions } from "@/lib/storage/serverRead";
 import { pushSharedSnapshot, readLocalStudents, readLocalTeachers } from "@/lib/storage/sharedSnapshot";
 import { scheduleGoogleCalendarSync } from "@/lib/integrations/googleCalendarSync";
 import { safeParseJson } from "@/lib/storage/safeParse";
@@ -11,11 +12,44 @@ const KEY = "tutorweb_sessions_v1";
 
 type SaveSessionsOptions = {
   suppressCalendarSync?: boolean;
+  skipSharedSnapshot?: boolean;
 };
 
 export function loadSessions(): Session[] {
   if (typeof window === "undefined") return [];
   return safeParseJson<Session[]>(browserStorage.getItem(KEY), []);
+}
+
+function replaceSessionsLocal(list: Session[]): boolean {
+  if (typeof window === "undefined") return false;
+  const nextRaw = JSON.stringify(list);
+  if (browserStorage.getItem(KEY) === nextRaw) return false;
+  browserStorage.setItem(KEY, nextRaw);
+  window.dispatchEvent(new CustomEvent("tutorweb:sessionsUpdated"));
+  return true;
+}
+
+export async function hydrateSessionsForStudentFromServer(studentId: string): Promise<Session[]> {
+  const remote = await fetchServerStudentSessions(studentId);
+  if (!remote) return sessionsByStudent(studentId);
+
+  const current = loadSessions();
+  const merged = [
+    ...current.filter((session) => session.studentId !== studentId),
+    ...remote,
+  ];
+  replaceSessionsLocal(merged);
+  return remote
+    .slice()
+    .sort((a, b) => a.index - b.index);
+}
+
+export async function hydrateSessionsForStudentsFromServer(studentIds: string[]): Promise<void> {
+  const uniqueIds = Array.from(
+    new Set((studentIds ?? []).map((id) => (typeof id === "string" ? id.trim() : "")).filter(Boolean))
+  );
+  if (uniqueIds.length === 0) return;
+  await Promise.all(uniqueIds.map((studentId) => hydrateSessionsForStudentFromServer(studentId)));
 }
 
 function syncSharedSnapshot(nextSessions: Session[]): void {
@@ -28,11 +62,13 @@ function syncSharedSnapshot(nextSessions: Session[]): void {
   });
 }
 
-function persistSessions(list: Session[]): void {
+function persistSessions(list: Session[], options?: { skipSharedSnapshot?: boolean }): void {
   if (typeof window === "undefined") return;
   browserStorage.setItem(KEY, JSON.stringify(list));
   window.dispatchEvent(new CustomEvent("tutorweb:sessionsUpdated"));
-  syncSharedSnapshot(list);
+  if (!options?.skipSharedSnapshot) {
+    syncSharedSnapshot(list);
+  }
 }
 
 function applySessionPatches(patches: Array<{ id: string; patch: Partial<Session> }>): void {
@@ -108,7 +144,28 @@ function applyCalendarResyncPatch(args: {
 
 export function saveSessions(list: Session[], options?: SaveSessionsOptions): void {
   const previous = loadSessions();
-  persistSessions(list);
+  persistSessions(list, { skipSharedSnapshot: options?.skipSharedSnapshot });
+
+  if (options?.suppressCalendarSync) return;
+
+  scheduleGoogleCalendarSync({
+    previous,
+    next: list,
+    applyPatches: applySessionPatches,
+  });
+}
+
+export async function saveSessionsServerFirst(
+  list: Session[],
+  options?: SaveSessionsOptions
+): Promise<void> {
+  const previous = loadSessions();
+  await pushSharedSnapshot({
+    teachers: readLocalTeachers(),
+    students: readLocalStudents(),
+    sessions: list,
+  });
+  persistSessions(list, { skipSharedSnapshot: true });
 
   if (options?.suppressCalendarSync) return;
 

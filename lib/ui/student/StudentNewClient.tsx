@@ -4,8 +4,9 @@
 import React, { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Id, Student, Teacher, ScheduleRule, Weekday, Session } from "@/lib/types/index";
-import { upsertStudent } from "@/lib/storage/students";
-import { upsertSession } from "@/lib/storage/sessions";
+import { loadStudents, saveStudents } from "@/lib/storage/students";
+import { loadSessions, saveSessions } from "@/lib/storage/sessions";
+import { pushSharedSnapshot, readLocalTeachers } from "@/lib/storage/sharedSnapshot";
 import { makeId, makeToken } from "@/lib/utils/id";
 import { nowIso, todayYmdLocal } from "@/lib/utils/date";
 import { normalizePhoneDigits } from "@/lib/utils/phone";
@@ -98,6 +99,7 @@ export default function StudentNewClient(props: {
   });
 
   const [error, setError] = useState<string>("");
+  const [saving, setSaving] = useState(false);
 
   const [startDate, setStartDate] = useState(() => todayYmdLocal());
 
@@ -173,7 +175,7 @@ export default function StudentNewClient(props: {
     }
   }
 
-  function onSubmit() {
+  async function onSubmit() {
     if (!validate()) return;
 
     const pc = normalizePlanCount(planCount);
@@ -211,22 +213,37 @@ export default function StudentNewClient(props: {
       scheduleChangeEvents: [],
     };
 
-    upsertStudent(st);
-
-    // ✅ 생성과 동시에 회차(Session)도 생성(A안)
+    const nextOwnSessions: Session[] = [];
     for (let i = 0; i < pc; i++) {
-      const sess: Session = {
+      nextOwnSessions.push({
         id: makeId(),
         studentId: st.id,
         index: i + 1,
         displayAt: dates[i].toISOString(),
         state: "normal",
         createdAt: nowIso(),
-      };
-      upsertSession(sess);
+      });
     }
 
-    router.push(onDoneGoTo);
+    const nextStudents = [...loadStudents(), st];
+    const nextSessions = [...loadSessions(), ...nextOwnSessions];
+
+    setSaving(true);
+    try {
+      await pushSharedSnapshot({
+        teachers: readLocalTeachers(),
+        students: nextStudents,
+        sessions: nextSessions,
+      });
+      saveStudents(nextStudents, { skipSharedSnapshot: true });
+      saveSessions(nextSessions, { skipSharedSnapshot: true });
+      router.push(onDoneGoTo);
+    } catch (err) {
+      console.error("학생 생성 서버 저장 실패:", err);
+      setError("서버 저장에 실패했어요. 잠시 뒤 다시 시도해주세요.");
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
@@ -240,7 +257,12 @@ export default function StudentNewClient(props: {
         </div>
 
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <button onClick={() => router.push(onDoneGoTo)} style={{ padding: "8px 12px" }} title="목록으로 돌아가기">
+          <button
+            onClick={() => router.push(onDoneGoTo)}
+            style={{ padding: "8px 12px" }}
+            title="목록으로 돌아가기"
+            disabled={saving}
+          >
             목록으로
           </button>
         </div>
@@ -585,11 +607,11 @@ export default function StudentNewClient(props: {
         {error ? <div style={{ color: "crimson", fontWeight: 700}}>{error}</div> : null}
 
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-          <button onClick={() => router.push(onDoneGoTo)} style={{ padding: "10px 14px" }}>
+          <button onClick={() => router.push(onDoneGoTo)} style={{ padding: "10px 14px" }} disabled={saving}>
             취소
           </button>
-          <button onClick={onSubmit} style={{ padding: "10px 14px", fontWeight: 800 }}>
-            생성
+          <button onClick={() => void onSubmit()} style={{ padding: "10px 14px", fontWeight: 800 }} disabled={saving}>
+            {saving ? "저장 중..." : "생성"}
           </button>
         </div>
       </section>

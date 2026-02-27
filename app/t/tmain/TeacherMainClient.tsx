@@ -1,19 +1,22 @@
 // app/t/tmain/TeacherMainClient.tsx
 "use client";
 
-import { BROWSER_STORAGE_EVENT, browserStorage } from "@/lib/storage/browserStorage";
+import { BROWSER_STORAGE_EVENT } from "@/lib/storage/browserStorage";
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Student, Teacher } from "@/lib/types/index";
 import { findTeacherByLoginEmail } from "@/lib/auth/loginSelection";
-import { loadStudents } from "@/lib/storage/students";
-import { sessionsByStudent } from "@/lib/storage/sessions";
-import { loadConsultationsByStudent } from "@/lib/storage/consultations";
+import { hydrateStudentsFromServer, loadStudents } from "@/lib/storage/students";
+import { hydrateSessionsForStudentsFromServer, sessionsByStudent } from "@/lib/storage/sessions";
+import {
+  hydrateConsultationsForStudentsFromServer,
+  loadConsultationsByStudent,
+} from "@/lib/storage/consultations";
 import { AUTH_EVENT } from "@/lib/auth/supabaseAuth";
-import { pullSharedSnapshotAndHydrate } from "@/lib/storage/sharedSnapshot";
 import {
   clearCurrentTeacherId,
+  hydrateTeachersFromServer,
   loadTeachers,
   loadCurrentTeacherId,
   saveCurrentTeacherId,
@@ -33,6 +36,11 @@ import { computeStudentStatus } from "@/lib/factories/studentStatusFactory";
 import { GATE_EVENT } from "@/lib/ui/common/roleGateStorage";
 import { buildConsultationMap, pickPrimaryConsultTag } from "@/lib/ui/session/consultationMap";
 import { findLastClassIndex } from "@/lib/ui/session/pauseHelpers";
+import {
+  calculateSessionAchievementPercent,
+  isSessionProgressEventKey,
+} from "@/lib/factories/sessionProgressFactory";
+import { TUTORWEB_EVENTS } from "@/lib/events/tutorwebEvents";
 
 function parseDateTime(iso: string | null | undefined) {
   if (!iso) return { dateText: "날짜 없음", timeText: "-" };
@@ -55,17 +63,6 @@ function parseDateTime(iso: string | null | undefined) {
   const hh = parts.find((p) => p.type === "hour")?.value ?? "00";
   const mm = parts.find((p) => p.type === "minute")?.value ?? "00";
   return { dateText: `${y}. ${m}. ${d}.`, timeText: `${hh}시 ${mm}분` };
-}
-
-function readJson<T>(key: string, fallback: T): T {
-  if (typeof window === "undefined") return fallback;
-  try {
-    const raw = browserStorage.getItem(key);
-    if (!raw) return fallback;
-    return JSON.parse(raw) as T;
-  } catch {
-    return fallback;
-  }
 }
 
 function isPausedOrOverdueExtension(st: Student) {
@@ -93,27 +90,36 @@ export default function TeacherMainClient({ initialRole = "t" }: { initialRole?:
         clearCurrentTeacherId();
         setTeacherId(null);
       }
-      return;
+      return matchedTeacherId;
     }
-    setTeacherId(loadCurrentTeacherId());
+    const savedTeacherId = loadCurrentTeacherId();
+    setTeacherId(savedTeacherId);
+    return savedTeacherId;
   }, [initialRole]);
 
   useEffect(() => {
     let cancelled = false;
 
     async function bootstrap() {
-      try {
-        await pullSharedSnapshotAndHydrate();
-      } catch (err) {
-        console.error("공유 스냅샷 불러오기 실패(teacher):", err);
-      }
-
+      const [nextStudents, nextTeachers] = await Promise.all([
+        hydrateStudentsFromServer(),
+        hydrateTeachersFromServer(),
+      ]);
       if (cancelled) return;
-      const nextTeachers = loadTeachers();
-      const nextStudents = loadStudents();
       setTeachers(nextTeachers);
       setStudents(nextStudents);
-      applyTeacherSelection(nextTeachers);
+      const nextTeacherId = applyTeacherSelection(nextTeachers);
+      if (nextTeacherId) {
+        const visibleStudentIds = nextStudents
+          .filter((student) => (student.teacherId ?? null) === nextTeacherId && !isPausedOrOverdueExtension(student))
+          .map((student) => student.id);
+        void hydrateSessionsForStudentsFromServer(visibleStudentIds).catch((err) => {
+          console.error("회차 목록 서버 새로고침 실패(teacher):", err);
+        });
+        void hydrateConsultationsForStudentsFromServer(visibleStudentIds).catch((err) => {
+          console.error("상담 목록 서버 새로고침 실패(teacher):", err);
+        });
+      }
       setIsHydrated(true);
     }
 
@@ -125,16 +131,24 @@ export default function TeacherMainClient({ initialRole = "t" }: { initialRole?:
 
   useEffect(() => {
     const onGate = async () => {
-      try {
-        await pullSharedSnapshotAndHydrate();
-      } catch (err) {
-        console.error("공유 스냅샷 새로고침 실패(teacher):", err);
-      }
-
-      const nextTeachers = loadTeachers();
-      setStudents(loadStudents());
+      const [nextStudents, nextTeachers] = await Promise.all([
+        hydrateStudentsFromServer(),
+        hydrateTeachersFromServer(),
+      ]);
+      setStudents(nextStudents);
       setTeachers(nextTeachers);
-      applyTeacherSelection(nextTeachers);
+      const nextTeacherId = applyTeacherSelection(nextTeachers);
+      if (nextTeacherId) {
+        const visibleStudentIds = nextStudents
+          .filter((student) => (student.teacherId ?? null) === nextTeacherId && !isPausedOrOverdueExtension(student))
+          .map((student) => student.id);
+        void hydrateSessionsForStudentsFromServer(visibleStudentIds).catch((err) => {
+          console.error("회차 목록 서버 새로고침 실패(teacher):", err);
+        });
+        void hydrateConsultationsForStudentsFromServer(visibleStudentIds).catch((err) => {
+          console.error("상담 목록 서버 새로고침 실패(teacher):", err);
+        });
+      }
     };
 
     const requestGateRefresh = () => {
@@ -146,27 +160,26 @@ export default function TeacherMainClient({ initialRole = "t" }: { initialRole?:
     const onProgressChanged: EventListener = (event) => {
       const ce = event as CustomEvent<{ key?: string | null }>;
       const key = ce.detail?.key ?? "";
-      if (!key.startsWith("mk3:")) return;
-      if (!key.endsWith(":leafIds") && !key.endsWith(":progressByLeafId")) return;
+      if (!isSessionProgressEventKey(key)) return;
       onTimelineUpdated();
     };
 
     window.addEventListener(GATE_EVENT, requestGateRefresh);
     window.addEventListener(AUTH_EVENT, requestGateRefresh);
-    window.addEventListener("tutorweb:studentsUpdated", requestGateRefresh);
+    window.addEventListener(TUTORWEB_EVENTS.studentsUpdated, requestGateRefresh);
     window.addEventListener(TEACHERS_EVENT, requestGateRefresh);
-    window.addEventListener("tutorweb:sessionsUpdated", onTimelineUpdated);
-    window.addEventListener("tutorweb:consultationsUpdated", onTimelineUpdated);
-    window.addEventListener("tutorweb:metaMapUpdated", onTimelineUpdated);
+    window.addEventListener(TUTORWEB_EVENTS.sessionsUpdated, onTimelineUpdated);
+    window.addEventListener(TUTORWEB_EVENTS.consultationsUpdated, onTimelineUpdated);
+    window.addEventListener(TUTORWEB_EVENTS.metaMapUpdated, onTimelineUpdated);
     window.addEventListener(BROWSER_STORAGE_EVENT, onProgressChanged);
     return () => {
       window.removeEventListener(GATE_EVENT, requestGateRefresh);
       window.removeEventListener(AUTH_EVENT, requestGateRefresh);
-      window.removeEventListener("tutorweb:studentsUpdated", requestGateRefresh);
+      window.removeEventListener(TUTORWEB_EVENTS.studentsUpdated, requestGateRefresh);
       window.removeEventListener(TEACHERS_EVENT, requestGateRefresh);
-      window.removeEventListener("tutorweb:sessionsUpdated", onTimelineUpdated);
-      window.removeEventListener("tutorweb:consultationsUpdated", onTimelineUpdated);
-      window.removeEventListener("tutorweb:metaMapUpdated", onTimelineUpdated);
+      window.removeEventListener(TUTORWEB_EVENTS.sessionsUpdated, onTimelineUpdated);
+      window.removeEventListener(TUTORWEB_EVENTS.consultationsUpdated, onTimelineUpdated);
+      window.removeEventListener(TUTORWEB_EVENTS.metaMapUpdated, onTimelineUpdated);
       window.removeEventListener(BROWSER_STORAGE_EVENT, onProgressChanged);
     };
   }, [initialRole, applyTeacherSelection]);
@@ -225,19 +238,10 @@ export default function TeacherMainClient({ initialRole = "t" }: { initialRole?:
 
         const { dateText, timeText } = parseDateTime(effectiveISO);
 
-        const baseKey = `mk3:${st.token}:session:${s.index}`;
-        const leafIds = readJson<string[]>(`${baseKey}:leafIds`, []);
-        const progress = readJson<Record<string, { noteDone?: boolean; solveDone?: boolean }>>(
-          `${baseKey}:progressByLeafId`,
-          {}
-        );
-        const ids = Array.isArray(leafIds) ? leafIds : [];
-        const total = ids.length * 2;
-        const done = ids.reduce((acc, id) => {
-          const p = progress?.[id];
-          return acc + (p?.noteDone ? 1 : 0) + (p?.solveDone ? 1 : 0);
-        }, 0);
-        const percent = total === 0 ? 0 : Math.round((done / total) * 100);
+        const percent = calculateSessionAchievementPercent({
+          token: st.token,
+          sessionIndex: s.index,
+        });
 
         rows.push({
           studentId: st.id,

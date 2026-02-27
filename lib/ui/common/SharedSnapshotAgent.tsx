@@ -5,21 +5,12 @@ import { AUTH_EVENT, loadAuthSession } from "@/lib/auth/supabaseAuth";
 import { BROWSER_STORAGE_EVENT } from "@/lib/storage/browserStorage";
 import { pullSharedSnapshotAndHydrateWithOptions, pushSharedSnapshot } from "@/lib/storage/sharedSnapshot";
 import { syncGoogleCalendarForExistingSessions } from "@/lib/storage/sessions";
+import { isSharedStateKvKey, SHARED_LECTURE_TREE_KEY } from "@/lib/storage/sharedStateKeys";
 
 const PUSH_DEBOUNCE_MS = 700;
 const PUSH_RETRY_MS = 1500;
 const REMOTE_PULL_INTERVAL_MS = 2000;
 const AUTH_KEY = "tutorweb_auth_session_v1";
-const CONSULTATIONS_KEY = "tutorweb_consultations_v1";
-const LECTURE_TREE_KEY = "mk3:lectureTree";
-const META_MAP_PREFIX = "tutorweb_metaMap_v1:";
-
-function isStateKvKey(key: string): boolean {
-  if (!key) return false;
-  if (key === CONSULTATIONS_KEY) return true;
-  if (key === LECTURE_TREE_KEY) return true;
-  return key.startsWith(META_MAP_PREFIX);
-}
 
 export default function SharedSnapshotAgent() {
   const hydratingRef = useRef(false);
@@ -89,13 +80,13 @@ export default function SharedSnapshotAgent() {
       const ce = event as CustomEvent<{ key?: string | null; newValue?: string | null }>;
       const key = ce.detail?.key ?? "";
       if (key === AUTH_KEY) return;
-      if (!isStateKvKey(key)) return;
+      if (!isSharedStateKvKey(key)) return;
 
       const newValue = ce.detail?.newValue;
       if (typeof newValue !== "string") return;
       pendingStateKvRef.current[key] = newValue;
       // 강의 트리는 회차 상세에서 즉시 참조하므로 지연 없이 업로드
-      if (key === LECTURE_TREE_KEY) {
+      if (key === SHARED_LECTURE_TREE_KEY) {
         schedulePush(0);
         return;
       }

@@ -2,11 +2,12 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { TUTORWEB_EVENTS } from "@/lib/events/tutorwebEvents";
 import { metaMapKey, readMetaMap, type SessionMeta } from "@/lib/ui/session/sessionEffective";
 
 /**
  * 특정 token의 metaMap을 "자동 갱신"으로 제공하는 훅
- * - 같은 탭: tutorweb:metaMapUpdated (CustomEvent.detail.token)
+ * - 같은 탭: TUTORWEB_EVENTS.metaMapUpdated (CustomEvent.detail.token)
  * - 다른 탭: storage 이벤트 (key가 tutorweb_metaMap_v1:... 일 때)
  */
 export function useMetaMap(token: string): Record<number, SessionMeta> {
@@ -30,11 +31,11 @@ export function useMetaMap(token: string): Record<number, SessionMeta> {
       if (se.key === metaMapKey(token)) bump();
     };
 
-    window.addEventListener("tutorweb:metaMapUpdated", onMetaUpdated);
+    window.addEventListener(TUTORWEB_EVENTS.metaMapUpdated, onMetaUpdated);
     window.addEventListener("storage", onStorage);
 
     return () => {
-      window.removeEventListener("tutorweb:metaMapUpdated", onMetaUpdated);
+      window.removeEventListener(TUTORWEB_EVENTS.metaMapUpdated, onMetaUpdated);
       window.removeEventListener("storage", onStorage);
     };
   }, [token]);
@@ -64,11 +65,11 @@ export function useMetaSignal(): number {
       if (se.key.startsWith("tutorweb_metaMap_v1:")) bump();
     };
 
-    window.addEventListener("tutorweb:metaMapUpdated", onMetaUpdated);
+    window.addEventListener(TUTORWEB_EVENTS.metaMapUpdated, onMetaUpdated);
     window.addEventListener("storage", onStorage);
 
     return () => {
-      window.removeEventListener("tutorweb:metaMapUpdated", onMetaUpdated);
+      window.removeEventListener(TUTORWEB_EVENTS.metaMapUpdated, onMetaUpdated);
       window.removeEventListener("storage", onStorage);
     };
   }, []);

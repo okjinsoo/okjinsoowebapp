@@ -2,8 +2,12 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { loadStudents } from "@/lib/storage/students";
-import { loadTeachers, saveCurrentTeacherId, TEACHERS_EVENT } from "@/lib/storage/teachers";
+import { hydrateStudentsFromServer } from "@/lib/storage/students";
+import {
+  hydrateTeachersFromServer,
+  saveCurrentTeacherId,
+  TEACHERS_EVENT,
+} from "@/lib/storage/teachers";
 import { saveCurrentStudentToken } from "@/lib/ui/common/roleGateStorage";
 import { computeStudentStatus, getStudentStatusMeta, type StudentStatusKind } from "@/lib/factories/studentStatusFactory";
 import Badge from "@/lib/ui/common/Badge";
@@ -33,22 +37,29 @@ export default function AdminStudentsPage() {
   const [teachers, setTeachers] = useState<Teacher[]>([]);
 
   useEffect(() => {
-    const refresh = () => {
-      setStudents(loadStudents());
-      setTeachers(loadTeachers());
+    const refresh = async () => {
+      const [nextStudents, nextTeachers] = await Promise.all([
+        hydrateStudentsFromServer(),
+        hydrateTeachersFromServer(),
+      ]);
+      setStudents(nextStudents);
+      setTeachers(nextTeachers);
     };
-    refresh();
+    void refresh();
     const id = setTimeout(() => setMounted(true), 0);
-    window.addEventListener("tutorweb:studentsUpdated", refresh);
-    window.addEventListener("tutorweb:sessionsUpdated", refresh);
-    window.addEventListener("tutorweb:consultationsUpdated", refresh);
-    window.addEventListener(TEACHERS_EVENT, refresh);
+    const requestRefresh = () => {
+      void refresh();
+    };
+    window.addEventListener("tutorweb:studentsUpdated", requestRefresh);
+    window.addEventListener("tutorweb:sessionsUpdated", requestRefresh);
+    window.addEventListener("tutorweb:consultationsUpdated", requestRefresh);
+    window.addEventListener(TEACHERS_EVENT, requestRefresh);
     return () => {
       clearTimeout(id);
-      window.removeEventListener("tutorweb:studentsUpdated", refresh);
-      window.removeEventListener("tutorweb:sessionsUpdated", refresh);
-      window.removeEventListener("tutorweb:consultationsUpdated", refresh);
-      window.removeEventListener(TEACHERS_EVENT, refresh);
+      window.removeEventListener("tutorweb:studentsUpdated", requestRefresh);
+      window.removeEventListener("tutorweb:sessionsUpdated", requestRefresh);
+      window.removeEventListener("tutorweb:consultationsUpdated", requestRefresh);
+      window.removeEventListener(TEACHERS_EVENT, requestRefresh);
     };
   }, []);
 

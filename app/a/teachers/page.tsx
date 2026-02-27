@@ -4,16 +4,27 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Teacher, Student } from "@/lib/types/index";
-import { loadTeachers, removeTeacher, saveCurrentTeacherId, TEACHERS_EVENT } from "@/lib/storage/teachers";
+import {
+  hydrateTeachersFromServer,
+  loadTeachers,
+  saveTeachers,
+  saveCurrentTeacherId,
+  TEACHERS_EVENT,
+} from "@/lib/storage/teachers";
 import { loadStudents, saveStudents } from "@/lib/storage/students";
+import { pushSharedSnapshot } from "@/lib/storage/sharedSnapshot";
 
 export default function AdminTeachersPage() {
   const router = useRouter();
   const [teachers, setTeachers] = useState<Teacher[]>(() => loadTeachers());
 
   useEffect(() => {
-    const id = setTimeout(() => setTeachers(loadTeachers()), 0);
-    const refresh = () => setTeachers(loadTeachers());
+    const id = setTimeout(() => {
+      void hydrateTeachersFromServer().then((nextTeachers) => setTeachers(nextTeachers));
+    }, 0);
+    const refresh = () => {
+      void hydrateTeachersFromServer().then((nextTeachers) => setTeachers(nextTeachers));
+    };
     window.addEventListener(TEACHERS_EVENT, refresh);
     return () => {
       clearTimeout(id);
@@ -32,7 +43,7 @@ export default function AdminTeachersPage() {
    * ✅ 핵심 변경점:
    * 선생님 삭제 시, 그 선생님에게 배정된 학생들은 teacherId를 null로 바꿔 "미배정"으로 만든다.
    */
-  function onRemove(teacherId: string) {
+  async function onRemove(teacherId: string) {
     const allStudents = loadStudents();
     const assigned = allStudents.filter((s: Student) => (s.teacherId ?? null) === teacherId);
 
@@ -43,18 +54,27 @@ export default function AdminTeachersPage() {
 
     if (!confirm(msg)) return;
 
-    // 1) 학생 미배정 처리
-    if (assigned.length > 0) {
-      const nextStudents = allStudents.map((s: Student) => {
-        if ((s.teacherId ?? null) !== teacherId) return s;
-        return { ...s, teacherId: null };
-      });
-      saveStudents(nextStudents);
-    }
+    const nextStudents =
+      assigned.length > 0
+        ? allStudents.map((s: Student) => {
+            if ((s.teacherId ?? null) !== teacherId) return s;
+            return { ...s, teacherId: null };
+          })
+        : allStudents;
+    const nextTeachers = loadTeachers().filter((row) => row.id !== teacherId);
 
-    // 2) 선생님 삭제
-    const nextTeachers = removeTeacher(teacherId);
-    setTeachers(nextTeachers);
+    try {
+      await pushSharedSnapshot({
+        teachers: nextTeachers,
+        students: nextStudents,
+      });
+      saveStudents(nextStudents, { skipSharedSnapshot: true });
+      saveTeachers(nextTeachers, { skipSharedSnapshot: true });
+      setTeachers(nextTeachers);
+    } catch (err) {
+      console.error("선생님 삭제 서버 저장 실패:", err);
+      alert("서버 저장에 실패했어요. 잠시 뒤 다시 시도해주세요.");
+    }
   }
 
   return (
@@ -105,7 +125,7 @@ export default function AdminTeachersPage() {
                     편집
                   </button>
 
-                  <button className="btn btn-red" onClick={() => onRemove(t.id)}>
+                  <button className="btn btn-red" onClick={() => void onRemove(t.id)}>
                     삭제
                   </button>
                 </div>

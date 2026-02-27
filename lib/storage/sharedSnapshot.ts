@@ -6,30 +6,41 @@ import {
   getSupabaseConfig,
   getValidAccessToken,
 } from "@/lib/auth/supabaseAuth";
+import { TUTORWEB_EVENTS } from "@/lib/events/tutorwebEvents";
 import { browserStorage } from "@/lib/storage/browserStorage";
 import { safeParseJson } from "@/lib/storage/safeParse";
+import {
+  isSharedStateKvKey,
+  SHARED_CONSULTATIONS_KEY,
+  SHARED_LECTURE_TREE_KEY,
+  SHARED_META_MAP_PREFIX,
+} from "@/lib/storage/sharedStateKeys";
 import type { Session, Student, Teacher } from "@/lib/types/index";
 
 const SNAPSHOT_KEY = "main";
 const TEACHERS_KEY = "tutorweb_teachers_v1";
 const STUDENTS_KEY = "tutorweb_students_v1";
 const SESSIONS_KEY = "tutorweb_sessions_v1";
-const CONSULTATIONS_KEY = "tutorweb_consultations_v1";
-const LECTURE_TREE_KEY = "mk3:lectureTree";
-const META_MAP_PREFIX = "tutorweb_metaMap_v1:";
-const STUDENTS_EVENT = "tutorweb:studentsUpdated";
-const TEACHERS_EVENT = "tutorweb:teachersUpdated";
-const SESSIONS_EVENT = "tutorweb:sessionsUpdated";
-const LECTURE_TREE_EVENT = "tutorweb:lectureTreeUpdated";
 const PULL_COOLDOWN_MS = 5000;
-const SHARED_EXACT_KEYS = new Set([CONSULTATIONS_KEY, LECTURE_TREE_KEY]);
-const SHARED_PREFIXES = [META_MAP_PREFIX];
 
 type SnapshotRow = {
   teachers?: Teacher[];
   students?: Student[];
   sessions?: Session[];
   state_kv?: Record<string, unknown> | null;
+};
+
+type InternalSnapshotResponse = {
+  ok?: boolean;
+  snapshot?: {
+    teachers?: Teacher[];
+    students?: Student[];
+    sessions?: Session[];
+    stateKv?: Record<string, string> | null;
+  };
+  value?: string | null;
+  sessionsSynced?: boolean;
+  stateKvSynced?: boolean;
 };
 
 type FetchRowsResult =
@@ -51,15 +62,14 @@ let pullSnapshotInFlight: Promise<{
 function shouldPersistKey(key: string): boolean {
   if (!key) return false;
   if (key === AUTH_STORAGE_KEY) return false;
-  if (SHARED_EXACT_KEYS.has(key)) return true;
-  return SHARED_PREFIXES.some((prefix) => key.startsWith(prefix));
+  return isSharedStateKvKey(key);
 }
 
 function normalizeStateKvValue(key: string, value: unknown): string | null {
   if (typeof value === "string") return value;
 
   // 과거/수동 SQL 입력에서 객체로 저장된 강의 트리를 문자열로 보정
-  if (key === LECTURE_TREE_KEY && value && typeof value === "object") {
+  if (key === SHARED_LECTURE_TREE_KEY && value && typeof value === "object") {
     try {
       return JSON.stringify(value);
     } catch {
@@ -142,6 +152,38 @@ async function getHeaders(args?: { json?: boolean; forceRefresh?: boolean }): Pr
   return headers;
 }
 
+function buildInternalSnapshotUrl(stateKey?: string): string {
+  if (!stateKey) return "/api/snapshot";
+  const params = new URLSearchParams({ stateKey });
+  return `/api/snapshot?${params.toString()}`;
+}
+
+async function fetchInternalSnapshot(args?: {
+  stateKey?: string;
+  body?: {
+    teachers?: Teacher[];
+    students?: Student[];
+    sessions?: Session[];
+    stateKv?: Record<string, string>;
+    dropStateKeys?: string[];
+  };
+}): Promise<InternalSnapshotResponse | null> {
+  if (typeof window === "undefined") return null;
+
+  try {
+    const res = await fetch(buildInternalSnapshotUrl(args?.stateKey), {
+      method: args?.body ? "POST" : "GET",
+      headers: args?.body ? { "Content-Type": "application/json" } : undefined,
+      body: args?.body ? JSON.stringify(args.body) : undefined,
+      credentials: "same-origin",
+    });
+    if (!res.ok) return null;
+    return (await res.json()) as InternalSnapshotResponse;
+  } catch {
+    return null;
+  }
+}
+
 export function readLocalTeachers(): Teacher[] {
   if (typeof window === "undefined") return [];
   return safeParseJson<Teacher[]>(browserStorage.getItem(TEACHERS_KEY), []);
@@ -159,10 +201,10 @@ export function readLocalSessions(): Session[] {
 
 function dispatchLocalSnapshotUpdated(args?: { includeSessions?: boolean }) {
   if (typeof window === "undefined") return;
-  window.dispatchEvent(new CustomEvent(TEACHERS_EVENT));
-  window.dispatchEvent(new CustomEvent(STUDENTS_EVENT));
+  window.dispatchEvent(new CustomEvent(TUTORWEB_EVENTS.teachersUpdated));
+  window.dispatchEvent(new CustomEvent(TUTORWEB_EVENTS.studentsUpdated));
   if (args?.includeSessions) {
-    window.dispatchEvent(new CustomEvent(SESSIONS_EVENT));
+    window.dispatchEvent(new CustomEvent(TUTORWEB_EVENTS.sessionsUpdated));
   }
 }
 
@@ -191,7 +233,7 @@ function applyStateKv(stateKv: Record<string, string> | null | undefined): {
     const current = browserStorage.getItem(key);
     if (current === value) continue;
 
-    if (key === LECTURE_TREE_KEY) {
+    if (key === SHARED_LECTURE_TREE_KEY) {
       const currentMeta = lectureTreeMeta(current);
       const incomingMeta = lectureTreeMeta(value);
 
@@ -213,9 +255,9 @@ function applyStateKv(stateKv: Record<string, string> | null | undefined): {
 
     browserStorage.setItem(key, value);
     changed = true;
-    if (key === CONSULTATIONS_KEY) hadConsultations = true;
-    if (key === LECTURE_TREE_KEY) hadLectureTree = true;
-    if (key.startsWith(META_MAP_PREFIX)) hadMetaMap = true;
+    if (key === SHARED_CONSULTATIONS_KEY) hadConsultations = true;
+    if (key === SHARED_LECTURE_TREE_KEY) hadLectureTree = true;
+    if (key.startsWith(SHARED_META_MAP_PREFIX)) hadMetaMap = true;
   }
 
   return { changed, hadConsultations, hadMetaMap, hadLectureTree };
@@ -258,13 +300,13 @@ function applyLocalSnapshot(args: {
     dispatchLocalSnapshotUpdated({ includeSessions: sessionsChanged });
   }
   if (stateResult.hadConsultations) {
-    window.dispatchEvent(new CustomEvent("tutorweb:consultationsUpdated"));
+    window.dispatchEvent(new CustomEvent(TUTORWEB_EVENTS.consultationsUpdated));
   }
   if (stateResult.hadLectureTree) {
-    window.dispatchEvent(new CustomEvent(LECTURE_TREE_EVENT));
+    window.dispatchEvent(new CustomEvent(TUTORWEB_EVENTS.lectureTreeUpdated));
   }
   if (stateResult.hadMetaMap) {
-    window.dispatchEvent(new CustomEvent("tutorweb:metaMapUpdated"));
+    window.dispatchEvent(new CustomEvent(TUTORWEB_EVENTS.metaMapUpdated));
   }
 }
 
@@ -386,6 +428,11 @@ async function fetchRemoteStateKv(args: {
 }
 
 export async function readRemoteSharedStateKvValue(key: string): Promise<string | null> {
+  const internal = await fetchInternalSnapshot({ stateKey: key });
+  if (internal && Object.prototype.hasOwnProperty.call(internal, "value")) {
+    return typeof internal.value === "string" ? internal.value : null;
+  }
+
   const cfg = getSupabaseConfig();
   if (!cfg) return null;
 
@@ -405,31 +452,18 @@ export async function pushSharedSnapshot(args?: {
   students?: Student[];
   sessions?: Session[];
   stateKv?: Record<string, string>;
+  dropStateKeys?: string[];
 }): Promise<PushSharedSnapshotResult> {
   const hasTeachersArg = Object.prototype.hasOwnProperty.call(args ?? {}, "teachers");
   const hasStudentsArg = Object.prototype.hasOwnProperty.call(args ?? {}, "students");
   const hasSessionsArg = Object.prototype.hasOwnProperty.call(args ?? {}, "sessions");
   const hasStateKvArg = Object.prototype.hasOwnProperty.call(args ?? {}, "stateKv");
+  const hasDropStateKeysArg = Object.prototype.hasOwnProperty.call(args ?? {}, "dropStateKeys");
   const includeCoreSnapshot = !args || Object.keys(args).length === 0;
   const includeTeachers = includeCoreSnapshot || hasTeachersArg;
   const includeStudents = includeCoreSnapshot || hasStudentsArg;
   const includeSessions = includeCoreSnapshot || hasSessionsArg;
-
-  const cfg = getSupabaseConfig();
-  if (!cfg) {
-    return {
-      sessionsSynced: !includeSessions,
-      stateKvSynced: !hasStateKvArg,
-    };
-  }
-
-  const headers = await getHeaders({ json: true });
-  if (!headers) {
-    return {
-      sessionsSynced: !includeSessions,
-      stateKvSynced: !hasStateKvArg,
-    };
-  }
+  const touchesStateKv = hasStateKvArg || hasDropStateKeysArg;
 
   const teachers = includeTeachers
     ? hasTeachersArg
@@ -446,9 +480,46 @@ export async function pushSharedSnapshot(args?: {
       ? (args?.sessions ?? [])
       : readLocalSessions()
     : undefined;
+  const stateKvPatch = hasStateKvArg ? toStateKv(args?.stateKv ?? {}) : undefined;
+
+  const internal = await fetchInternalSnapshot({
+    body: {
+      ...(includeTeachers ? { teachers: teachers ?? [] } : {}),
+      ...(includeStudents ? { students: students ?? [] } : {}),
+      ...(includeSessions ? { sessions: sessions ?? [] } : {}),
+      ...(hasStateKvArg ? { stateKv: stateKvPatch ?? {} } : {}),
+      ...(hasDropStateKeysArg ? { dropStateKeys: args?.dropStateKeys ?? [] } : {}),
+    },
+  });
+  if (
+    internal &&
+    typeof internal.sessionsSynced === "boolean" &&
+    typeof internal.stateKvSynced === "boolean"
+  ) {
+    return {
+      sessionsSynced: internal.sessionsSynced,
+      stateKvSynced: internal.stateKvSynced,
+    };
+  }
+
+  const cfg = getSupabaseConfig();
+  if (!cfg) {
+    return {
+      sessionsSynced: !includeSessions,
+      stateKvSynced: !touchesStateKv,
+    };
+  }
+
+  const headers = await getHeaders({ json: true });
+  if (!headers) {
+    return {
+      sessionsSynced: !includeSessions,
+      stateKvSynced: !touchesStateKv,
+    };
+  }
   let stateKv: Record<string, string> | undefined;
 
-  if (hasStateKvArg) {
+  if (touchesStateKv) {
     const readHeaders = await getHeaders();
     if (!readHeaders) {
       return {
@@ -462,11 +533,14 @@ export async function pushSharedSnapshot(args?: {
       url: snapshotUrl,
       headers: readHeaders,
     });
-    const localStateKv = toStateKv(args?.stateKv ?? {});
     stateKv = {
       ...remoteStateKv,
-      ...localStateKv,
+      ...(stateKvPatch ?? {}),
     };
+    for (const key of args?.dropStateKeys ?? []) {
+      if (!shouldPersistKey(key)) continue;
+      delete stateKv[key];
+    }
   }
 
   const snapshotUrl = new URL("/rest/v1/app_state_snapshots", cfg.url);
@@ -483,7 +557,7 @@ export async function pushSharedSnapshot(args?: {
   if (includeTeachers) fullPayload.teachers = teachers ?? [];
   if (includeStudents) fullPayload.students = students ?? [];
   if (includeSessions) fullPayload.sessions = sessions ?? [];
-  if (hasStateKvArg && stateKv) {
+  if (touchesStateKv && stateKv) {
     fullPayload.state_kv = stateKv;
   }
 
@@ -502,8 +576,7 @@ export async function pushSharedSnapshot(args?: {
 
   const text = fullResult.text;
   const sessionsMissing = includeSessions && isMissingColumnError(text, "sessions");
-  const stateKvMissing =
-    hasStateKvArg && isMissingColumnError(text, "state_kv");
+  const stateKvMissing = touchesStateKv && isMissingColumnError(text, "state_kv");
 
   if (!sessionsMissing && !stateKvMissing) {
     throw new Error(`snapshot upsert failed: ${fullResult.status} ${text}`);
@@ -519,7 +592,7 @@ export async function pushSharedSnapshot(args?: {
   if (includeTeachers) fallbackPayload.teachers = teachers ?? [];
   if (includeStudents) fallbackPayload.students = students ?? [];
   if (includeSessions && !sessionsMissing) fallbackPayload.sessions = sessions ?? [];
-  if (hasStateKvArg && !stateKvMissing) fallbackPayload.state_kv = stateKv ?? {};
+  if (touchesStateKv && !stateKvMissing) fallbackPayload.state_kv = stateKv ?? {};
 
   const fallbackResult = await postSnapshotUpsertWithRetry({
     url: upsertUrl,
@@ -536,7 +609,7 @@ export async function pushSharedSnapshot(args?: {
 
   return {
     sessionsSynced: !includeSessions || !sessionsMissing,
-    stateKvSynced: !hasStateKvArg || !stateKvMissing,
+    stateKvSynced: !touchesStateKv || !stateKvMissing,
   };
 }
 
@@ -568,6 +641,24 @@ export async function pullSharedSnapshotAndHydrateWithOptions(args?: {
   if (pullSnapshotInFlight) return pullSnapshotInFlight;
 
   pullSnapshotInFlight = (async () => {
+    const internal = await fetchInternalSnapshot();
+    const internalSnapshot = internal?.snapshot;
+    if (internalSnapshot) {
+      const teachers = Array.isArray(internalSnapshot.teachers) ? internalSnapshot.teachers : [];
+      const students = Array.isArray(internalSnapshot.students) ? internalSnapshot.students : [];
+      const sessions = Array.isArray(internalSnapshot.sessions) ? internalSnapshot.sessions : [];
+      const stateKv = toStateKv(internalSnapshot.stateKv);
+
+      applyLocalSnapshot({
+        teachers,
+        students,
+        sessions,
+        stateKv,
+      });
+      lastPullSnapshotAt = Date.now();
+      return { teachers, students, sessions };
+    }
+
     const cfg = getSupabaseConfig();
     if (!cfg) return null;
 

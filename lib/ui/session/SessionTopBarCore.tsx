@@ -1,6 +1,6 @@
 "use client";
 
-import { BROWSER_STORAGE_EVENT, browserStorage } from "@/lib/storage/browserStorage";
+import { BROWSER_STORAGE_EVENT } from "@/lib/storage/browserStorage";
 
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -8,7 +8,6 @@ import {
   computeEffectiveISO,
   upsertMeta,
   buildBadges,
-  getStatusStyle,
   useMetaMap,
   getDdayMeta,
 } from "@/lib/factories/sessionFactories";
@@ -16,6 +15,7 @@ import { buildConsultationRecord, normalizeConsultPurpose, validateConsultForm }
 import { fmtKST_yyyyMMdd_HHmm_noSeconds } from "@/lib/ui/session/format";
 import Badge from "@/lib/ui/common/Badge";
 import { getAchievementBadgeStyle } from "@/lib/ui/common/achievementBadge";
+import { getSessionStatusBadge } from "@/lib/ui/common/sessionStatusBadge";
 import { findStudentByToken, upsertStudent } from "@/lib/storage/students";
 import { sessionsByStudent } from "@/lib/storage/sessions";
 import { loadConsultationsByStudent, saveConsultationsByStudent } from "@/lib/storage/consultations";
@@ -25,11 +25,17 @@ import { buildDisplayRecords, computeRefundRatio } from "@/lib/factories/lessonS
 import { computePauseLifecycle } from "@/lib/factories/studentStatusFactory";
 import { ConsultBadge, ConsultButton } from "@/lib/ui/common/ConsultParts";
 import ConsultModal, { ConsultFormState } from "@/lib/ui/common/ConsultModal";
+import { TUTORWEB_EVENTS } from "@/lib/events/tutorwebEvents";
+import {
+  calculateSessionAchievementPercent,
+  isSessionProgressEventKeyForToken,
+} from "@/lib/factories/sessionProgressFactory";
 import { todayYmdKST } from "@/lib/utils/date";
 import { syncSessionDisplayAtByToken } from "@/lib/ui/session/syncSessionDisplayAt";
+import { canEditSessionMeta, type SessionRole } from "@/lib/policies/sessionRolePolicy";
 
 type Props = {
-  role: "a" | "t" | "s";
+  role: SessionRole;
   token: string;
   index: number;
 };
@@ -40,7 +46,7 @@ function isNonNegInt(n: unknown): boolean {
 }
 
 export default function SessionTopBarCore({ role, token, index }: Props) {
-  const canEdit = role === "a" || role === "t";
+  const canEdit = canEditSessionMeta(role);
   const isAdmin = role === "a";
 
   // hydration mismatch 방지(오늘 날짜 기반 요소는 mounted 이후)
@@ -102,26 +108,22 @@ export default function SessionTopBarCore({ role, token, index }: Props) {
     const onStudents = () => setStudentTick((x) => x + 1);
     const onSessions = () => setSessionTick((x) => x + 1);
     const onConsultations = () => setConsultTick((x) => x + 1);
-    window.addEventListener("tutorweb:studentsUpdated", onStudents);
-    window.addEventListener("tutorweb:sessionsUpdated", onSessions);
-    window.addEventListener("tutorweb:consultationsUpdated", onConsultations);
+    window.addEventListener(TUTORWEB_EVENTS.studentsUpdated, onStudents);
+    window.addEventListener(TUTORWEB_EVENTS.sessionsUpdated, onSessions);
+    window.addEventListener(TUTORWEB_EVENTS.consultationsUpdated, onConsultations);
     return () => {
-      window.removeEventListener("tutorweb:studentsUpdated", onStudents);
-      window.removeEventListener("tutorweb:sessionsUpdated", onSessions);
-      window.removeEventListener("tutorweb:consultationsUpdated", onConsultations);
+      window.removeEventListener(TUTORWEB_EVENTS.studentsUpdated, onStudents);
+      window.removeEventListener(TUTORWEB_EVENTS.sessionsUpdated, onSessions);
+      window.removeEventListener(TUTORWEB_EVENTS.consultationsUpdated, onConsultations);
     };
   }, []);
 
   useEffect(() => {
-    const baseKey = `mk3:${token}:session:${index}`;
-    const progressKey = `${baseKey}:progressByLeafId`;
-    const leafIdsKey = `${baseKey}:leafIds`;
-
     const onBrowserStorageChanged: EventListener = (event) => {
       const ce = event as CustomEvent<{ key?: string | null }>;
       const key = ce.detail?.key ?? null;
       if (!key) return;
-      if (key !== progressKey && key !== leafIdsKey) return;
+      if (!isSessionProgressEventKeyForToken(key, token)) return;
       setProgressTick((x) => x + 1);
     };
 
@@ -129,7 +131,7 @@ export default function SessionTopBarCore({ role, token, index }: Props) {
     return () => {
       window.removeEventListener(BROWSER_STORAGE_EVENT, onBrowserStorageChanged);
     };
-  }, [token, index]);
+  }, [token]);
 
   const baseDatesISO = useMemo(() => buildBaseDatesISOByToken(token, 60), [token]);
 
@@ -219,29 +221,10 @@ export default function SessionTopBarCore({ role, token, index }: Props) {
   const achievementPercent = useMemo(() => {
     if (!mounted) return 0;
     void progressTick;
-    const readJson = <T,>(key: string, fallback: T): T => {
-      if (typeof window === "undefined") return fallback;
-      try {
-        const raw = browserStorage.getItem(key);
-        if (!raw) return fallback;
-        return JSON.parse(raw) as T;
-      } catch {
-        return fallback;
-      }
-    };
-    const baseKey = `mk3:${token}:session:${index}`;
-    const leafIds = readJson<string[]>(`${baseKey}:leafIds`, []);
-    const progress = readJson<Record<string, { noteDone?: boolean; solveDone?: boolean }>>(
-      `${baseKey}:progressByLeafId`,
-      {}
-    );
-    const ids = Array.isArray(leafIds) ? leafIds : [];
-    const total = ids.length * 2;
-    const done = ids.reduce((acc, id) => {
-      const p = progress?.[id];
-      return acc + (p?.noteDone ? 1 : 0) + (p?.solveDone ? 1 : 0);
-    }, 0);
-    return total === 0 ? 0 : Math.round((done / total) * 100);
+    return calculateSessionAchievementPercent({
+      token,
+      sessionIndex: index,
+    });
   }, [mounted, token, index, progressTick]);
 
   const lastClassIndex = useMemo(() => {
@@ -266,8 +249,7 @@ export default function SessionTopBarCore({ role, token, index }: Props) {
   // ===== 상단 버튼(토글) =====
   const isPresent = meta.status === "present";
   const isAbsent = meta.status === "absent";
-  const statusLabel = meta.status === "present" ? "출석" : meta.status === "absent" ? "결석" : "예정";
-  const statusStyle = getStatusStyle(meta.status ?? "planned");
+  const statusBadge = getSessionStatusBadge(meta.status);
 
   const togglePresent = () => {
     if (!canEdit) return;
@@ -590,7 +572,7 @@ export default function SessionTopBarCore({ role, token, index }: Props) {
         </div>
         <div className="flex items-center gap-2 flex-wrap text-dim">
           <div>{mounted ? (effectiveISO ? fmtKST_yyyyMMdd_HHmm_noSeconds(effectiveISO) : "예정일 없음") : "-"}</div>
-          <Badge style={{ background: statusStyle.bg, color: statusStyle.text }}>{statusLabel}</Badge>
+          <Badge style={statusBadge.style}>{statusBadge.label}</Badge>
           <Badge style={getAchievementBadgeStyle(achievementPercent)}>{achievementPercent}%</Badge>
           {!(
             lastClassIndex &&
