@@ -349,8 +349,10 @@ async function runSync(args: SyncArgs): Promise<void> {
   for (const prev of args.previous) {
     if (nextById.has(prev.id)) continue;
     if (!prev.googleCalendarEventId) continue;
-    const ownerEmail = normalizeEmail(prev.googleCalendarOwnerEmail);
-    if (ownerEmail && ownerEmail !== currentEmail) continue;
+    const prevStudent = studentById.get(prev.studentId);
+    const prevTeacher = prevStudent?.teacherId ? teacherById.get(prevStudent.teacherId) ?? null : null;
+    const expectedOwnerEmail = normalizeEmail(prevTeacher?.email);
+    if (!expectedOwnerEmail || expectedOwnerEmail !== currentEmail) continue;
     try {
       await deleteEvent({ token: providerToken, eventId: prev.googleCalendarEventId });
     } catch (err) {
@@ -380,15 +382,14 @@ async function runSync(args: SyncArgs): Promise<void> {
 
     const teacher = student.teacherId ? teacherById.get(student.teacherId) ?? null : null;
     const teacherEmail = normalizeEmail(teacher?.email);
-    const explicitOwner = normalizeEmail(next.googleCalendarOwnerEmail);
-    const ownerEmail = explicitOwner || teacherEmail || currentEmail;
+    const ownerEmail = teacherEmail;
 
-    if (!ownerEmail) {
+    if (!teacher || !ownerEmail || !isValidEmail(ownerEmail)) {
       patches.push({
         id: next.id,
         patch: {
           googleCalendarStatus: "error",
-          googleCalendarError: "캘린더 소유자 이메일을 결정하지 못했습니다.",
+          googleCalendarError: "담당 선생님 이메일이 없어서 Meet를 만들 수 없습니다. 관리자에게 문의해주세요.",
         },
       });
       continue;
@@ -402,7 +403,7 @@ async function runSync(args: SyncArgs): Promise<void> {
           googleCalendarStatus: next.googleCalendarEventId ? next.googleCalendarStatus ?? "pending" : "pending",
           googleCalendarError: next.googleCalendarEventId
             ? next.googleCalendarError ?? ""
-            : "담당 선생님 계정으로 로그인하면 Meet 링크가 생성됩니다.",
+            : "이 회차 Meet는 담당 선생님 계정으로 로그인해야 생성됩니다.",
         },
       });
       continue;
@@ -420,8 +421,8 @@ async function runSync(args: SyncArgs): Promise<void> {
           });
         } catch (err) {
           const message = err instanceof Error ? err.message : "Google Calendar 동기화 실패";
-          if (!explicitOwner && isPermissionOrNotFound(message)) {
-            // 과거 다른 계정에서 만든 eventId가 저장된 경우, 현재 소유자로 새 이벤트 재생성
+          if (isPermissionOrNotFound(message)) {
+            // 과거 다른 계정에서 만든 eventId 또는 권한 변경으로 접근 불가면 새 이벤트로 복구
             result = await createEvent({
               token: providerToken,
               session: { ...next, googleCalendarEventId: undefined },
