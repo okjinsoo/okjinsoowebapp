@@ -627,6 +627,21 @@ async function runSync(args: SyncArgs): Promise<void> {
   const teacherById = new Map(teachers.map((t) => [t.id, t] as const));
   const patches: SessionPatch[] = [];
 
+  // 학생 계정으로 로그인해도 "옥진수학" 전용 캘린더가 자동으로 생성되도록 보장
+  const isStudentAccount = students.some(
+    (student) => normalizeEmail(student.googleEmail) === currentEmail
+  );
+  if (isStudentAccount) {
+    try {
+      await ensureAppCalendarId({
+        token: providerToken,
+        ownerEmail: currentEmail,
+      });
+    } catch (err) {
+      console.error("학생 계정 전용 캘린더 준비 실패:", err);
+    }
+  }
+
   // 이메일 변경처럼 "세션 행 자체는 안 바뀌었지만 소유자가 달라진 경우"를 포함해서 동기화 대상 선정
   const targetSessions = args.next.filter((next) => {
     const prev = previousById.get(next.id);
@@ -717,6 +732,13 @@ async function runSync(args: SyncArgs): Promise<void> {
         } catch (err) {
           console.error("잘못된 소유자 이벤트 정리 실패:", err);
         }
+      }
+
+      const hasReadyMeet =
+        Boolean(text(next.googleCalendarEventId)) && Boolean(text(next.googleMeetUrl));
+      // 학생 로그인 등 비소유자 계정에서는 이미 완성된 회차 상태를 pending으로 덮어쓰지 않는다.
+      if (!ownerMismatch && hasReadyMeet) {
+        continue;
       }
 
       patches.push({
