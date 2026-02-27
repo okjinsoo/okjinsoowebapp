@@ -20,10 +20,13 @@ const GOOGLE_CALENDAR_BASE_URL = "https://www.googleapis.com/calendar/v3";
 const DEFAULT_DURATION_MIN = 90;
 const SYNC_DEBOUNCE_MS = 900;
 const CREATE_PAST_GRACE_MS = 6 * 60 * 60 * 1000; // 6h
+const DUPLICATE_TIME_WINDOW_MS = 5 * 60 * 1000;
+const RECENT_CREATED_TTL_MS = 60 * 1000;
 
 let syncTimer: ReturnType<typeof setTimeout> | null = null;
 let pending: SyncArgs | null = null;
 let syncInFlight = false;
+const recentCreatedEventByOwnerSession = new Map<string, { eventId: string; ts: number }>();
 
 function text(v: unknown): string {
   return typeof v === "string" ? v.trim() : "";
@@ -35,6 +38,30 @@ function normalizeEmail(v: unknown): string {
 
 function isValidEmail(email: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
+function ownerSessionKey(ownerEmail: string, sessionId: string): string {
+  return `${ownerEmail}::${sessionId}`;
+}
+
+function saveRecentCreatedEvent(args: { ownerEmail: string; sessionId: string; eventId: string }): void {
+  if (!args.ownerEmail || !args.sessionId || !args.eventId) return;
+  recentCreatedEventByOwnerSession.set(ownerSessionKey(args.ownerEmail, args.sessionId), {
+    eventId: args.eventId,
+    ts: Date.now(),
+  });
+}
+
+function loadRecentCreatedEvent(args: { ownerEmail: string; sessionId: string }): string | null {
+  if (!args.ownerEmail || !args.sessionId) return null;
+  const key = ownerSessionKey(args.ownerEmail, args.sessionId);
+  const row = recentCreatedEventByOwnerSession.get(key);
+  if (!row) return null;
+  if (Date.now() - row.ts > RECENT_CREATED_TTL_MS) {
+    recentCreatedEventByOwnerSession.delete(key);
+    return null;
+  }
+  return row.eventId;
 }
 
 function safeIso(iso: string): string | null {
@@ -102,7 +129,7 @@ function parseErrorText(body: unknown): string {
 
 async function requestGoogle(args: {
   token: string;
-  method: "POST" | "PATCH" | "DELETE";
+  method: "GET" | "POST" | "PATCH" | "DELETE";
   path: string;
   query?: Record<string, string>;
   body?: unknown;
@@ -118,7 +145,7 @@ async function requestGoogle(args: {
       Authorization: `Bearer ${args.token}`,
       "Content-Type": "application/json",
     },
-    body: args.body === undefined ? undefined : JSON.stringify(args.body),
+    body: args.body === undefined || args.method === "GET" ? undefined : JSON.stringify(args.body),
   });
 
   if (res.status === 204) return null;
@@ -165,6 +192,87 @@ function isPermissionOrNotFound(message: string): boolean {
   return msg.startsWith("403") || msg.startsWith("404");
 }
 
+function expectedSummary(session: Session, student: Student): string {
+  return `${student.name} ${session.index}회차 수업`;
+}
+
+type CandidateEvent = {
+  eventId: string;
+  meetUrl: string | null;
+  startIso: string | null;
+  summary: string;
+  createdAtMs: number;
+};
+
+function parseCandidateEvents(body: unknown): CandidateEvent[] {
+  if (!body || typeof body !== "object") return [];
+  const rec = body as Record<string, unknown>;
+  const items = Array.isArray(rec.items) ? rec.items : [];
+
+  const out: CandidateEvent[] = [];
+  for (const item of items) {
+    if (!item || typeof item !== "object") continue;
+    const row = item as Record<string, unknown>;
+    const eventId = text(row.id);
+    if (!eventId) continue;
+    const summary = text(row.summary);
+    const createdAtMs = Date.parse(text(row.created)) || 0;
+    const startObj = row.start && typeof row.start === "object" ? (row.start as Record<string, unknown>) : null;
+    const startIso = safeIso(text(startObj?.dateTime));
+    out.push({
+      eventId,
+      meetUrl: extractMeetUrl(row),
+      startIso,
+      summary,
+      createdAtMs,
+    });
+  }
+  return out;
+}
+
+async function findSignatureEvents(args: {
+  token: string;
+  session: Session;
+  student: Student;
+}): Promise<CandidateEvent[]> {
+  const startIso = safeIso(args.session.displayAt);
+  if (!startIso) return [];
+
+  const startMs = new Date(startIso).getTime();
+  const timeMin = new Date(startMs - DUPLICATE_TIME_WINDOW_MS).toISOString();
+  const timeMax = new Date(startMs + DUPLICATE_TIME_WINDOW_MS).toISOString();
+  const summary = expectedSummary(args.session, args.student);
+
+  const body = await requestGoogle({
+    token: args.token,
+    method: "GET",
+    path: "/calendars/primary/events",
+    query: {
+      singleEvents: "true",
+      showDeleted: "false",
+      orderBy: "startTime",
+      maxResults: "25",
+      timeMin,
+      timeMax,
+    },
+  });
+
+  const all = parseCandidateEvents(body);
+  return all
+    .filter((event) => event.summary === summary)
+    .filter((event) => {
+      if (!event.startIso) return false;
+      const eventMs = new Date(event.startIso).getTime();
+      return Math.abs(eventMs - startMs) <= DUPLICATE_TIME_WINDOW_MS;
+    })
+    .sort((a, b) => {
+      const aMeet = a.meetUrl ? 1 : 0;
+      const bMeet = b.meetUrl ? 1 : 0;
+      if (aMeet !== bMeet) return bMeet - aMeet;
+      return a.createdAtMs - b.createdAtMs;
+    });
+}
+
 function buildEventPayload(args: {
   session: Session;
   student: Student;
@@ -200,6 +308,12 @@ function buildEventPayload(args: {
       timeZone: "Asia/Seoul",
     },
     attendees,
+    extendedProperties: {
+      private: {
+        tutorweb_session_id: args.session.id,
+        tutorweb_student_id: args.student.id,
+      },
+    },
   };
 
   if (args.includeMeetCreateRequest) {
@@ -288,7 +402,11 @@ async function updateEvent(args: {
   return { eventId: nextEventId, meetUrl };
 }
 
-async function deleteEvent(args: { token: string; eventId: string }): Promise<void> {
+async function deleteEvent(args: {
+  token: string;
+  eventId: string;
+  sendUpdates?: "all" | "none";
+}): Promise<void> {
   const eventId = text(args.eventId);
   if (!eventId) return;
 
@@ -298,7 +416,7 @@ async function deleteEvent(args: { token: string; eventId: string }): Promise<vo
       method: "DELETE",
       path: `/calendars/primary/events/${encodeURIComponent(eventId)}`,
       query: {
-        sendUpdates: "all",
+        sendUpdates: args.sendUpdates ?? "all",
       },
     });
   } catch (err) {
@@ -448,13 +566,58 @@ async function runSync(args: SyncArgs): Promise<void> {
     }
 
     try {
-      const sessionForOwner = ownerMismatch
+      let sessionForOwner: Session = ownerMismatch
         ? {
             ...next,
             googleCalendarEventId: undefined,
             googleMeetUrl: undefined,
           }
         : next;
+
+      if (!sessionForOwner.googleCalendarEventId) {
+        const recentEventId = loadRecentCreatedEvent({
+          ownerEmail,
+          sessionId: sessionForOwner.id,
+        });
+        if (recentEventId) {
+          sessionForOwner = {
+            ...sessionForOwner,
+            googleCalendarEventId: recentEventId,
+          };
+        }
+      }
+
+      const signatureEvents = await findSignatureEvents({
+        token: providerToken,
+        session: sessionForOwner,
+        student,
+      });
+      if (signatureEvents.length > 0) {
+        const canonical =
+          signatureEvents.find((ev) => ev.eventId === sessionForOwner.googleCalendarEventId) ??
+          signatureEvents[0];
+        const duplicates = signatureEvents.filter((ev) => ev.eventId !== canonical.eventId);
+        if (!sessionForOwner.googleCalendarEventId) {
+          sessionForOwner = {
+            ...sessionForOwner,
+            googleCalendarEventId: canonical.eventId,
+            googleMeetUrl: sessionForOwner.googleMeetUrl ?? canonical.meetUrl ?? undefined,
+          };
+        }
+        for (const dup of duplicates) {
+          if (dup.eventId === canonical.eventId) continue;
+          if (dup.eventId === sessionForOwner.googleCalendarEventId) continue;
+          try {
+            await deleteEvent({
+              token: providerToken,
+              eventId: dup.eventId,
+              sendUpdates: "none",
+            });
+          } catch (err) {
+            console.error("Google Calendar 중복 이벤트 정리 실패:", err);
+          }
+        }
+      }
 
       let result: { eventId: string | null; meetUrl: string | null };
       if (sessionForOwner.googleCalendarEventId) {
@@ -486,6 +649,13 @@ async function runSync(args: SyncArgs): Promise<void> {
           student,
           teacher,
         });
+        if (result.eventId) {
+          saveRecentCreatedEvent({
+            ownerEmail,
+            sessionId: sessionForOwner.id,
+            eventId: result.eventId,
+          });
+        }
       }
 
       patches.push({
