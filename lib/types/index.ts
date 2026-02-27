@@ -170,6 +170,7 @@ export type Session = {
   // Google Calendar/Meet 연동 메타(자동 동기화용)
   googleCalendarEventId?: string;
   googleMeetUrl?: string;
+  googleCalendarOwnerEmail?: string;
   googleCalendarStatus?: "synced" | "pending" | "error";
   googleCalendarError?: string;
   googleCalendarSyncedAt?: string; // ISO string

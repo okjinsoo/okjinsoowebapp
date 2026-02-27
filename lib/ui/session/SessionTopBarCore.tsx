@@ -555,6 +555,10 @@ export default function SessionTopBarCore({ role, token, index }: Props) {
         );
         return;
       }
+      if (calendarStatus === "pending" && calendarError) {
+        alert(calendarError);
+        return;
+      }
       alert("아직 Meet 링크가 준비되지 않았어요. 잠시 뒤 다시 시도해주세요.");
       return;
     }

@@ -29,6 +29,10 @@ function text(v: unknown): string {
   return typeof v === "string" ? v.trim() : "";
 }
 
+function normalizeEmail(v: unknown): string {
+  return text(v).toLowerCase();
+}
+
 function isValidEmail(email: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
@@ -150,6 +154,11 @@ function shouldCreateFor(next: Session): boolean {
   const iso = safeIso(next.displayAt);
   if (!iso) return false;
   return new Date(iso).getTime() >= Date.now() - CREATE_PAST_GRACE_MS;
+}
+
+function isPermissionOrNotFound(message: string): boolean {
+  const msg = text(message);
+  return msg.startsWith("403") || msg.startsWith("404");
 }
 
 function buildEventPayload(args: {
@@ -321,8 +330,13 @@ async function runSync(args: SyncArgs): Promise<void> {
 
   const auth = loadAuthSession();
   const providerToken = text(auth?.providerAccessToken);
+  const currentEmail = normalizeEmail(auth?.email);
   if (!providerToken) {
     applySyncErrorToTargets("구글 캘린더 권한 토큰이 없습니다. 로그아웃 후 다시 로그인 해주세요.");
+    return;
+  }
+  if (!currentEmail) {
+    applySyncErrorToTargets("현재 로그인 이메일을 확인할 수 없습니다. 다시 로그인 해주세요.");
     return;
   }
 
@@ -335,6 +349,8 @@ async function runSync(args: SyncArgs): Promise<void> {
   for (const prev of args.previous) {
     if (nextById.has(prev.id)) continue;
     if (!prev.googleCalendarEventId) continue;
+    const ownerEmail = normalizeEmail(prev.googleCalendarOwnerEmail);
+    if (ownerEmail && ownerEmail !== currentEmail) continue;
     try {
       await deleteEvent({ token: providerToken, eventId: prev.googleCalendarEventId });
     } catch (err) {
@@ -363,27 +379,74 @@ async function runSync(args: SyncArgs): Promise<void> {
     }
 
     const teacher = student.teacherId ? teacherById.get(student.teacherId) ?? null : null;
+    const teacherEmail = normalizeEmail(teacher?.email);
+    const explicitOwner = normalizeEmail(next.googleCalendarOwnerEmail);
+    const ownerEmail = explicitOwner || teacherEmail || currentEmail;
+
+    if (!ownerEmail) {
+      patches.push({
+        id: next.id,
+        patch: {
+          googleCalendarStatus: "error",
+          googleCalendarError: "캘린더 소유자 이메일을 결정하지 못했습니다.",
+        },
+      });
+      continue;
+    }
+
+    if (ownerEmail !== currentEmail) {
+      patches.push({
+        id: next.id,
+        patch: {
+          googleCalendarOwnerEmail: ownerEmail,
+          googleCalendarStatus: next.googleCalendarEventId ? next.googleCalendarStatus ?? "pending" : "pending",
+          googleCalendarError: next.googleCalendarEventId
+            ? next.googleCalendarError ?? ""
+            : "담당 선생님 계정으로 로그인하면 Meet 링크가 생성됩니다.",
+        },
+      });
+      continue;
+    }
 
     try {
-      const result = next.googleCalendarEventId
-        ? await updateEvent({
-            token: providerToken,
-            session: next,
-            student,
-            teacher,
-          })
-        : await createEvent({
+      let result: { eventId: string | null; meetUrl: string | null };
+      if (next.googleCalendarEventId) {
+        try {
+          result = await updateEvent({
             token: providerToken,
             session: next,
             student,
             teacher,
           });
+        } catch (err) {
+          const message = err instanceof Error ? err.message : "Google Calendar 동기화 실패";
+          if (!explicitOwner && isPermissionOrNotFound(message)) {
+            // 과거 다른 계정에서 만든 eventId가 저장된 경우, 현재 소유자로 새 이벤트 재생성
+            result = await createEvent({
+              token: providerToken,
+              session: { ...next, googleCalendarEventId: undefined },
+              student,
+              teacher,
+            });
+          } else {
+            throw err;
+          }
+        }
+      } else {
+        result = await createEvent({
+          token: providerToken,
+          session: next,
+          student,
+          teacher,
+        });
+      }
 
       patches.push({
         id: next.id,
         patch: {
           googleCalendarEventId: result.eventId ?? undefined,
           googleMeetUrl: result.meetUrl ?? undefined,
+          googleCalendarOwnerEmail: ownerEmail,
           googleCalendarStatus: "synced",
           googleCalendarError: "",
           googleCalendarSyncedAt: new Date().toISOString(),
