@@ -123,7 +123,11 @@ export function buildGoogleAuthUrl(redirectTo: string): string | null {
   const url = new URL("/auth/v1/authorize", cfg.url);
   url.searchParams.set("provider", "google");
   url.searchParams.set("redirect_to", redirectTo);
-  url.searchParams.set("scopes", "email profile https://www.googleapis.com/auth/calendar.events");
+  // 전용 캘린더(생성/조회) + 이벤트 생성/수정을 위해 calendar 전체 scope가 필요합니다.
+  url.searchParams.set(
+    "scopes",
+    "email profile https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/calendar.events"
+  );
   url.searchParams.set("prompt", "select_account consent");
   url.searchParams.set("access_type", "offline");
   url.searchParams.set("include_granted_scopes", "true");
