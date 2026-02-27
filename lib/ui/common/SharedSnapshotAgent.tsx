@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { AUTH_EVENT } from "@/lib/auth/supabaseAuth";
+import { AUTH_EVENT, loadAuthSession } from "@/lib/auth/supabaseAuth";
 import { BROWSER_STORAGE_EVENT } from "@/lib/storage/browserStorage";
 import { pullSharedSnapshotAndHydrateWithOptions, pushSharedSnapshot } from "@/lib/storage/sharedSnapshot";
 import { syncGoogleCalendarForExistingSessions } from "@/lib/storage/sessions";
@@ -27,11 +27,22 @@ export default function SharedSnapshotAgent() {
   const pendingStateKvRef = useRef<Record<string, string>>({});
 
   useEffect(() => {
+    const trySyncCalendarForCurrentLogin = () => {
+      const auth = loadAuthSession();
+      if (!auth?.email) return;
+      if (!auth?.providerAccessToken) return;
+      syncGoogleCalendarForExistingSessions();
+    };
+
     const hydrate = async (forceRemote = false) => {
       if (hydratingRef.current) return;
       hydratingRef.current = true;
       try {
-        await pullSharedSnapshotAndHydrateWithOptions({ forceRemote });
+        const snapshot = await pullSharedSnapshotAndHydrateWithOptions({ forceRemote });
+        if (snapshot) {
+          // 원격 반영으로 sessions가 바뀐 경우(이메일 변경 포함)도 자동 재동기화
+          trySyncCalendarForCurrentLogin();
+        }
       } catch (err) {
         console.error("공유 스냅샷 하이드레이션 실패(agent):", err);
       } finally {
@@ -92,9 +103,7 @@ export default function SharedSnapshotAgent() {
     };
 
     const onAuthChanged = () => {
-      void hydrate(true).then(() => {
-        syncGoogleCalendarForExistingSessions();
-      });
+      void hydrate(true);
     };
 
     const onFocus = () => {
@@ -107,9 +116,7 @@ export default function SharedSnapshotAgent() {
       }
     };
 
-    void hydrate().then(() => {
-      syncGoogleCalendarForExistingSessions();
-    });
+    void hydrate();
     const intervalId = window.setInterval(() => {
       void hydrate(true);
     }, REMOTE_PULL_INTERVAL_MS);
