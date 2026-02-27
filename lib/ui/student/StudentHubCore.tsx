@@ -1,6 +1,7 @@
 "use client";
 
 import { BROWSER_STORAGE_EVENT, browserStorage } from "@/lib/storage/browserStorage";
+import { loadAuthSession } from "@/lib/auth/supabaseAuth";
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -15,6 +16,7 @@ import {
   requestCalendarResyncForStudentIds,
   saveSessions,
   sessionsByStudent,
+  syncGoogleCalendarForExistingSessions,
   upsertSession,
 } from "@/lib/storage/sessions";
 import {
@@ -484,9 +486,49 @@ export default function StudentHubCore({
     if (!student) return;
     setCalendarSyncing(true);
     setCalendarSyncMessage("");
+    const normalizeEmail = (v: string | null | undefined) => (v ?? "").trim().toLowerCase();
+    const auth = loadAuthSession();
+    const currentEmail = normalizeEmail(auth?.email);
+    const ownerEmail = normalizeEmail(teacherEmail === "-" ? "" : teacherEmail);
+    const hasProviderToken = Boolean((auth?.providerAccessToken ?? "").trim());
+
+    if (!hasProviderToken) {
+      setCalendarSyncing(false);
+      setCalendarSyncMessage("실패: 구글 캘린더 권한 토큰이 없습니다. 홈에서 로그아웃 후 다시 로그인해주세요.");
+      return;
+    }
+
     requestCalendarResyncForStudentIds([student.id]);
-    setCalendarSyncMessage("회차 동기화 요청을 보냈어요. 1~3초 뒤 캘린더/Meet 상태가 갱신됩니다.");
-    window.setTimeout(() => setCalendarSyncing(false), 350);
+    // 이미 pending 상태여도 재시도가 돌도록 직접 한 번 더 트리거
+    syncGoogleCalendarForExistingSessions();
+
+    if (!ownerEmail) {
+      setCalendarSyncMessage("요청은 보냈지만 담당 선생님 이메일이 없어 생성할 수 없습니다. 선생님 이메일을 먼저 확인해주세요.");
+    } else if (currentEmail && currentEmail !== ownerEmail) {
+      setCalendarSyncMessage(
+        `요청은 저장됐지만 현재 로그인 계정(${currentEmail})은 담당 선생님(${ownerEmail})이 아니어서 실제 생성은 안 됩니다. 담당 선생님 계정으로 로그인 후 다시 눌러주세요.`
+      );
+    } else {
+      setCalendarSyncMessage("회차 동기화 요청을 보냈어요. 1~3초 뒤 캘린더/Meet 상태가 갱신됩니다.");
+    }
+
+    window.setTimeout(() => {
+      const rows = loadSessions().filter((s) => s.studentId === student.id);
+      const synced = rows.filter((s) => s.googleCalendarStatus === "synced").length;
+      const pendingCount = rows.filter((s) => s.googleCalendarStatus === "pending").length;
+      const errored = rows.filter((s) => s.googleCalendarStatus === "error");
+      const firstError = errored.find((s) => (s.googleCalendarError ?? "").trim())?.googleCalendarError ?? "";
+      if (errored.length > 0) {
+        setCalendarSyncMessage(
+          `동기화 결과: 성공 ${synced}개, 대기 ${pendingCount}개, 오류 ${errored.length}개. ${
+            firstError ? `오류: ${firstError}` : ""
+          }`
+        );
+      } else {
+        setCalendarSyncMessage(`동기화 결과: 성공 ${synced}개, 대기 ${pendingCount}개, 오류 0개.`);
+      }
+      setCalendarSyncing(false);
+    }, 2200);
   }
 
   function resolveScheduleStartIndexByDate(targetDate: string): number {
