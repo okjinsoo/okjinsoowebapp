@@ -121,10 +121,14 @@ export async function upsertRoleBinding(args: {
   if (!normalizedEmail) return;
 
   const accessToken = await getAccessToken(args.accessToken);
-  if (!accessToken) return;
+  if (!accessToken) {
+    throw new Error("role_bindings upsert failed: auth token unavailable");
+  }
 
   const cfg = getSupabaseConfig();
-  if (!cfg) return;
+  if (!cfg) {
+    throw new Error("role_bindings upsert failed: supabase config unavailable");
+  }
 
   const headers = buildHeaders({
     accessToken,
@@ -186,10 +190,14 @@ export async function deleteRoleBinding(args: {
   if (!normalizedEmail) return;
 
   const accessToken = await getAccessToken(args.accessToken);
-  if (!accessToken) return;
+  if (!accessToken) {
+    throw new Error("role_bindings delete failed: auth token unavailable");
+  }
 
   const cfg = getSupabaseConfig();
-  if (!cfg) return;
+  if (!cfg) {
+    throw new Error("role_bindings delete failed: supabase config unavailable");
+  }
 
   const headers = buildHeaders({ accessToken });
   if (!headers) return;

@@ -2,6 +2,8 @@
 
 import { fetchRoleBinding } from "@/lib/auth/roleBindings";
 import { browserStorage } from "@/lib/storage/browserStorage";
+import { loadStudents } from "@/lib/storage/students";
+import { loadTeachers } from "@/lib/storage/teachers";
 
 export type UserRole = "guest" | "student" | "teacher" | "admin";
 export type RequiredRole = "student" | "teacher" | "admin";
@@ -15,6 +17,22 @@ type RoleCacheMap = Record<string, { role: UserRole; ts: number }>;
 
 function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
+}
+
+function resolveLocalRoleByEmail(email: string): UserRole | null {
+  if (!email) return null;
+
+  const teachers = loadTeachers();
+  if (teachers.some((teacher) => normalizeEmail(teacher.email ?? "") === email)) {
+    return "teacher";
+  }
+
+  const students = loadStudents();
+  if (students.some((student) => normalizeEmail(student.googleEmail ?? "") === email)) {
+    return "student";
+  }
+
+  return null;
 }
 
 export function getAdminEmailSet(): Set<string> {
@@ -82,8 +100,22 @@ export async function resolveUserRole(args: {
       saveCachedRole(normalized, role);
       return role;
     }
+
+    // role_bindings 지연 반영 시 로컬 데이터로 1차 보강
+    const localRole = resolveLocalRoleByEmail(normalized);
+    if (localRole) {
+      saveCachedRole(normalized, localRole);
+      return localRole;
+    }
+
     clearCachedRole(normalized);
   } catch {
+    const localRole = resolveLocalRoleByEmail(normalized);
+    if (localRole) {
+      saveCachedRole(normalized, localRole);
+      return localRole;
+    }
+
     const cached = loadCachedRole(normalized);
     if (cached) return cached;
     return "guest";
