@@ -312,17 +312,19 @@ async function deleteEvent(args: { token: string; eventId: string }): Promise<vo
 async function runSync(args: SyncArgs): Promise<void> {
   const previousById = new Map(args.previous.map((s) => [s.id, s] as const));
   const nextById = new Map(args.next.map((s) => [s.id, s] as const));
-  const targetSessions = args.next.filter((next) => {
+  const provisionalTargets = args.next.filter((next) => {
     const prev = previousById.get(next.id);
+    const status = text(next.googleCalendarStatus);
+    if (status === "pending" || status === "error") return true;
     if (!sessionNeedsUpsert(prev, next)) return false;
     if (!next.googleCalendarEventId && !shouldCreateFor(next)) return false;
     return true;
   });
 
   const applySyncErrorToTargets = (message: string) => {
-    if (targetSessions.length === 0) return;
+    if (provisionalTargets.length === 0) return;
     args.applyPatches(
-      targetSessions.map((session) => ({
+      provisionalTargets.map((session) => ({
         id: session.id,
         patch: {
           googleCalendarStatus: "error",
@@ -349,6 +351,24 @@ async function runSync(args: SyncArgs): Promise<void> {
   const studentById = new Map(students.map((s) => [s.id, s] as const));
   const teacherById = new Map(teachers.map((t) => [t.id, t] as const));
   const patches: SessionPatch[] = [];
+
+  // 이메일 변경처럼 "세션 행 자체는 안 바뀌었지만 소유자가 달라진 경우"를 포함해서 동기화 대상 선정
+  const targetSessions = args.next.filter((next) => {
+    const prev = previousById.get(next.id);
+    const status = text(next.googleCalendarStatus);
+    const statusDriven = status === "pending" || status === "error";
+    const diffDriven = sessionNeedsUpsert(prev, next);
+
+    const student = studentById.get(next.studentId);
+    const teacher = student?.teacherId ? teacherById.get(student.teacherId) ?? null : null;
+    const expectedOwnerEmail = normalizeEmail(teacher?.email);
+    const savedOwnerEmail = normalizeEmail(next.googleCalendarOwnerEmail);
+    const ownerDrift = Boolean(expectedOwnerEmail) && expectedOwnerEmail !== savedOwnerEmail;
+
+    if (!statusDriven && !diffDriven && !ownerDrift) return false;
+    if (!next.googleCalendarEventId && !shouldCreateFor(next) && !statusDriven && !ownerDrift) return false;
+    return true;
+  });
 
   for (const prev of args.previous) {
     if (nextById.has(prev.id)) continue;
