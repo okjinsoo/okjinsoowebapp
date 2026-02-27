@@ -335,6 +335,8 @@ type CandidateEvent = {
   meetUrl: string | null;
   startIso: string | null;
   summary: string;
+  description: string;
+  sessionId: string;
   createdAtMs: number;
 };
 
@@ -350,14 +352,26 @@ function parseCandidateEvents(body: unknown): CandidateEvent[] {
     const eventId = text(row.id);
     if (!eventId) continue;
     const summary = text(row.summary);
+    const description = text(row.description);
     const createdAtMs = Date.parse(text(row.created)) || 0;
     const startObj = row.start && typeof row.start === "object" ? (row.start as Record<string, unknown>) : null;
     const startIso = safeIso(text(startObj?.dateTime));
+    const extendedProps =
+      row.extendedProperties && typeof row.extendedProperties === "object"
+        ? (row.extendedProperties as Record<string, unknown>)
+        : null;
+    const privateProps =
+      extendedProps?.private && typeof extendedProps.private === "object"
+        ? (extendedProps.private as Record<string, unknown>)
+        : null;
+    const sessionId = text(privateProps?.tutorweb_session_id);
     out.push({
       eventId,
       meetUrl: extractMeetUrl(row),
       startIso,
       summary,
+      description,
+      sessionId,
       createdAtMs,
     });
   }
@@ -400,6 +414,11 @@ async function findSignatureEvents(args: {
       const eventMs = new Date(event.startIso).getTime();
       return Math.abs(eventMs - startMs) <= DUPLICATE_TIME_WINDOW_MS;
     })
+    .filter(
+      (event) =>
+        event.sessionId === args.session.id ||
+        event.description.includes("옥진수학 자동 생성 일정")
+    )
     .sort((a, b) => {
       const aMeet = a.meetUrl ? 1 : 0;
       const bMeet = b.meetUrl ? 1 : 0;
@@ -915,6 +934,38 @@ async function runSync(args: SyncArgs): Promise<void> {
             sessionId: sessionForOwner.id,
             eventId: result.eventId,
           });
+        }
+      }
+
+      // 같은 회차가 target 캘린더 외(primary 포함)에 남아 있으면 정리
+      const staleCalendarIds = new Set<string>();
+      staleCalendarIds.add("primary");
+      staleCalendarIds.add(calendarIdOf(prev));
+      staleCalendarIds.add(calendarIdOf(next));
+      staleCalendarIds.delete("");
+      staleCalendarIds.delete(sessionCalendarId);
+      for (const staleCalendarId of staleCalendarIds) {
+        try {
+          const staleEvents = await findSignatureEvents({
+            token: providerToken,
+            calendarId: staleCalendarId,
+            session: sessionForOwner,
+            student,
+          });
+          for (const stale of staleEvents) {
+            try {
+              await deleteEvent({
+                token: providerToken,
+                calendarId: staleCalendarId,
+                eventId: stale.eventId,
+                sendUpdates: "none",
+              });
+            } catch (err) {
+              console.error("Google Calendar 비대상 캘린더 중복 정리 실패:", err);
+            }
+          }
+        } catch (err) {
+          console.error("Google Calendar 비대상 캘린더 중복 조회 실패:", err);
         }
       }
 
