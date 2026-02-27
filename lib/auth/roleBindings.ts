@@ -1,4 +1,4 @@
-import { ensureAuthSession, getSupabaseConfig, loadAuthSession } from "@/lib/auth/supabaseAuth";
+import { ensureAuthSession, forceRefreshAuthSession, getSupabaseConfig, loadAuthSession } from "@/lib/auth/supabaseAuth";
 
 export type RoleBindingRole = "student" | "teacher";
 
@@ -10,9 +10,22 @@ function normalizeEmail(email: string | null | undefined): string {
   return (email ?? "").trim().toLowerCase();
 }
 
-async function getAccessToken(explicitToken?: string | null | undefined): Promise<string | null> {
+function isJwtAuthError(detail: string): boolean {
+  const lower = detail.toLowerCase();
+  return lower.includes("jwt expired") || lower.includes("invalid jwt") || lower.includes("jwt");
+}
+
+async function getAccessToken(
+  explicitToken?: string | null | undefined,
+  options?: { forceRefresh?: boolean }
+): Promise<string | null> {
   const direct = (explicitToken ?? "").trim();
   const current = loadAuthSession();
+
+  if (options?.forceRefresh) {
+    const refreshed = await forceRefreshAuthSession();
+    if (refreshed?.accessToken) return refreshed.accessToken;
+  }
 
   // 외부에서 전달된 별도 토큰(세션 토큰과 다름)이면 그대로 사용
   if (direct && direct !== (current?.accessToken ?? "")) return direct;
@@ -64,10 +77,29 @@ export async function fetchRoleBinding(args: {
   url.searchParams.set("email", `eq.${normalizedEmail}`);
   url.searchParams.set("limit", "1");
 
-  const res = await fetch(url.toString(), {
-    method: "GET",
-    headers,
-  });
+  const execute = async (reqHeaders: Record<string, string>) =>
+    fetch(url.toString(), {
+      method: "GET",
+      headers: reqHeaders,
+    });
+
+  let res = await execute(headers);
+  if (!res.ok && res.status === 401) {
+    const firstText = await res.text();
+    if (isJwtAuthError(firstText)) {
+      const retryToken = await getAccessToken(args.accessToken, { forceRefresh: true });
+      if (retryToken && retryToken !== accessToken) {
+        const retryHeaders = buildHeaders({ accessToken: retryToken });
+        if (retryHeaders) {
+          res = await execute(retryHeaders);
+        }
+      } else {
+        throw new Error(`role_bindings fetch failed: 401 ${firstText}`);
+      }
+    } else {
+      throw new Error(`role_bindings fetch failed: 401 ${firstText}`);
+    }
+  }
 
   if (!res.ok) {
     const text = await res.text();
@@ -104,16 +136,41 @@ export async function upsertRoleBinding(args: {
   const url = new URL("/rest/v1/role_bindings", cfg.url);
   url.searchParams.set("on_conflict", "email");
 
-  const res = await fetch(url.toString(), {
-    method: "POST",
-    headers,
-    body: JSON.stringify([
-      {
-        email: normalizedEmail,
-        role: args.role,
-      },
-    ]),
-  });
+  const body = JSON.stringify([
+    {
+      email: normalizedEmail,
+      role: args.role,
+    },
+  ]);
+
+  const execute = async (reqHeaders: Record<string, string>) =>
+    fetch(url.toString(), {
+      method: "POST",
+      headers: reqHeaders,
+      body,
+    });
+
+  let res = await execute(headers);
+  if (!res.ok && res.status === 401) {
+    const firstText = await res.text();
+    if (isJwtAuthError(firstText)) {
+      const retryToken = await getAccessToken(args.accessToken, { forceRefresh: true });
+      if (retryToken && retryToken !== accessToken) {
+        const retryHeaders = buildHeaders({
+          accessToken: retryToken,
+          contentType: true,
+          preferMerge: true,
+        });
+        if (retryHeaders) {
+          res = await execute(retryHeaders);
+        }
+      } else {
+        throw new Error(`role_bindings upsert failed: 401 ${firstText}`);
+      }
+    } else {
+      throw new Error(`role_bindings upsert failed: 401 ${firstText}`);
+    }
+  }
 
   if (!res.ok) {
     const text = await res.text();
@@ -140,10 +197,29 @@ export async function deleteRoleBinding(args: {
   const url = new URL("/rest/v1/role_bindings", cfg.url);
   url.searchParams.set("email", `eq.${normalizedEmail}`);
 
-  const res = await fetch(url.toString(), {
-    method: "DELETE",
-    headers,
-  });
+  const execute = async (reqHeaders: Record<string, string>) =>
+    fetch(url.toString(), {
+      method: "DELETE",
+      headers: reqHeaders,
+    });
+
+  let res = await execute(headers);
+  if (!res.ok && res.status === 401) {
+    const firstText = await res.text();
+    if (isJwtAuthError(firstText)) {
+      const retryToken = await getAccessToken(args.accessToken, { forceRefresh: true });
+      if (retryToken && retryToken !== accessToken) {
+        const retryHeaders = buildHeaders({ accessToken: retryToken });
+        if (retryHeaders) {
+          res = await execute(retryHeaders);
+        }
+      } else {
+        throw new Error(`role_bindings delete failed: 401 ${firstText}`);
+      }
+    } else {
+      throw new Error(`role_bindings delete failed: 401 ${firstText}`);
+    }
+  }
 
   if (!res.ok) {
     const text = await res.text();
