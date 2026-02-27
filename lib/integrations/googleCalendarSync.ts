@@ -187,6 +187,14 @@ function shouldCreateFor(next: Session): boolean {
   return new Date(iso).getTime() >= Date.now() - CREATE_PAST_GRACE_MS;
 }
 
+function hasDisplayAtChanged(previous: Session | undefined, next: Session): boolean {
+  if (!previous) return false;
+  const prevIso = safeIso(previous.displayAt);
+  const nextIso = safeIso(next.displayAt);
+  if (prevIso && nextIso) return prevIso !== nextIso;
+  return previous.displayAt !== next.displayAt;
+}
+
 function isPermissionOrNotFound(message: string): boolean {
   const msg = text(message);
   return msg.startsWith("403") || msg.startsWith("404");
@@ -510,6 +518,7 @@ async function runSync(args: SyncArgs): Promise<void> {
   });
 
   for (const next of orderedTargets) {
+    const prev = previousById.get(next.id);
     const student = studentById.get(next.studentId);
     if (!student) {
       patches.push({
@@ -573,6 +582,50 @@ async function runSync(args: SyncArgs): Promise<void> {
             googleMeetUrl: undefined,
           }
         : next;
+
+      // 시간표 변경 등으로 회차 시간이 바뀐 경우:
+      // 1) 이전 시간대에 남아있을 수 있는 기존 이벤트 정리
+      // 2) 추적된 eventId도 재생성 흐름으로 강제 전환
+      if (prev && hasDisplayAtChanged(prev, next)) {
+        try {
+          const oldSlotEvents = await findSignatureEvents({
+            token: providerToken,
+            session: prev,
+            student,
+          });
+          for (const oldEvent of oldSlotEvents) {
+            try {
+              await deleteEvent({
+                token: providerToken,
+                eventId: oldEvent.eventId,
+                sendUpdates: "none",
+              });
+            } catch (err) {
+              console.error("Google Calendar 이전 시간대 이벤트 정리 실패:", err);
+            }
+          }
+        } catch (err) {
+          console.error("Google Calendar 이전 시간대 이벤트 조회 실패:", err);
+        }
+
+        if (sessionForOwner.googleCalendarEventId) {
+          try {
+            await deleteEvent({
+              token: providerToken,
+              eventId: sessionForOwner.googleCalendarEventId,
+              sendUpdates: "none",
+            });
+          } catch (err) {
+            console.error("Google Calendar 기존 이벤트 재생성 전 삭제 실패:", err);
+          }
+        }
+
+        sessionForOwner = {
+          ...sessionForOwner,
+          googleCalendarEventId: undefined,
+          googleMeetUrl: undefined,
+        };
+      }
 
       if (!sessionForOwner.googleCalendarEventId) {
         const recentEventId = loadRecentCreatedEvent({
