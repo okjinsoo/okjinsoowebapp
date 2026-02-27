@@ -644,7 +644,14 @@ export default function SessionTopBarCore({ role, token, index }: Props) {
       {/* Modal */}
       {open && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="w-full max-w-lg rounded bg-white p-4 shadow">
+          <div
+            className="w-full max-w-lg rounded p-4 shadow"
+            style={{
+              background: "var(--surface-bg)",
+              border: "1px solid var(--surface-border)",
+              color: "var(--foreground)",
+            }}
+          >
             <div className="card-title">회차 조정</div>
 
             <div className="mt-3 grid gap-4">
@@ -670,7 +677,9 @@ export default function SessionTopBarCore({ role, token, index }: Props) {
                   </button>
                 </div>
 
-                <div className="text-xs text-neutral-500">• 같은 버튼을 한 번 더 누르면 해제됩니다.</div>
+                <div className="text-xs" style={{ color: "var(--text-muted)" }}>
+                  • 같은 버튼을 한 번 더 누르면 해제됩니다.
+                </div>
               </div>
 
               {/* 변경 */}
@@ -689,6 +698,7 @@ export default function SessionTopBarCore({ role, token, index }: Props) {
                     <button
                       type="button"
                       className="rounded border border-neutral-300 px-2 py-1 text-xs"
+                      style={{ borderColor: "var(--control-border)" }}
                       onClick={resetOverrideOnly}
                     >
                       초기화
@@ -706,6 +716,7 @@ export default function SessionTopBarCore({ role, token, index }: Props) {
                     <div className="grid grid-cols-2 gap-2">
                       <input
                         className="rounded border border-neutral-300 px-2 py-1"
+                        style={{ borderColor: "var(--control-border)" }}
                         type="date"
                         value={draftOverrideDate}
                         onChange={(e) => setDraftOverrideDate(e.target.value)}
@@ -714,6 +725,7 @@ export default function SessionTopBarCore({ role, token, index }: Props) {
                       <div className="flex items-center gap-2">
                         <select
                           className="rounded border border-neutral-300 px-2 py-1"
+                          style={{ borderColor: "var(--control-border)" }}
                           value={draftOverrideHour === null ? "" : draftOverrideHour}
                           onChange={(e) => {
                             const v = e.target.value;
@@ -728,10 +740,13 @@ export default function SessionTopBarCore({ role, token, index }: Props) {
                           ))}
                         </select>
 
-                        <span className="text-sm text-neutral-600">:</span>
+                        <span className="text-sm" style={{ color: "var(--text-muted)" }}>
+                          :
+                        </span>
 
                         <select
                           className="rounded border border-neutral-300 px-2 py-1"
+                          style={{ borderColor: "var(--control-border)" }}
                           value={draftOverrideMinute === null ? "" : draftOverrideMinute}
                           onChange={(e) => {
                             const v = e.target.value;
@@ -749,7 +764,9 @@ export default function SessionTopBarCore({ role, token, index }: Props) {
                       </div>
                     </div>
 
-                    <div className="text-xs text-neutral-500">• 분은 00 또는 30만 선택할 수 있습니다.</div>
+                    <div className="text-xs" style={{ color: "var(--text-muted)" }}>
+                      • 분은 00 또는 30만 선택할 수 있습니다.
+                    </div>
                   </div>
                 )}
               </div>
@@ -770,6 +787,7 @@ export default function SessionTopBarCore({ role, token, index }: Props) {
                     <button
                       type="button"
                       className="rounded border border-neutral-300 px-2 py-1 text-xs"
+                      style={{ borderColor: "var(--control-border)" }}
                       onClick={resetCarryOnly}
                     >
                       초기화
@@ -784,6 +802,7 @@ export default function SessionTopBarCore({ role, token, index }: Props) {
                     <div className="flex items-center gap-6">
                       <button
                         className="rounded border border-neutral-300 px-2 py-1 text-sm"
+                        style={{ borderColor: "var(--control-border)" }}
                         onClick={() => setDraftCarry((x) => Math.max(0, Math.floor((x ?? 0) - 1)))}
                         type="button"
                       >
@@ -794,6 +813,7 @@ export default function SessionTopBarCore({ role, token, index }: Props) {
 
                       <button
                         className="rounded border border-neutral-300 px-2 py-1 text-sm"
+                        style={{ borderColor: "var(--control-border)" }}
                         onClick={() => setDraftCarry((x) => Math.max(0, Math.floor((x ?? 0) + 1)))}
                         type="button"
                       >
@@ -813,6 +833,7 @@ export default function SessionTopBarCore({ role, token, index }: Props) {
                     </div>
                     <input
                       className="rounded border border-neutral-300 px-2 py-1"
+                      style={{ borderColor: "var(--control-border)" }}
                       value={draftReason}
                       onChange={(e) => setDraftReason(e.target.value)}
                       placeholder="사유를 입력해주세요"
@@ -823,6 +844,7 @@ export default function SessionTopBarCore({ role, token, index }: Props) {
                     <div className="text-sm font-semibold">기록(URL)</div>
                     <input
                       className="rounded border border-neutral-300 px-2 py-1 placeholder:text-neutral-400"
+                      style={{ borderColor: "var(--control-border)" }}
                       type="url"
                       value={draftRecord}
                       onChange={(e) => setDraftRecord(e.target.value)}
@@ -834,10 +856,10 @@ export default function SessionTopBarCore({ role, token, index }: Props) {
             </div>
 
             <div className="mt-4 flex flex-wrap justify-end gap-2">
-              <button className="rounded border border-neutral-300 px-3 py-1" onClick={onCancel}>
+              <button className="btn" onClick={onCancel}>
                 취소
               </button>
-              <button className="rounded bg-black px-3 py-1 text-white" onClick={onSave}>
+              <button className="btn btn-bold" onClick={onSave}>
                 저장
               </button>
             </div>

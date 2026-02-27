@@ -1916,7 +1916,17 @@ export default function StudentHubCore({
             zIndex: 50,
           }}
         >
-          <div style={{ width: "100%", maxWidth: 350, background: "var(--surface-bg)", borderRadius: 12, padding: 12 }}>
+          <div
+            style={{
+              width: "100%",
+              maxWidth: 350,
+              background: "var(--surface-bg)",
+              border: "1px solid var(--surface-border)",
+              color: "var(--foreground)",
+              borderRadius: 12,
+              padding: 12,
+            }}
+          >
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <div style={{ fontWeight: 900 }}>
                 {editingRecordId ? "수업 현황 수정" : "추가 결제 등록"}
@@ -1945,7 +1955,7 @@ export default function StudentHubCore({
                 />
               </div>
 
-              <div style={{ color: "#6b7280"}}>
+              <div style={{ color: "var(--text-muted)" }}>
                 적용 회차 :{" "}
                 {Number.isFinite(editingRange.end) && editingRange.end >= editingRange.start
                   ? `${editingRange.start}회차 ~ ${editingRange.end}회차`
@@ -2022,7 +2032,17 @@ export default function StudentHubCore({
             zIndex: 60,
           }}
         >
-          <div style={{ width: "100%", maxWidth: 380, background: "var(--surface-bg)", borderRadius: 12, padding: 12 }}>
+          <div
+            style={{
+              width: "100%",
+              maxWidth: 380,
+              background: "var(--surface-bg)",
+              border: "1px solid var(--surface-border)",
+              color: "var(--foreground)",
+              borderRadius: 12,
+              padding: 12,
+            }}
+          >
             <div style={{ fontWeight: 900 }}>
               {refundMode === "process" ? "환불 처리" : "환불 요청"}
             </div>
@@ -2192,7 +2212,17 @@ export default function StudentHubCore({
             zIndex: 70,
           }}
         >
-          <div style={{ width: "100%", maxWidth: 420, background: "var(--surface-bg)", borderRadius: 12, padding: 12 }}>
+          <div
+            style={{
+              width: "100%",
+              maxWidth: 420,
+              background: "var(--surface-bg)",
+              border: "1px solid var(--surface-border)",
+              color: "var(--foreground)",
+              borderRadius: 12,
+              padding: 12,
+            }}
+          >
             <div style={{ fontWeight: 900 }}>수업 시간 변경</div>
 
             <div style={{ display: "grid", gap: 10, marginTop: 10 }}>
@@ -2235,9 +2265,9 @@ export default function StudentHubCore({
                         style={{
                           padding: "6px 10px",
                           borderRadius: 999,
-                          border: "1px solid #ccc",
-                          background: on ? "#111" : "#fff",
-                          color: on ? "#fff" : "#111",
+                          border: on ? "1px solid #2563eb" : "1px solid var(--control-border)",
+                          background: on ? "#2563eb" : "var(--surface-bg)",
+                          color: on ? "#fff" : "var(--foreground)",
                         }}
                         aria-pressed={on}
                       >
@@ -2292,7 +2322,7 @@ export default function StudentHubCore({
                 </div>
               </div>
 
-              <div style={{ color: "#6b7280"}}>
+              <div style={{ color: "var(--text-muted)" }}>
                 현재 적용중인 시간표 : {currentScheduleText}
               </div>
 

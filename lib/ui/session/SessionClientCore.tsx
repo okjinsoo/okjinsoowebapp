@@ -380,7 +380,7 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
                       style={{
                         padding: "6px 10px",
                         borderRadius: 8,
-                        border: "1px solid #ddd",
+                        border: "1px solid var(--control-border)",
                         background: "var(--surface-bg)",
                         cursor: "pointer",
                         height: 32,
@@ -394,7 +394,7 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
                       style={{
                         padding: "6px 10px",
                         borderRadius: 8,
-                        border: "1px solid #ddd",
+                        border: "1px solid var(--control-border)",
                         background: "var(--surface-bg)",
                         cursor: "pointer",
                         height: 32,
@@ -521,7 +521,7 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
         })}
 
         {lectureLeafIds.length === 0 ? (
-          <div style={{ padding: 12, border: "1px dashed #ccc", borderRadius: 12, opacity: 0.75 }}>
+          <div style={{ padding: 12, border: "1px dashed var(--control-border)", borderRadius: 12, opacity: 0.75 }}>
             아직 이 회차에 배치된 강의가 없습니다.
           </div>
         ) : null}
@@ -563,7 +563,7 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
                 width: "100%",
                 padding: "8px 10px",
                 borderRadius: 10,
-                border: "1px solid #ddd",
+                border: "1px solid var(--control-border)",
               }}
             />
             <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
@@ -595,7 +595,7 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
                 style={{
                   padding: "8px 12px",
                   borderRadius: 10,
-                  border: "1px solid #ddd",
+                  border: "1px solid var(--control-border)",
                   background: "var(--surface-bg)",
                 }}
               >
@@ -642,7 +642,7 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
                 width: "100%",
                 padding: "8px 10px",
                 borderRadius: 10,
-                border: "1px solid #ddd",
+                border: "1px solid var(--control-border)",
               }}
             />
             <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
@@ -670,7 +670,7 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
                 style={{
                   padding: "8px 12px",
                   borderRadius: 10,
-                  border: "1px solid #ddd",
+                  border: "1px solid var(--control-border)",
                   background: "var(--surface-bg)",
                 }}
               >
@@ -712,7 +712,12 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
             <div className="card-title">강의 선택</div>
               <button
                 onClick={closePicker}
-                style={{ border: "1px solid #ddd", background: "var(--surface-bg)", borderRadius: 10, padding: "6px 10px" }}
+                style={{
+                  border: "1px solid var(--control-border)",
+                  background: "var(--surface-bg)",
+                  borderRadius: 10,
+                  padding: "6px 10px",
+                }}
               >
                 닫기
               </button>
@@ -729,7 +734,7 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
                   marginTop: 8,
                   padding: "8px 10px",
                   borderRadius: 10,
-                  border: "1px solid #ddd",
+                  border: "1px solid var(--control-border)",
                 }}
               />
               <div style={{ marginTop: 8, maxHeight: 220, overflow: "auto", display: "grid", gap: 8 }}>
@@ -757,7 +762,7 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
                           border: "1px solid var(--surface-border)",
                           borderRadius: 10,
                           padding: "8px 10px",
-                          background: disabled ? "#f3f3f3" : "#fff",
+                          background: disabled ? "var(--surface-hover)" : "var(--surface-bg)",
                           opacity: disabled ? 0.6 : 1,
                           cursor: disabled ? "not-allowed" : "pointer",
                         }}

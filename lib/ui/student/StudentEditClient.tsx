@@ -535,7 +535,7 @@ export default function StudentEditClient(props: {
             style={{
               width: "min(420px, calc(100vw - 24px))",
               background: "var(--surface-bg)",
-              border: "1px solid #ddd",
+              border: "1px solid var(--surface-border)",
               borderRadius: 10,
               padding: 14,
             }}
