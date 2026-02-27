@@ -10,7 +10,13 @@ import { loadConsultationsByStudent, saveConsultationsByStudent } from "@/lib/st
 import { buildConsultationMap, pickPrimaryConsultTag, type ConsultTag } from "@/lib/ui/session/consultationMap";
 import { findClassIndexByDatePreferFuture, findLastClassIndex } from "@/lib/ui/session/pauseHelpers";
 import { formatGrade, formatPhone, formatSchedule } from "@/lib/ui/student/formatters";
-import { loadSessions, saveSessions, sessionsByStudent, upsertSession } from "@/lib/storage/sessions";
+import {
+  loadSessions,
+  requestCalendarResyncForStudentIds,
+  saveSessions,
+  sessionsByStudent,
+  upsertSession,
+} from "@/lib/storage/sessions";
 import {
   buildBadges,
   buildBaseDatesISO,
@@ -270,6 +276,8 @@ export default function StudentHubCore({
   const [scheduleError, setScheduleError] = useState("");
   const [actionMode, setActionMode] = useState<null | "edit" | "refundRequest" | "refundProcess">(null);
   const [progressTick, setProgressTick] = useState(0);
+  const [calendarSyncing, setCalendarSyncing] = useState(false);
+  const [calendarSyncMessage, setCalendarSyncMessage] = useState("");
 
   useEffect(() => {
     const id = setTimeout(() => setMounted(true), 0);
@@ -471,6 +479,15 @@ export default function StudentHubCore({
     width: "100%",
     minWidth: 60,
   };
+
+  function onClickCalendarResync() {
+    if (!student) return;
+    setCalendarSyncing(true);
+    setCalendarSyncMessage("");
+    requestCalendarResyncForStudentIds([student.id]);
+    setCalendarSyncMessage("회차 동기화 요청을 보냈어요. 1~3초 뒤 캘린더/Meet 상태가 갱신됩니다.");
+    window.setTimeout(() => setCalendarSyncing(false), 350);
+  }
 
   function resolveScheduleStartIndexByDate(targetDate: string): number {
     if (!student) return Math.max(1, currentCount + 1);
@@ -1547,6 +1564,17 @@ export default function StudentHubCore({
           수업 목록
         </button>
 
+        {canEdit ? (
+          <button
+            className="btn btn-white"
+            onClick={onClickCalendarResync}
+            disabled={calendarSyncing}
+            title="현재 학생의 회차 캘린더/Meet를 다시 동기화"
+          >
+            {calendarSyncing ? "회차 동기화 중..." : "회차 동기화"}
+          </button>
+        ) : null}
+
         {isAdmin ? (
           <button onClick={() => openConsultNew("extension")} className="btn btn-blue" title="연장 요청">
             연장 요청
@@ -1563,6 +1591,10 @@ export default function StudentHubCore({
           </button>
         ) : null}
       </section>
+
+      {canEdit && calendarSyncMessage ? (
+        <div style={{ marginTop: 8, color: "var(--text-muted)", fontSize: 13 }}>{calendarSyncMessage}</div>
+      ) : null}
 
       <section style={{ marginTop: 12, border: "1px solid var(--surface-border)", borderRadius: 12, padding: 14, background: "var(--surface-bg)" }}>
         <div className="card-title">예정 수업</div>
