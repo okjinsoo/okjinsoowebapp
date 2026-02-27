@@ -151,8 +151,14 @@ export function parseOAuthHash(hash: string): OAuthHashResult | null {
     accessToken,
     refreshToken: p.get("refresh_token"),
     expiresIn,
-    providerToken: p.get("provider_token"),
-    providerRefreshToken: p.get("provider_refresh_token"),
+    providerToken:
+      p.get("provider_token") ??
+      p.get("provider_access_token") ??
+      p.get("google_access_token"),
+    providerRefreshToken:
+      p.get("provider_refresh_token") ??
+      p.get("provider_refresh") ??
+      p.get("google_refresh_token"),
     providerExpiresIn,
     error: p.get("error"),
     errorDescription: p.get("error_description"),

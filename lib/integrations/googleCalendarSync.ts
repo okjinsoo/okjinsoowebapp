@@ -297,11 +297,37 @@ async function deleteEvent(args: { token: string; eventId: string }): Promise<vo
 }
 
 async function runSync(args: SyncArgs): Promise<void> {
+  const previousById = new Map(args.previous.map((s) => [s.id, s] as const));
+  const nextById = new Map(args.next.map((s) => [s.id, s] as const));
+  const targetSessions = args.next.filter((next) => {
+    const prev = previousById.get(next.id);
+    if (!sessionNeedsUpsert(prev, next)) return false;
+    if (!next.googleCalendarEventId && !shouldCreateFor(next)) return false;
+    return true;
+  });
+
+  const applySyncErrorToTargets = (message: string) => {
+    if (targetSessions.length === 0) return;
+    args.applyPatches(
+      targetSessions.map((session) => ({
+        id: session.id,
+        patch: {
+          googleCalendarStatus: "error",
+          googleCalendarError: message,
+        },
+      }))
+    );
+  };
+
   const auth = loadAuthSession();
   const providerToken = text(auth?.providerAccessToken);
-  if (!providerToken) return;
+  if (!providerToken) {
+    applySyncErrorToTargets("구글 캘린더 권한 토큰이 없습니다. 로그아웃 후 다시 로그인 해주세요.");
+    return;
+  }
 
   if (auth?.providerExpiresAt && Date.now() >= auth.providerExpiresAt - 15 * 1000) {
+    applySyncErrorToTargets("구글 캘린더 권한이 만료되었습니다. 로그아웃 후 다시 로그인 해주세요.");
     return;
   }
 
@@ -309,8 +335,6 @@ async function runSync(args: SyncArgs): Promise<void> {
   const teachers = loadTeachers();
   const studentById = new Map(students.map((s) => [s.id, s] as const));
   const teacherById = new Map(teachers.map((t) => [t.id, t] as const));
-  const previousById = new Map(args.previous.map((s) => [s.id, s] as const));
-  const nextById = new Map(args.next.map((s) => [s.id, s] as const));
   const patches: SessionPatch[] = [];
 
   for (const prev of args.previous) {
@@ -323,20 +347,25 @@ async function runSync(args: SyncArgs): Promise<void> {
     }
   }
 
-  const orderedNext = [...args.next].sort((a, b) => {
+  const orderedTargets = [...targetSessions].sort((a, b) => {
     const ta = new Date(a.displayAt).getTime();
     const tb = new Date(b.displayAt).getTime();
     if (Number.isFinite(ta) && Number.isFinite(tb) && ta !== tb) return ta - tb;
     return a.index - b.index;
   });
 
-  for (const next of orderedNext) {
-    const prev = previousById.get(next.id);
-    if (!sessionNeedsUpsert(prev, next)) continue;
-    if (!next.googleCalendarEventId && !shouldCreateFor(next)) continue;
-
+  for (const next of orderedTargets) {
     const student = studentById.get(next.studentId);
-    if (!student) continue;
+    if (!student) {
+      patches.push({
+        id: next.id,
+        patch: {
+          googleCalendarStatus: "error",
+          googleCalendarError: "학생 정보를 찾지 못해 캘린더 동기화가 중단되었습니다.",
+        },
+      });
+      continue;
+    }
 
     const teacher = student.teacherId ? teacherById.get(student.teacherId) ?? null : null;
 
