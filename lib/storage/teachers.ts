@@ -5,6 +5,7 @@
 import { browserStorage } from "@/lib/storage/browserStorage";
 import { syncRoleBindingEmails } from "@/lib/auth/roleBindings";
 import { pushSharedSnapshot, readLocalStudents } from "@/lib/storage/sharedSnapshot";
+import { safeParseJson } from "@/lib/storage/safeParse";
 import { requestCalendarResyncForTeacherIds } from "@/lib/storage/sessions";
 import type { Teacher } from "@/lib/types/index";
 
@@ -40,15 +41,6 @@ export function clearCurrentTeacherId() {
   try {
     browserStorage.removeItem(LS_CURRENT_TEACHER);
   } catch {}
-}
-
-function safeParse<T>(raw: string | null, fallback: T): T {
-  if (!raw) return fallback;
-  try {
-    return JSON.parse(raw) as T;
-  } catch {
-    return fallback;
-  }
 }
 
 function extractTeacherEmails(list: Teacher[]): string[] {
@@ -95,7 +87,7 @@ function syncSharedSnapshot(nextTeachers: Teacher[]): void {
 
 export function loadTeachers(): Teacher[] {
   if (typeof window === "undefined") return [];
-  return safeParse<Teacher[]>(browserStorage.getItem(KEY), []);
+  return safeParseJson<Teacher[]>(browserStorage.getItem(KEY), []);
 }
 
 export function saveTeachers(list: Teacher[]): void {

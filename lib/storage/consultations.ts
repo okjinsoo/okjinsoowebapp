@@ -2,24 +2,16 @@
 "use client";
 
 import { browserStorage } from "@/lib/storage/browserStorage";
+import { safeParseJson } from "@/lib/storage/safeParse";
 import type { ConsultationRecord, Id } from "@/lib/types/index";
 
 const KEY = "tutorweb_consultations_v1";
 
 type Store = Record<Id, ConsultationRecord[]>;
 
-function safeParse<T>(raw: string | null, fallback: T): T {
-  if (!raw) return fallback;
-  try {
-    return JSON.parse(raw) as T;
-  } catch {
-    return fallback;
-  }
-}
-
 function loadAll(): Store {
   if (typeof window === "undefined") return {};
-  return safeParse<Store>(browserStorage.getItem(KEY), {});
+  return safeParseJson<Store>(browserStorage.getItem(KEY), {});
 }
 
 function saveAll(next: Store) {

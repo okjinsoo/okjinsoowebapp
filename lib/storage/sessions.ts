@@ -4,6 +4,7 @@
 import { browserStorage } from "@/lib/storage/browserStorage";
 import { pushSharedSnapshot, readLocalStudents, readLocalTeachers } from "@/lib/storage/sharedSnapshot";
 import { scheduleGoogleCalendarSync } from "@/lib/integrations/googleCalendarSync";
+import { safeParseJson } from "@/lib/storage/safeParse";
 import type { Session } from "@/lib/types/index";
 
 const KEY = "tutorweb_sessions_v1";
@@ -12,18 +13,9 @@ type SaveSessionsOptions = {
   suppressCalendarSync?: boolean;
 };
 
-function safeParse<T>(raw: string | null, fallback: T): T {
-  if (!raw) return fallback;
-  try {
-    return JSON.parse(raw) as T;
-  } catch {
-    return fallback;
-  }
-}
-
 export function loadSessions(): Session[] {
   if (typeof window === "undefined") return [];
-  return safeParse<Session[]>(browserStorage.getItem(KEY), []);
+  return safeParseJson<Session[]>(browserStorage.getItem(KEY), []);
 }
 
 function syncSharedSnapshot(nextSessions: Session[]): void {

@@ -7,6 +7,7 @@ import {
   getValidAccessToken,
 } from "@/lib/auth/supabaseAuth";
 import { browserStorage } from "@/lib/storage/browserStorage";
+import { safeParseJson } from "@/lib/storage/safeParse";
 import type { Session, Student, Teacher } from "@/lib/types/index";
 
 const SNAPSHOT_KEY = "main";
@@ -46,15 +47,6 @@ let pullSnapshotInFlight: Promise<{
   students: Student[];
   sessions: Session[];
 } | null> | null = null;
-
-function safeParse<T>(raw: string | null, fallback: T): T {
-  if (!raw) return fallback;
-  try {
-    return JSON.parse(raw) as T;
-  } catch {
-    return fallback;
-  }
-}
 
 function shouldPersistKey(key: string): boolean {
   if (!key) return false;
@@ -152,17 +144,17 @@ async function getHeaders(args?: { json?: boolean; forceRefresh?: boolean }): Pr
 
 export function readLocalTeachers(): Teacher[] {
   if (typeof window === "undefined") return [];
-  return safeParse<Teacher[]>(browserStorage.getItem(TEACHERS_KEY), []);
+  return safeParseJson<Teacher[]>(browserStorage.getItem(TEACHERS_KEY), []);
 }
 
 export function readLocalStudents(): Student[] {
   if (typeof window === "undefined") return [];
-  return safeParse<Student[]>(browserStorage.getItem(STUDENTS_KEY), []);
+  return safeParseJson<Student[]>(browserStorage.getItem(STUDENTS_KEY), []);
 }
 
 export function readLocalSessions(): Session[] {
   if (typeof window === "undefined") return [];
-  return safeParse<Session[]>(browserStorage.getItem(SESSIONS_KEY), []);
+  return safeParseJson<Session[]>(browserStorage.getItem(SESSIONS_KEY), []);
 }
 
 function dispatchLocalSnapshotUpdated(args?: { includeSessions?: boolean }) {

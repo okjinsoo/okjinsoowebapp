@@ -5,18 +5,10 @@ import { browserStorage } from "@/lib/storage/browserStorage";
 import { syncRoleBindingEmails } from "@/lib/auth/roleBindings";
 import { pushSharedSnapshot, readLocalTeachers } from "@/lib/storage/sharedSnapshot";
 import { requestCalendarResyncForStudentIds } from "@/lib/storage/sessions";
+import { safeParseJson } from "@/lib/storage/safeParse";
 import type { Student, StudentStatus } from "@/lib/types/index";
 
 const KEY = "tutorweb_students_v1";
-
-function safeParse<T>(raw: string | null, fallback: T): T {
-  if (!raw) return fallback;
-  try {
-    return JSON.parse(raw) as T;
-  } catch {
-    return fallback;
-  }
-}
 
 function extractStudentEmails(list: Student[]): string[] {
   return list
@@ -62,7 +54,7 @@ function syncSharedSnapshot(nextStudents: Student[]): void {
 
 export function loadStudents(): Student[] {
   if (typeof window === "undefined") return [];
-  return safeParse<Student[]>(browserStorage.getItem(KEY), []);
+  return safeParseJson<Student[]>(browserStorage.getItem(KEY), []);
 }
 
 export function saveStudents(list: Student[]): void {
