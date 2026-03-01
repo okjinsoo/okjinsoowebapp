@@ -1,15 +1,16 @@
 // v1/lib/ui/student/StudentMainSessionListBase.tsx
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { AUTH_EVENT } from "@/lib/auth/supabaseAuth";
 import { resolveSelectionForRole } from "@/lib/auth/loginSelection";
-import { hydrateStudentsFromServer } from "@/lib/storage/students";
+import { hydrateStudentsFromServer, loadStudents } from "@/lib/storage/students";
 import { hydrateConsultationsByStudentFromServer } from "@/lib/storage/consultations";
 import { hydrateSessionsForStudentFromServer } from "@/lib/storage/sessions";
 import {
   clearCurrentTeacherId,
   hydrateTeachersFromServer,
+  loadTeachers,
   loadCurrentTeacherId,
   saveCurrentTeacherId,
 } from "@/lib/storage/teachers";
@@ -29,10 +30,43 @@ export default function StudentMainSessionListBase({ role }: { role: "a" | "t" |
   const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [teacherId, setTeacherId] = useState<string | null>(null);
 
+  const applySelection = useCallback((nextStudents: Student[], nextTeachers: Teacher[]) => {
+    const selection = resolveSelectionForRole({
+      role,
+      teachers: nextTeachers,
+      students: nextStudents,
+      savedTeacherId: loadCurrentTeacherId(),
+      savedStudentToken: loadCurrentStudentToken(),
+    });
+
+    setToken(selection.studentToken);
+    setTeacherId(selection.teacherId);
+
+    const selectedStudent = nextStudents.find((student) => student.token === selection.studentToken);
+    if (selectedStudent) {
+      void hydrateSessionsForStudentFromServer(selectedStudent.id);
+      void hydrateConsultationsByStudentFromServer(selectedStudent.id);
+    }
+
+    if (selection.studentToken) saveCurrentStudentToken(selection.studentToken);
+    else clearCurrentStudentToken();
+
+    if (selection.teacherId) saveCurrentTeacherId(selection.teacherId);
+    else clearCurrentTeacherId();
+  }, [role]);
+
   useEffect(() => {
     let cancelled = false;
 
     async function bootstrap() {
+      const localStudents = loadStudents();
+      const localTeachers = loadTeachers();
+      if (!cancelled) {
+        setStudents(localStudents);
+        setTeachers(localTeachers);
+        applySelection(localStudents, localTeachers);
+      }
+
       const [nextStudents, nextTeachers] = await Promise.all([
         hydrateStudentsFromServer(),
         hydrateTeachersFromServer(),
@@ -40,68 +74,30 @@ export default function StudentMainSessionListBase({ role }: { role: "a" | "t" |
       if (cancelled) return;
       setStudents(nextStudents);
       setTeachers(nextTeachers);
-
-      const selection = resolveSelectionForRole({
-        role,
-        teachers: nextTeachers,
-        students: nextStudents,
-        savedTeacherId: loadCurrentTeacherId(),
-        savedStudentToken: loadCurrentStudentToken(),
-      });
-
-      setToken(selection.studentToken);
-      setTeacherId(selection.teacherId);
-
-      const selectedStudent = nextStudents.find((student) => student.token === selection.studentToken);
-      if (selectedStudent) {
-        void hydrateSessionsForStudentFromServer(selectedStudent.id);
-        void hydrateConsultationsByStudentFromServer(selectedStudent.id);
-      }
-
-      if (selection.studentToken) saveCurrentStudentToken(selection.studentToken);
-      else clearCurrentStudentToken();
-
-      if (selection.teacherId) saveCurrentTeacherId(selection.teacherId);
-      else clearCurrentTeacherId();
+      applySelection(nextStudents, nextTeachers);
     }
 
     void bootstrap();
     return () => {
       cancelled = true;
     };
-  }, [role]);
+  }, [applySelection]);
 
   useEffect(() => {
     const onGate = async () => {
+      const localStudents = loadStudents();
+      const localTeachers = loadTeachers();
+      setStudents(localStudents);
+      setTeachers(localTeachers);
+      applySelection(localStudents, localTeachers);
+
       const [nextStudents, nextTeachers] = await Promise.all([
         hydrateStudentsFromServer(),
         hydrateTeachersFromServer(),
       ]);
       setStudents(nextStudents);
       setTeachers(nextTeachers);
-
-      const selection = resolveSelectionForRole({
-        role,
-        teachers: nextTeachers,
-        students: nextStudents,
-        savedTeacherId: loadCurrentTeacherId(),
-        savedStudentToken: loadCurrentStudentToken(),
-      });
-
-      setToken(selection.studentToken);
-      setTeacherId(selection.teacherId);
-
-      const selectedStudent = nextStudents.find((student) => student.token === selection.studentToken);
-      if (selectedStudent) {
-        void hydrateSessionsForStudentFromServer(selectedStudent.id);
-        void hydrateConsultationsByStudentFromServer(selectedStudent.id);
-      }
-
-      if (selection.studentToken) saveCurrentStudentToken(selection.studentToken);
-      else clearCurrentStudentToken();
-
-      if (selection.teacherId) saveCurrentTeacherId(selection.teacherId);
-      else clearCurrentTeacherId();
+      applySelection(nextStudents, nextTeachers);
     };
 
     const requestGateRefresh = () => {
@@ -118,7 +114,7 @@ export default function StudentMainSessionListBase({ role }: { role: "a" | "t" |
       window.removeEventListener("tutorweb:studentsUpdated", requestGateRefresh);
       window.removeEventListener("tutorweb:teachersUpdated", requestGateRefresh);
     };
-  }, [role]);
+  }, [applySelection]);
 
   return (
     <main>

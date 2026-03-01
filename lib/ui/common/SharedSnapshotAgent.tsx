@@ -13,19 +13,23 @@ import {
 
 const PUSH_DEBOUNCE_MS = 700;
 const PUSH_RETRY_MS = 1500;
-const REMOTE_PULL_INTERVAL_MS = 2000;
+const REMOTE_PULL_INTERVAL_MS = 30000;
 const AUTH_KEY = "tutorweb_auth_session_v1";
 
 export default function SharedSnapshotAgent() {
   const hydratingRef = useRef(false);
   const pushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingStateKvRef = useRef<Record<string, string>>({});
+  const calendarSyncKeyRef = useRef("");
 
   useEffect(() => {
     const trySyncCalendarForCurrentLogin = () => {
       const auth = loadAuthSession();
       if (!auth?.email) return;
       if (!auth?.providerAccessToken) return;
+      const syncKey = `${auth.email.toLowerCase()}::${auth.userId ?? ""}`;
+      if (calendarSyncKeyRef.current === syncKey) return;
+      calendarSyncKeyRef.current = syncKey;
       syncGoogleCalendarForExistingSessions();
     };
 
@@ -37,11 +41,7 @@ export default function SharedSnapshotAgent() {
       }
       hydratingRef.current = true;
       try {
-        const snapshot = await pullSharedSnapshotAndHydrateWithOptions({ forceRemote });
-        if (snapshot) {
-          // 원격 반영으로 sessions가 바뀐 경우(이메일 변경 포함)도 자동 재동기화
-          trySyncCalendarForCurrentLogin();
-        }
+        await pullSharedSnapshotAndHydrateWithOptions({ forceRemote });
       } catch (err) {
         console.error("공유 스냅샷 하이드레이션 실패(agent):", err);
       } finally {
@@ -102,6 +102,8 @@ export default function SharedSnapshotAgent() {
     };
 
     const onAuthChanged = () => {
+      calendarSyncKeyRef.current = "";
+      trySyncCalendarForCurrentLogin();
       void hydrate(true);
     };
 
@@ -115,7 +117,9 @@ export default function SharedSnapshotAgent() {
       }
     };
 
-    void hydrate();
+    void hydrate().finally(() => {
+      trySyncCalendarForCurrentLogin();
+    });
     const intervalId = window.setInterval(() => {
       void hydrate(true);
     }, REMOTE_PULL_INTERVAL_MS);

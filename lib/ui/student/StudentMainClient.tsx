@@ -1,13 +1,14 @@
 // lib/ui/student/StudentMainClient.tsx
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { AUTH_EVENT } from "@/lib/auth/supabaseAuth";
 import { resolveSelectionForRole } from "@/lib/auth/loginSelection";
-import { hydrateStudentsFromServer } from "@/lib/storage/students";
+import { hydrateStudentsFromServer, loadStudents } from "@/lib/storage/students";
 import {
   clearCurrentTeacherId,
   hydrateTeachersFromServer,
+  loadTeachers,
   loadCurrentTeacherId,
   saveCurrentTeacherId,
   TEACHERS_EVENT,
@@ -29,10 +30,40 @@ export default function StudentMainClient({ role }: { role: "a" | "t" | "s" }) {
   const [studentToken, setStudentToken] = useState<string | null>(null);
   const [teacherId, setTeacherId] = useState<string | null>(null);
 
+  const applySelection = useCallback((nextStudents: Student[], nextTeachers: Teacher[]) => {
+    const selection = resolveSelectionForRole({
+      role,
+      teachers: nextTeachers,
+      students: nextStudents,
+      savedTeacherId: loadCurrentTeacherId(),
+      savedStudentToken: loadCurrentStudentToken(),
+    });
+
+    setStudentToken(selection.studentToken);
+    setTeacherId(selection.teacherId);
+
+    if (selection.studentToken) saveCurrentStudentToken(selection.studentToken);
+    else clearCurrentStudentToken();
+
+    if (selection.teacherId) saveCurrentTeacherId(selection.teacherId);
+    else clearCurrentTeacherId();
+  }, [role]);
+
   useEffect(() => {
     let cancelled = false;
 
     async function bootstrap() {
+      // 1) 즉시 로컬 데이터로 화면 표시 (체감 속도 개선)
+      const localStudents = loadStudents();
+      const localTeachers = loadTeachers();
+      if (!cancelled) {
+        setStudents(localStudents);
+        setTeachers(localTeachers);
+        applySelection(localStudents, localTeachers);
+        setHydrated(true);
+      }
+
+      // 2) 서버 최신 데이터 반영
       const [nextStudents, nextTeachers] = await Promise.all([
         hydrateStudentsFromServer(),
         hydrateTeachersFromServer(),
@@ -40,58 +71,30 @@ export default function StudentMainClient({ role }: { role: "a" | "t" | "s" }) {
       if (cancelled) return;
       setStudents(nextStudents);
       setTeachers(nextTeachers);
-
-      const selection = resolveSelectionForRole({
-        role,
-        teachers: nextTeachers,
-        students: nextStudents,
-        savedTeacherId: loadCurrentTeacherId(),
-        savedStudentToken: loadCurrentStudentToken(),
-      });
-
-      setStudentToken(selection.studentToken);
-      setTeacherId(selection.teacherId);
-
-      if (selection.studentToken) saveCurrentStudentToken(selection.studentToken);
-      else clearCurrentStudentToken();
-
-      if (selection.teacherId) saveCurrentTeacherId(selection.teacherId);
-      else clearCurrentTeacherId();
-
-      setHydrated(true);
+      applySelection(nextStudents, nextTeachers);
     }
 
     void bootstrap();
     return () => {
       cancelled = true;
     };
-  }, [role]);
+  }, [applySelection]);
 
   useEffect(() => {
     const onGate = async () => {
+      const localStudents = loadStudents();
+      const localTeachers = loadTeachers();
+      setStudents(localStudents);
+      setTeachers(localTeachers);
+      applySelection(localStudents, localTeachers);
+
       const [nextStudents, nextTeachers] = await Promise.all([
         hydrateStudentsFromServer(),
         hydrateTeachersFromServer(),
       ]);
       setStudents(nextStudents);
       setTeachers(nextTeachers);
-
-      const selection = resolveSelectionForRole({
-        role,
-        teachers: nextTeachers,
-        students: nextStudents,
-        savedTeacherId: loadCurrentTeacherId(),
-        savedStudentToken: loadCurrentStudentToken(),
-      });
-
-      setStudentToken(selection.studentToken);
-      setTeacherId(selection.teacherId);
-
-      if (selection.studentToken) saveCurrentStudentToken(selection.studentToken);
-      else clearCurrentStudentToken();
-
-      if (selection.teacherId) saveCurrentTeacherId(selection.teacherId);
-      else clearCurrentTeacherId();
+      applySelection(nextStudents, nextTeachers);
     };
 
     const requestGateRefresh = () => {
@@ -108,7 +111,7 @@ export default function StudentMainClient({ role }: { role: "a" | "t" | "s" }) {
       window.removeEventListener("tutorweb:studentsUpdated", requestGateRefresh);
       window.removeEventListener(TEACHERS_EVENT, requestGateRefresh);
     };
-  }, [role]);
+  }, [applySelection]);
 
   if (!hydrated) {
     return (

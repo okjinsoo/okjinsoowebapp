@@ -6,7 +6,7 @@ import { loadAuthSession } from "@/lib/auth/supabaseAuth";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { findStudentByToken, loadStudents, saveStudents } from "@/lib/storage/students";
-import { hydrateTeachersFromServer, loadTeachers, TEACHERS_EVENT } from "@/lib/storage/teachers";
+import { loadTeachers, TEACHERS_EVENT } from "@/lib/storage/teachers";
 import {
   hydrateConsultationsByStudentFromServer,
   loadAllConsultationsStore,
@@ -291,14 +291,6 @@ export default function StudentHubCore({
   useEffect(() => {
     const id = setTimeout(() => setMounted(true), 0);
     return () => clearTimeout(id);
-  }, []);
-
-  useEffect(() => {
-    void hydrateTeachersFromServer()
-      .then((nextTeachers) => setTeachers(nextTeachers))
-      .catch((err) => {
-        console.error("선생님 목록 서버 새로고침 실패(student hub):", err);
-      });
   }, []);
 
   useEffect(() => {
