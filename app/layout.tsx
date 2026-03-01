@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import BrandHomeButton from "@/lib/ui/common/BrandHomeButton";
 import SharedSnapshotAgent from "@/lib/ui/common/SharedSnapshotAgent";
+import PageTitleAgent from "@/lib/ui/common/PageTitleAgent";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -17,6 +18,7 @@ export default function RootLayout({
     <html lang="en">
       <body className="antialiased">
         <SharedSnapshotAgent />
+        <PageTitleAgent />
         <div className="app-topbar">
           <div className="app-topbar-inner">
             <BrandHomeButton />
