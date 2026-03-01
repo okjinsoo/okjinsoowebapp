@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import type { Id, Student, Teacher, ScheduleRule, Weekday, Session } from "@/lib/types/index";
 import { loadStudents, saveStudents } from "@/lib/storage/students";
 import { loadSessions, saveSessions } from "@/lib/storage/sessions";
-import { pushSharedSnapshot, readLocalTeachers } from "@/lib/storage/sharedSnapshot";
+import { pullSharedSnapshotAndHydrateWithOptions, pushSharedSnapshot } from "@/lib/storage/sharedSnapshot";
 import { makeId, makeToken } from "@/lib/utils/id";
 import { nowIso, todayYmdLocal } from "@/lib/utils/date";
 import { normalizePhoneDigits } from "@/lib/utils/phone";
@@ -225,13 +225,18 @@ export default function StudentNewClient(props: {
       });
     }
 
-    const nextStudents = [...loadStudents(), st];
-    const nextSessions = [...loadSessions(), ...nextOwnSessions];
-
     setSaving(true);
     try {
+      // 로컬 캐시가 오래됐으면 기존 학생이 덮어쓰기될 수 있으므로,
+      // 저장 직전에 서버 최신 스냅샷을 기준으로 합쳐서 저장한다.
+      const remote = await pullSharedSnapshotAndHydrateWithOptions({ forceRemote: true });
+      const baseStudents = remote?.students ?? loadStudents();
+      const baseSessions = remote?.sessions ?? loadSessions();
+
+      const nextStudents = [...baseStudents, st];
+      const nextSessions = [...baseSessions, ...nextOwnSessions];
+
       await pushSharedSnapshot({
-        teachers: readLocalTeachers(),
         students: nextStudents,
         sessions: nextSessions,
       });
