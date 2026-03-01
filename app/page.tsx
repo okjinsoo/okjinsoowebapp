@@ -118,26 +118,39 @@ export default function HomePage() {
           boxShadow: "0 10px 30px rgba(15, 23, 42, 0.08)",
         }}
       >
-        <div style={{ textAlign: "center" }}>
-          <div style={{ fontSize: 13, color: "var(--text-subtle)", fontWeight: 700 }}>
+        <div style={{ textAlign: "center", paddingTop: 4 }}>
+          <div
+            style={{
+              fontSize: 12,
+              color: "var(--text-muted)",
+              fontWeight: 800,
+              letterSpacing: "0.12em",
+              textTransform: "uppercase",
+            }}
+          >
             OKJINSOO Mathematics
           </div>
           <h1
             style={{
-              marginTop: 10,
-              fontSize: 30,
+              marginTop: 12,
+              fontSize: "clamp(28px, 5vw, 42px)",
               fontWeight: 900,
-              lineHeight: 1.25,
-              display: "inline-block",
-              padding: "10px 14px",
-              borderRadius: 12,
-              border: "1px solid var(--surface-border)",
-              background: "var(--home-card-sub-bg)",
+              lineHeight: 1.18,
+              color: "var(--foreground)",
             }}
           >
-            🎉 옥진수학에 오신 것을 환영합니다 !
+            🎉 옥진수학에 오신 것을 환영합니다!
           </h1>
-          <p style={{ marginTop: 10, color: "var(--text-subtle)", lineHeight: 1.6 }}>
+          <div
+            style={{
+              margin: "12px auto 0",
+              width: 84,
+              height: 4,
+              borderRadius: 999,
+              background: "linear-gradient(90deg, #22c55e 0%, #3b82f6 50%, #f59e0b 100%)",
+            }}
+          />
+          <p style={{ marginTop: 12, color: "var(--text-subtle)", lineHeight: 1.6, fontWeight: 600 }}>
             구글 아이디로 로그인해주세요.
           </p>
         </div>
