@@ -299,7 +299,7 @@ export default function TeacherMainClient({ initialRole = "t" }: { initialRole?:
             })
           : null;
 
-      let nearest: TodaySessionRow | null = null;
+      const candidates: TodaySessionRow[] = [];
       for (const s of sessions) {
         const { effectiveISO, meta } = computeEffectiveISO({
           token: st.token,
@@ -332,12 +332,13 @@ export default function TeacherMainClient({ initialRole = "t" }: { initialRole?:
           consultTag: pickPrimaryConsultTag(consultMap[s.index]),
           lastClass: lastClassIndex ? s.index === lastClassIndex : false,
         };
-        if (!nearest || candidate.effectiveISO < nearest.effectiveISO) {
-          nearest = candidate;
-        }
+        candidates.push(candidate);
       }
 
-      if (nearest) rows.push(nearest);
+      candidates
+        .sort((a, b) => a.effectiveISO.localeCompare(b.effectiveISO))
+        .slice(0, 2)
+        .forEach((item) => rows.push(item));
     }
 
     return rows.sort((a, b) => {
