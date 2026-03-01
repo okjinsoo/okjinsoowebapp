@@ -455,54 +455,67 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
                   } as const;
 
                   return (
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(90px, 1fr))", gap: 8 , alignItems: "center"}}>
-                  <button
-                    onClick={() => {
-                      if (!lectureUrl) return;
-                      if (noteLocked) return;
-                      updateProgress(leafId, { lectureClicks: (p.lectureClicks ?? 0) + 1 });
-                      window.open(lectureUrl, "_blank", "noopener,noreferrer");
-                    }}
-                    disabled={!canOpenLecture}
-                    style={lectureStyle}
-                  >
-                    강의
-                  </button>
+                    <div style={{ display: "grid", gap: 8 }}>
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(90px, 1fr))", gap: 8, alignItems: "center" }}>
+                        <button
+                          onClick={() => {
+                            if (!lectureUrl) return;
+                            if (noteLocked) return;
+                            updateProgress(leafId, { lectureClicks: (p.lectureClicks ?? 0) + 1 });
+                            window.open(lectureUrl, "_blank", "noopener,noreferrer");
+                          }}
+                          disabled={!canOpenLecture}
+                          style={lectureStyle}
+                        >
+                          강의
+                        </button>
 
-                  <button
-                    onClick={() => {
-                      if (!canSubmitNote) return;
-                      setNoteModal({ leafId, value: (p.noteLink ?? "").trim() });
-                    }}
-                    disabled={!canSubmitNote}
-                    style={noteStyle}
-                  >
-                    필기 제출
-                  </button>
+                        <button
+                          onClick={() => {
+                            if (!canSubmitNote) return;
+                            setNoteModal({ leafId, value: (p.noteLink ?? "").trim() });
+                          }}
+                          disabled={!canSubmitNote}
+                          style={noteStyle}
+                        >
+                          필기 제출
+                        </button>
 
-                  <button
-                    onClick={() => {
-                      if (!problemUrl) return;
-                      if (!noteLocked) return;
-                      window.open(problemUrl, "_blank", "noopener,noreferrer");
-                    }}
-                    disabled={!canOpenProblem}
-                    style={problemStyle}
-                  >
-                    문제
-                  </button>
+                        <button
+                          onClick={() => {
+                            if (!problemUrl) return;
+                            if (!noteLocked) return;
+                            window.open(problemUrl, "_blank", "noopener,noreferrer");
+                          }}
+                          disabled={!canOpenProblem}
+                          style={problemStyle}
+                        >
+                          문제
+                        </button>
 
-                  <button
-                    onClick={() => {
-                      if (!canSubmitSolve) return;
-                      setSolveModal({ leafId, value: (p.solveLink ?? "").trim() });
-                    }}
-                    disabled={!canSubmitSolve}
-                    style={solveStyle}
-                  >
-                    풀이 제출
-                  </button>
-                </div>
+                        <button
+                          onClick={() => {
+                            if (!canSubmitSolve) return;
+                            setSolveModal({ leafId, value: (p.solveLink ?? "").trim() });
+                          }}
+                          disabled={!canSubmitSolve}
+                          style={solveStyle}
+                        >
+                          풀이 제출
+                        </button>
+                      </div>
+
+                      <div style={{ display: "flex", gap: 16, alignItems: "center", color: "var(--text-muted)", fontSize: 13 }}>
+                        <label style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
+                          <input type="checkbox" checked={Boolean(p.noteDone)} readOnly />
+                          필기 제출
+                        </label>
+                        <label style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
+                          <input type="checkbox" checked={Boolean(p.solveDone)} readOnly />
+                          풀이 제출
+                        </label>
+                      </div>
+                    </div>
                   );
                 })()}
 
