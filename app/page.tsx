@@ -169,9 +169,6 @@ export default function HomePage() {
                 </span>
                 <span>{busy ? "Google 로그인으로 이동 중..." : "Sign in with Google"}</span>
               </button>
-              <div style={{ marginTop: 8, fontSize: 12, color: "var(--text-muted)" }}>
-                처음 세팅이라면 `.env` 설정이 먼저 필요합니다.
-              </div>
             </>
           ) : (
             <>
