@@ -17,26 +17,12 @@ export default function RootLayout({
     <html lang="en">
       <body className="antialiased">
         <SharedSnapshotAgent />
-        <div style={{ height: 56 }} />
-        <div
-          style={{
-            position: "fixed",
-            top: 8,
-            left: "50%",
-            transform: "translateX(-50%)",
-            zIndex: 50,
-          }}
-        >
-          <BrandHomeButton />
+        <div className="app-topbar">
+          <div className="app-topbar-inner">
+            <BrandHomeButton />
+          </div>
         </div>
-        <div
-          style={{
-            maxWidth: 980,
-            width: "100%",
-            margin: "0 auto",
-            padding: "0 16px 24px",
-          }}
-        >
+        <div className="app-content">
           {children}
         </div>
       </body>

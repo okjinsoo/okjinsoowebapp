@@ -119,15 +119,13 @@ export default function HomePage() {
         }}
       >
         <div style={{ fontSize: 13, color: "var(--text-subtle)", fontWeight: 700 }}>
-          OKJIN MATH
+          OKJINSOO Mathematics
         </div>
         <h1 style={{ marginTop: 8, fontSize: 28, fontWeight: 900, lineHeight: 1.25 }}>
-          옥진수학에 오신 것을 환영합니다.
+          🎉 옥진수학에 오신 것을 환영합니다 !
         </h1>
         <p style={{ marginTop: 10, color: "var(--text-subtle)", lineHeight: 1.6 }}>
-          이 페이지는 웹앱의 시작 화면입니다.
-          <br />
-          로그인은 구글 계정으로만 진행합니다.
+          구글 아이디로 로그인해주세요.
         </p>
 
         <div

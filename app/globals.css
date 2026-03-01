@@ -52,6 +52,31 @@ body {
   font-size: 15px;
 }
 
+.app-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 60;
+  background: var(--background);
+  border-bottom: 1px solid var(--surface-border);
+}
+
+.app-topbar-inner {
+  max-width: 980px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 8px 16px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.app-content {
+  max-width: 980px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 12px 16px 24px;
+}
+
 h1 {
   font-size: 30px !important;
   font-weight: 800;
