@@ -279,6 +279,36 @@ async function requestGoogle(args: {
   return body;
 }
 
+function isNotFoundError(message: string): boolean {
+  return text(message).startsWith("404");
+}
+
+function clearOwnerCalendarCache(ownerEmail: string): void {
+  const cacheKey = normalizeEmail(ownerEmail);
+  if (!cacheKey) return;
+  ownerCalendarIdCache.delete(cacheKey);
+}
+
+async function ensureAppCalendarIdWithRecovery(args: {
+  token: string;
+  ownerEmail: string;
+}): Promise<string> {
+  const firstId = await ensureAppCalendarId(args);
+  try {
+    await requestGoogle({
+      token: args.token,
+      method: "GET",
+      path: `/calendars/${encodeURIComponent(firstId)}`,
+    });
+    return firstId;
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err ?? "");
+    if (!isNotFoundError(message)) throw err;
+    clearOwnerCalendarCache(args.ownerEmail);
+    return ensureAppCalendarId(args);
+  }
+}
+
 function sessionNeedsUpsert(previous: Session | undefined, next: Session): boolean {
   if (!next.googleCalendarEventId) return true;
   if (!previous) return true;
@@ -890,7 +920,7 @@ async function runStudentMirrorSync(args: {
     if (normalizeEmail(student.googleEmail) !== currentEmail) continue;
 
     try {
-      const calendarId = await ensureAppCalendarId({
+      const calendarId = await ensureAppCalendarIdWithRecovery({
         token: providerToken,
         ownerEmail: currentEmail,
       });
@@ -995,7 +1025,7 @@ async function runTeacherCalendarRebuild(args: {
     }
 
     try {
-      const calendarId = await ensureAppCalendarId({
+      const calendarId = await ensureAppCalendarIdWithRecovery({
         token: providerToken,
         ownerEmail,
       });
@@ -1129,7 +1159,7 @@ async function runSync(args: SyncArgs): Promise<void> {
   );
   if (isStudentAccount) {
     try {
-      await ensureAppCalendarId({
+      await ensureAppCalendarIdWithRecovery({
         token: providerToken,
         ownerEmail: currentEmail,
       });
@@ -1257,7 +1287,7 @@ async function runSync(args: SyncArgs): Promise<void> {
     }
 
     try {
-      const targetCalendarId = await ensureAppCalendarId({
+      const targetCalendarId = await ensureAppCalendarIdWithRecovery({
         token: providerToken,
         ownerEmail,
       });
