@@ -168,20 +168,14 @@ export default function HomePage() {
             <>
               <button
                 type="button"
+                className="google-signin-btn"
                 onClick={onClickGoogleLogin}
                 disabled={busy}
-                style={{
-                  width: "100%",
-                  height: 48,
-                  borderRadius: 10,
-                  border: "1px solid #111827",
-                  background: "#111827",
-                  color: "#fff",
-                  fontWeight: 800,
-                  cursor: "pointer",
-                }}
               >
-                {busy ? "구글 로그인 화면으로 이동 중..." : "구글로 로그인하기"}
+                <span className="google-signin-icon" aria-hidden="true">
+                  <GoogleMark />
+                </span>
+                <span>{busy ? "Google 로그인으로 이동 중..." : "Sign in with Google"}</span>
               </button>
               <div style={{ marginTop: 8, fontSize: 12, color: "var(--text-muted)" }}>
                 처음 세팅이라면 `.env` 설정이 먼저 필요합니다.
@@ -311,5 +305,28 @@ export default function HomePage() {
         </div>
       </section>
     </main>
+  );
+}
+
+function GoogleMark() {
+  return (
+    <svg viewBox="0 0 24 24" width="22" height="22" role="img" aria-label="Google logo">
+      <path
+        fill="#4285F4"
+        d="M23.49 12.27c0-.79-.07-1.55-.2-2.27H12v4.3h6.44a5.5 5.5 0 0 1-2.38 3.61v3h3.85c2.25-2.07 3.58-5.12 3.58-8.64z"
+      />
+      <path
+        fill="#34A853"
+        d="M12 24c3.24 0 5.96-1.07 7.94-2.89l-3.85-3c-1.07.72-2.44 1.15-4.09 1.15-3.15 0-5.82-2.13-6.77-4.99H1.26v3.13A12 12 0 0 0 12 24z"
+      />
+      <path
+        fill="#FBBC05"
+        d="M5.23 14.27a7.2 7.2 0 0 1 0-4.54V6.6H1.26a12 12 0 0 0 0 10.8l3.97-3.13z"
+      />
+      <path
+        fill="#EA4335"
+        d="M12 4.74c1.76 0 3.34.61 4.58 1.8l3.43-3.43C17.95 1.2 15.24 0 12 0A12 12 0 0 0 1.26 6.6l3.97 3.13c.95-2.86 3.62-4.99 6.77-4.99z"
+      />
+    </svg>
   );
 }
