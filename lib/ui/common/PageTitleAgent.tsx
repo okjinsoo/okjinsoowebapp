@@ -32,7 +32,7 @@ function extractTokenFromPath(parts: string[]): string | null {
 }
 
 function withPrefix(label: string): string {
-  return `${APP_TITLE}: ${label}`;
+  return `${label} · ${APP_TITLE}`;
 }
 
 function resolveTitle(pathname: string, students: Student[], selectedToken: string | null): string {
