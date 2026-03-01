@@ -158,17 +158,19 @@ export default function HomePage() {
         <div style={{ marginTop: 20 }}>
           {!loggedIn ? (
             <>
-              <button
-                type="button"
-                className="google-signin-btn"
-                onClick={onClickGoogleLogin}
-                disabled={busy}
-              >
-                <span className="google-signin-icon" aria-hidden="true">
-                  <GoogleMark />
-                </span>
-                <span>{busy ? "Google 로그인으로 이동 중..." : "Sign in with Google"}</span>
-              </button>
+              <div className="google-signin-row">
+                <button
+                  type="button"
+                  className="google-signin-btn"
+                  onClick={onClickGoogleLogin}
+                  disabled={busy}
+                >
+                  <span className="google-signin-icon" aria-hidden="true">
+                    <GoogleMark />
+                  </span>
+                  <span>{busy ? "Google 로그인으로 이동 중..." : "Sign in with Google"}</span>
+                </button>
+              </div>
             </>
           ) : (
             <>
