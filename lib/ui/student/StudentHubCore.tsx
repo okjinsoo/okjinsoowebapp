@@ -1852,7 +1852,7 @@ export default function StudentHubCore({
         ) : null}
       </section>
 
-      {canEdit && calendarSyncMessage ? (
+      {canTriggerCalendarSync(accessRole) && calendarSyncMessage ? (
         <div style={{ marginTop: 8, color: "var(--text-muted)", fontSize: 13 }}>{calendarSyncMessage}</div>
       ) : null}
 

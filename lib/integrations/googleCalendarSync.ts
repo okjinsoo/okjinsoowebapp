@@ -337,6 +337,7 @@ type CandidateEvent = {
   description: string;
   sessionId: string;
   studentId: string;
+  attendeeEmails: string[];
   createdAtMs: number;
 };
 
@@ -356,6 +357,14 @@ function parseCandidateEvents(body: unknown): CandidateEvent[] {
     const createdAtMs = Date.parse(text(row.created)) || 0;
     const startObj = row.start && typeof row.start === "object" ? (row.start as Record<string, unknown>) : null;
     const startIso = safeIso(text(startObj?.dateTime));
+    const attendeesRaw = Array.isArray(row.attendees) ? row.attendees : [];
+    const attendeeEmails: string[] = [];
+    for (const attendee of attendeesRaw) {
+      if (!attendee || typeof attendee !== "object") continue;
+      const email = normalizeEmail((attendee as Record<string, unknown>).email);
+      if (!email || attendeeEmails.includes(email)) continue;
+      attendeeEmails.push(email);
+    }
     const extendedProps =
       row.extendedProperties && typeof row.extendedProperties === "object"
         ? (row.extendedProperties as Record<string, unknown>)
@@ -374,41 +383,137 @@ function parseCandidateEvents(body: unknown): CandidateEvent[] {
       description,
       sessionId,
       studentId,
+      attendeeEmails,
       createdAtMs,
     });
   }
   return out;
 }
 
+function parseNextPageToken(body: unknown): string {
+  if (!body || typeof body !== "object") return "";
+  return text((body as Record<string, unknown>).nextPageToken);
+}
+
+function isManagedStudentEvent(args: {
+  event: CandidateEvent;
+  studentId: string;
+  studentName: string;
+  studentEmail: string;
+  teacherEmail: string;
+}): boolean {
+  const hasMarker = args.event.description.includes(APP_EVENT_MARKER);
+  if (!hasMarker) return false;
+
+  const studentId = text(args.studentId);
+  const studentName = text(args.studentName);
+  const studentEmail = normalizeEmail(args.studentEmail);
+  const teacherEmail = normalizeEmail(args.teacherEmail);
+  const attendeeSet = new Set(args.event.attendeeEmails.map((email) => normalizeEmail(email)));
+
+  const hasStudentId = Boolean(studentId) && args.event.studentId === studentId;
+  const hasStudentEmail = Boolean(studentEmail) && attendeeSet.has(studentEmail);
+  const hasTeacherEmail = Boolean(teacherEmail) && attendeeSet.has(teacherEmail);
+  const hasStudentName =
+    Boolean(studentName) &&
+    (args.event.summary.includes(studentName) || args.event.description.includes(`학생: ${studentName}`));
+
+  if (hasStudentId || hasStudentEmail) return true;
+  if (hasStudentName && (hasTeacherEmail || !teacherEmail)) return true;
+  return false;
+}
+
+async function collectManagedEventsWithQuery(args: {
+  token: string;
+  calendarId: string;
+  query: Record<string, string>;
+  studentId: string;
+  studentName: string;
+  studentEmail: string;
+  teacherEmail: string;
+  out: Map<string, CandidateEvent>;
+}): Promise<void> {
+  let pageToken = "";
+  for (let guard = 0; guard < 20; guard += 1) {
+    const body = await requestGoogle({
+      token: args.token,
+      method: "GET",
+      path: `/calendars/${encodeURIComponent(args.calendarId)}/events`,
+      query: {
+        singleEvents: "true",
+        showDeleted: "false",
+        maxResults: "250",
+        ...args.query,
+        ...(pageToken ? { pageToken } : {}),
+      },
+    });
+
+    for (const event of parseCandidateEvents(body)) {
+      if (
+        isManagedStudentEvent({
+          event,
+          studentId: args.studentId,
+          studentName: args.studentName,
+          studentEmail: args.studentEmail,
+          teacherEmail: args.teacherEmail,
+        })
+      ) {
+        args.out.set(event.eventId, event);
+      }
+    }
+
+    const nextPageToken = parseNextPageToken(body);
+    if (!nextPageToken) break;
+    pageToken = nextPageToken;
+  }
+}
+
 async function listManagedEventsByStudent(args: {
   token: string;
   calendarId: string;
   studentId: string;
+  studentName: string;
+  studentEmail: string;
+  teacherEmail: string;
 }): Promise<CandidateEvent[]> {
   const studentId = text(args.studentId);
   if (!studentId) return [];
+  const studentName = text(args.studentName);
+  const studentEmail = normalizeEmail(args.studentEmail);
+  const teacherEmail = normalizeEmail(args.teacherEmail);
+  const out = new Map<string, CandidateEvent>();
 
-  const body = await requestGoogle({
+  await collectManagedEventsWithQuery({
     token: args.token,
-    method: "GET",
-    path: `/calendars/${encodeURIComponent(args.calendarId)}/events`,
-    query: {
-      singleEvents: "true",
-      showDeleted: "false",
-      maxResults: "250",
-      privateExtendedProperty: `tutorweb_student_id=${studentId}`,
-    },
+    calendarId: args.calendarId,
+    query: { privateExtendedProperty: `tutorweb_student_id=${studentId}` },
+    studentId,
+    studentName,
+    studentEmail,
+    teacherEmail,
+    out,
   });
 
-  return parseCandidateEvents(body).filter(
-    (event) => event.studentId === studentId && event.description.includes(APP_EVENT_MARKER)
-  );
+  // 과거 버전의 레거시 이벤트(extendedProperties 누락)도 같이 정리
+  await collectManagedEventsWithQuery({
+    token: args.token,
+    calendarId: args.calendarId,
+    query: { q: APP_EVENT_MARKER },
+    studentId,
+    studentName,
+    studentEmail,
+    teacherEmail,
+    out,
+  });
+
+  return [...out.values()];
 }
 
 async function purgeManagedEventsForStudent(args: {
   token: string;
   calendarIds: string[];
-  studentId: string;
+  student: Pick<Student, "id" | "name" | "googleEmail">;
+  teacherEmail?: string | null;
 }): Promise<void> {
   const uniqueCalendarIds = Array.from(
     new Set((args.calendarIds ?? []).map((calendarId) => text(calendarId)).filter(Boolean))
@@ -419,7 +524,10 @@ async function purgeManagedEventsForStudent(args: {
       const events = await listManagedEventsByStudent({
         token: args.token,
         calendarId,
-        studentId: args.studentId,
+        studentId: args.student.id,
+        studentName: args.student.name,
+        studentEmail: args.student.googleEmail,
+        teacherEmail: args.teacherEmail ?? "",
       });
       for (const event of events) {
         try {
@@ -787,7 +895,8 @@ async function runStudentMirrorSync(args: {
       await purgeManagedEventsForStudent({
         token: providerToken,
         calendarIds: [calendarId, "primary"],
-        studentId: student.id,
+        student,
+        teacherEmail: teacher?.email,
       });
 
       const orderedSessions = [...rows].sort((a, b) => {
@@ -890,7 +999,8 @@ async function runTeacherCalendarRebuild(args: {
       await purgeManagedEventsForStudent({
         token: providerToken,
         calendarIds: [calendarId, "primary"],
-        studentId,
+        student,
+        teacherEmail: ownerEmail,
       });
 
       const orderedSessions = [...rows].sort((a, b) => {
