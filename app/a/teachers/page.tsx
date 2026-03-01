@@ -12,7 +12,7 @@ import {
   TEACHERS_EVENT,
 } from "@/lib/storage/teachers";
 import { loadStudents, saveStudents } from "@/lib/storage/students";
-import { pushSharedSnapshot } from "@/lib/storage/sharedSnapshot";
+import { pullSharedSnapshotAndHydrateWithOptions, pushSharedSnapshot } from "@/lib/storage/sharedSnapshot";
 
 export default function AdminTeachersPage() {
   const router = useRouter();
@@ -44,7 +44,9 @@ export default function AdminTeachersPage() {
    * 선생님 삭제 시, 그 선생님에게 배정된 학생들은 teacherId를 null로 바꿔 "미배정"으로 만든다.
    */
   async function onRemove(teacherId: string) {
-    const allStudents = loadStudents();
+    const remote = await pullSharedSnapshotAndHydrateWithOptions({ forceRemote: true });
+    const allTeachers = remote?.teachers ?? loadTeachers();
+    const allStudents = remote?.students ?? loadStudents();
     const assigned = allStudents.filter((s: Student) => (s.teacherId ?? null) === teacherId);
 
     const msg =
@@ -61,7 +63,7 @@ export default function AdminTeachersPage() {
             return { ...s, teacherId: null };
           })
         : allStudents;
-    const nextTeachers = loadTeachers().filter((row) => row.id !== teacherId);
+    const nextTeachers = allTeachers.filter((row) => row.id !== teacherId);
 
     try {
       await pushSharedSnapshot({

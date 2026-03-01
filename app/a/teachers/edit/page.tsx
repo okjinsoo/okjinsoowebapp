@@ -9,6 +9,7 @@ import {
   loadTeachers,
   saveTeachersServerFirst,
 } from "@/lib/storage/teachers";
+import { pullSharedSnapshotAndHydrateWithOptions } from "@/lib/storage/sharedSnapshot";
 import { todayYmdLocal } from "@/lib/utils/date";
 import { normalizePhoneDigits } from "@/lib/utils/phone";
 
@@ -57,10 +58,20 @@ export default function AdminTeacherEditPage() {
       workStartDate,
     };
 
-    const nextTeachers = loadTeachers().map((row) => (row.id === teacher.id ? nextTeacher : row));
-
     setSaving(true);
     try {
+      const remote = await pullSharedSnapshotAndHydrateWithOptions({ forceRemote: true });
+      const baseTeachers = remote?.teachers ?? loadTeachers();
+      let found = false;
+      const nextTeachers = baseTeachers.map((row) => {
+        if (row.id !== teacher.id) return row;
+        found = true;
+        return nextTeacher;
+      });
+      if (!found) {
+        setError("수정 대상 선생님을 최신 목록에서 찾지 못했습니다. 목록에서 다시 선택해주세요.");
+        return;
+      }
       await saveTeachersServerFirst(nextTeachers);
       router.push("/a/teachers");
     } catch (err) {

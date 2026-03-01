@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Teacher } from "@/lib/types/index";
 import { loadTeachers, saveTeachersServerFirst } from "@/lib/storage/teachers";
+import { pullSharedSnapshotAndHydrateWithOptions } from "@/lib/storage/sharedSnapshot";
 import { makeId, makeToken } from "@/lib/utils/id";
 import { nowIso, todayYmdLocal } from "@/lib/utils/date";
 import { normalizePhoneDigits } from "@/lib/utils/phone";
@@ -41,7 +42,9 @@ export default function AdminTeacherNewPage() {
 
     setSaving(true);
     try {
-      await saveTeachersServerFirst([...loadTeachers(), teacher]);
+      const remote = await pullSharedSnapshotAndHydrateWithOptions({ forceRemote: true });
+      const baseTeachers = remote?.teachers ?? loadTeachers();
+      await saveTeachersServerFirst([...baseTeachers, teacher]);
       router.push("/a/teachers");
     } catch (err) {
       console.error("선생님 생성 서버 저장 실패:", err);
