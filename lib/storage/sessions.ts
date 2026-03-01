@@ -10,6 +10,7 @@ import {
   syncStudentGoogleCalendarMirror,
 } from "@/lib/integrations/googleCalendarSync";
 import { safeParseJson } from "@/lib/storage/safeParse";
+import { loadLatestCoreSnapshotBaseline, mergeById } from "@/lib/storage/safeSnapshotMerge";
 import type { Session } from "@/lib/types/index";
 
 const KEY = "tutorweb_sessions_v1";
@@ -17,6 +18,7 @@ const KEY = "tutorweb_sessions_v1";
 type SaveSessionsOptions = {
   suppressCalendarSync?: boolean;
   skipSharedSnapshot?: boolean;
+  snapshotMode?: "merge" | "replace";
 };
 
 export function loadSessions(): Session[] {
@@ -56,12 +58,19 @@ export async function hydrateSessionsForStudentsFromServer(studentIds: string[])
   await Promise.all(uniqueIds.map((studentId) => hydrateSessionsForStudentFromServer(studentId)));
 }
 
-function syncSharedSnapshot(nextSessions: Session[]): void {
-  void pushSharedSnapshot({
-    teachers: readLocalTeachers(),
-    students: readLocalStudents(),
-    sessions: nextSessions,
-  }).catch((err) => {
+function syncSharedSnapshot(nextSessions: Session[], mode: "merge" | "replace"): void {
+  void (async () => {
+    const baseline = await loadLatestCoreSnapshotBaseline();
+    const mergedSessions = mode === "replace"
+      ? nextSessions
+      : mergeById(baseline.sessions, nextSessions);
+
+    await pushSharedSnapshot({
+      teachers: baseline.teachers.length > 0 ? baseline.teachers : readLocalTeachers(),
+      students: baseline.students.length > 0 ? baseline.students : readLocalStudents(),
+      sessions: mergedSessions,
+    });
+  })().catch((err) => {
     console.error("공유 스냅샷 동기화 실패(sessions):", err);
   });
 }
@@ -71,7 +80,7 @@ function persistSessions(list: Session[], options?: { skipSharedSnapshot?: boole
   browserStorage.setItem(KEY, JSON.stringify(list));
   window.dispatchEvent(new CustomEvent("tutorweb:sessionsUpdated"));
   if (!options?.skipSharedSnapshot) {
-    syncSharedSnapshot(list);
+    syncSharedSnapshot(list, "merge");
   }
 }
 
@@ -148,7 +157,10 @@ function applyCalendarResyncPatch(args: {
 
 export function saveSessions(list: Session[], options?: SaveSessionsOptions): void {
   const previous = loadSessions();
-  persistSessions(list, { skipSharedSnapshot: options?.skipSharedSnapshot });
+  persistSessions(list, { skipSharedSnapshot: true });
+  if (!options?.skipSharedSnapshot) {
+    syncSharedSnapshot(list, options?.snapshotMode ?? "merge");
+  }
 
   if (options?.suppressCalendarSync) return;
 
@@ -251,20 +263,20 @@ export function upsertSession(session: Session): Session[] {
 // (기존 KEY / loadSessions / upsertSession 스타일을 그대로 따릅니다.)
 export function removeSessionsByStudentId(studentId: string): Session[] {
   const list = loadSessions().filter((s) => s.studentId !== studentId);
-  saveSessions(list);
+  saveSessions(list, { snapshotMode: "replace" });
   return list;
 }
 
 export function removeSessionsByStudentIds(studentIds: string[]): Session[] {
   const set = new Set(studentIds);
   const list = loadSessions().filter((s) => !set.has(s.studentId));
-  saveSessions(list);
+  saveSessions(list, { snapshotMode: "replace" });
   return list;
 }
 
 export function removeSession(sessionId: string): Session[] {
   const list = loadSessions().filter((x) => x.id !== sessionId);
-  saveSessions(list);
+  saveSessions(list, { snapshotMode: "replace" });
   return list;
 }
 
@@ -316,5 +328,5 @@ export function loadSessionItemsMap(
 export function clearSessions(): void {
   if (typeof window === "undefined") return;
   browserStorage.removeItem(KEY);
-  syncSharedSnapshot([]);
+  syncSharedSnapshot([], "replace");
 }

@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Teacher } from "@/lib/types/index";
 import { loadTeachers, saveTeachersServerFirst } from "@/lib/storage/teachers";
-import { pullSharedSnapshotAndHydrateWithOptions } from "@/lib/storage/sharedSnapshot";
+import { loadLatestCoreSnapshotBaseline } from "@/lib/storage/safeSnapshotMerge";
 import { makeId, makeToken } from "@/lib/utils/id";
 import { nowIso, todayYmdLocal } from "@/lib/utils/date";
 import { normalizePhoneDigits } from "@/lib/utils/phone";
@@ -42,8 +42,8 @@ export default function AdminTeacherNewPage() {
 
     setSaving(true);
     try {
-      const remote = await pullSharedSnapshotAndHydrateWithOptions({ forceRemote: true });
-      const baseTeachers = remote?.teachers ?? loadTeachers();
+      const baseline = await loadLatestCoreSnapshotBaseline();
+      const baseTeachers = baseline.teachers.length > 0 ? baseline.teachers : loadTeachers();
       await saveTeachersServerFirst([...baseTeachers, teacher]);
       router.push("/a/teachers");
     } catch (err) {

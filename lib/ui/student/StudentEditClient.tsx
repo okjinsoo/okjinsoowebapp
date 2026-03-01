@@ -7,6 +7,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Id, Student, Teacher } from "@/lib/types/index";
 import { pushSharedSnapshot } from "@/lib/storage/sharedSnapshot";
+import { loadLatestCoreSnapshotBaseline } from "@/lib/storage/safeSnapshotMerge";
 import { findStudentByToken, loadStudents, saveStudents } from "@/lib/storage/students";
 import { loadSessions, saveSessions } from "@/lib/storage/sessions";
 import {
@@ -166,8 +167,12 @@ export default function StudentEditClient(props: {
       parentPhone: normalizePhoneDigits(parentPhone),
     };
 
-    const nextStudents = loadStudents().map((row) => (row.id === student.id ? updated : row));
-    const all = loadSessions();
+    const baseline = await loadLatestCoreSnapshotBaseline();
+    const baseStudents = baseline.students.length > 0 ? baseline.students : loadStudents();
+    const baseSessions = baseline.sessions.length > 0 ? baseline.sessions : loadSessions();
+
+    const nextStudents = baseStudents.map((row) => (row.id === student.id ? updated : row));
+    const all = baseSessions;
     const others = all.filter((s) => s.studentId !== student.id);
     const own = all.filter((s) => s.studentId === student.id);
     const ownByIndex = new Map(own.map((s) => [s.index, s]));
@@ -210,8 +215,12 @@ export default function StudentEditClient(props: {
     setDeleting(true);
     let succeeded = false;
     try {
-      const nextStudents = loadStudents().filter((row) => row.id !== student.id);
-      const nextSessions = loadSessions().filter((row) => row.studentId !== student.id);
+      const baseline = await loadLatestCoreSnapshotBaseline();
+      const baseStudents = baseline.students.length > 0 ? baseline.students : loadStudents();
+      const baseSessions = baseline.sessions.length > 0 ? baseline.sessions : loadSessions();
+
+      const nextStudents = baseStudents.filter((row) => row.id !== student.id);
+      const nextSessions = baseSessions.filter((row) => row.studentId !== student.id);
       const nextConsultations = loadAllConsultationsStore();
       delete nextConsultations[student.id];
       const droppedKeys = collectStudentScopedStorageKeys(student.token);

@@ -7,12 +7,14 @@ import { fetchServerStudents } from "@/lib/storage/serverRead";
 import { pushSharedSnapshot, readLocalTeachers } from "@/lib/storage/sharedSnapshot";
 import { requestCalendarResyncForStudentIds } from "@/lib/storage/sessions";
 import { safeParseJson } from "@/lib/storage/safeParse";
+import { loadLatestCoreSnapshotBaseline, mergeById } from "@/lib/storage/safeSnapshotMerge";
 import type { Student, StudentStatus } from "@/lib/types/index";
 
 const KEY = "tutorweb_students_v1";
 
 type SaveStudentsOptions = {
   skipSharedSnapshot?: boolean;
+  snapshotMode?: "merge" | "replace";
 };
 
 function extractStudentEmails(list: Student[]): string[] {
@@ -48,11 +50,18 @@ function syncStudentRoleBindings(previous: Student[], next: Student[]): void {
   });
 }
 
-function syncSharedSnapshot(nextStudents: Student[]): void {
-  void pushSharedSnapshot({
-    teachers: readLocalTeachers(),
-    students: nextStudents,
-  }).catch((err) => {
+function syncSharedSnapshot(nextStudents: Student[], mode: "merge" | "replace"): void {
+  void (async () => {
+    const baseline = await loadLatestCoreSnapshotBaseline();
+    const mergedStudents = mode === "replace"
+      ? nextStudents
+      : mergeById(baseline.students, nextStudents);
+
+    await pushSharedSnapshot({
+      teachers: baseline.teachers.length > 0 ? baseline.teachers : readLocalTeachers(),
+      students: mergedStudents,
+    });
+  })().catch((err) => {
     console.error("공유 스냅샷 동기화 실패(students):", err);
   });
 }
@@ -91,7 +100,7 @@ export function saveStudents(list: Student[], options?: SaveStudentsOptions): vo
   dispatchStudentsUpdated();
   syncStudentRoleBindings(previous, list);
   if (!options?.skipSharedSnapshot) {
-    syncSharedSnapshot(list);
+    syncSharedSnapshot(list, options?.snapshotMode ?? "merge");
   }
   if (changedEmailIds.length > 0) {
     requestCalendarResyncForStudentIds(changedEmailIds);
@@ -117,7 +126,7 @@ export function upsertStudent(student: Student): Student[] {
 
 export function removeStudent(studentId: string): Student[] {
   const list = loadStudents().filter((s) => s.id !== studentId);
-  saveStudents(list);
+  saveStudents(list, { snapshotMode: "replace" });
   return list;
 }
 
@@ -139,5 +148,5 @@ export function clearStudents(): void {
   const previous = loadStudents();
   browserStorage.removeItem(KEY);
   syncStudentRoleBindings(previous, []);
-  syncSharedSnapshot([]);
+  syncSharedSnapshot([], "replace");
 }

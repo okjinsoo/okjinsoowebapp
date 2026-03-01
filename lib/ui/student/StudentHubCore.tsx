@@ -77,6 +77,7 @@ import {
 } from "@/lib/policies/sessionRolePolicy";
 import { pushSharedSnapshot } from "@/lib/storage/sharedSnapshot";
 import { SHARED_CONSULTATIONS_KEY } from "@/lib/storage/sharedStateKeys";
+import { loadLatestCoreSnapshotBaseline } from "@/lib/storage/safeSnapshotMerge";
 import { makeId } from "@/lib/utils/id";
 import { kstDateMs, nowIso, todayYmdKST } from "@/lib/utils/date";
 
@@ -865,15 +866,18 @@ export default function StudentHubCore({
     setScheduleError("");
   }
 
-  function buildNextStudentsList(updatedStudent: Student): Student[] {
-    const currentStudents = loadStudents();
+  function buildNextStudentsList(updatedStudent: Student, sourceStudents?: Student[]): Student[] {
+    const currentStudents = sourceStudents ?? loadStudents();
     return currentStudents.some((row) => row.id === updatedStudent.id)
       ? currentStudents.map((row) => (row.id === updatedStudent.id ? updatedStudent : row))
       : [...currentStudents, updatedStudent];
   }
 
-  function buildSyncedSessionsForStudent(updatedStudent: Student): { list: Session[]; changed: boolean } {
-    const all = loadSessions();
+  function buildSyncedSessionsForStudent(
+    updatedStudent: Student,
+    sourceSessions?: Session[]
+  ): { list: Session[]; changed: boolean } {
+    const all = sourceSessions ?? loadSessions();
     const own = all.filter((session) => session.studentId === updatedStudent.id);
     if (own.length === 0) return { list: all, changed: false };
 
@@ -903,8 +907,12 @@ export default function StudentHubCore({
   }
 
   async function persistScheduleState(updatedStudent: Student): Promise<boolean> {
-    const nextStudents = buildNextStudentsList(updatedStudent);
-    const { list: nextSessions, changed: sessionsChanged } = buildSyncedSessionsForStudent(updatedStudent);
+    const baseline = await loadLatestCoreSnapshotBaseline();
+    const nextStudents = buildNextStudentsList(updatedStudent, baseline.students);
+    const { list: nextSessions, changed: sessionsChanged } = buildSyncedSessionsForStudent(
+      updatedStudent,
+      baseline.sessions
+    );
 
     try {
       await pushSharedSnapshot({
@@ -930,7 +938,10 @@ export default function StudentHubCore({
       ...loadAllConsultationsStore(),
       [student.id]: nextConsultRecords,
     };
-    const nextStudents = nextStudentOverride ? buildNextStudentsList(nextStudentOverride) : null;
+    const baseline = nextStudentOverride ? await loadLatestCoreSnapshotBaseline() : null;
+    const nextStudents = nextStudentOverride
+      ? buildNextStudentsList(nextStudentOverride, baseline?.students)
+      : null;
 
     try {
       await pushSharedSnapshot({
@@ -1452,12 +1463,13 @@ export default function StudentHubCore({
       paymentHistory: normalized,
     } as Student;
 
-    const currentStudents = loadStudents();
+    const baseline = await loadLatestCoreSnapshotBaseline();
+    const currentStudents = baseline.students.length > 0 ? baseline.students : loadStudents();
     const nextStudents = currentStudents.some((row) => row.id === updatedStudent.id)
       ? currentStudents.map((row) => (row.id === updatedStudent.id ? updatedStudent : row))
       : [...currentStudents, updatedStudent];
 
-    let nextAllSessions = loadSessions();
+    let nextAllSessions = baseline.sessions.length > 0 ? baseline.sessions : loadSessions();
     let nextMetaMap = readMetaMap(token);
     const nextConsultStore = options?.consultationRecords
       ? {
@@ -1500,7 +1512,7 @@ export default function StudentHubCore({
     };
 
     if (!skipSessions) {
-      const all = loadSessions();
+      const all = baseline.sessions.length > 0 ? baseline.sessions : loadSessions();
       const prevStudentSessions = all.filter((s) => s.studentId === updatedStudent.id);
       const prevMaxIndex = prevStudentSessions.reduce((m, s) => Math.max(m, s.index), 0);
       const kept = all.filter((s) => s.studentId !== updatedStudent.id || s.index <= nextTotal);

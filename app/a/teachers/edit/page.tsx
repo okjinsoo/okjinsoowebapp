@@ -9,7 +9,7 @@ import {
   loadTeachers,
   saveTeachersServerFirst,
 } from "@/lib/storage/teachers";
-import { pullSharedSnapshotAndHydrateWithOptions } from "@/lib/storage/sharedSnapshot";
+import { loadLatestCoreSnapshotBaseline } from "@/lib/storage/safeSnapshotMerge";
 import { todayYmdLocal } from "@/lib/utils/date";
 import { normalizePhoneDigits } from "@/lib/utils/phone";
 
@@ -60,8 +60,8 @@ export default function AdminTeacherEditPage() {
 
     setSaving(true);
     try {
-      const remote = await pullSharedSnapshotAndHydrateWithOptions({ forceRemote: true });
-      const baseTeachers = remote?.teachers ?? loadTeachers();
+      const baseline = await loadLatestCoreSnapshotBaseline();
+      const baseTeachers = baseline.teachers.length > 0 ? baseline.teachers : loadTeachers();
       let found = false;
       const nextTeachers = baseTeachers.map((row) => {
         if (row.id !== teacher.id) return row;

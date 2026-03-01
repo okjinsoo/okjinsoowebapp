@@ -8,6 +8,7 @@ import { fetchServerTeachers } from "@/lib/storage/serverRead";
 import { pushSharedSnapshot, readLocalStudents } from "@/lib/storage/sharedSnapshot";
 import { safeParseJson } from "@/lib/storage/safeParse";
 import { requestCalendarResyncForTeacherIds } from "@/lib/storage/sessions";
+import { loadLatestCoreSnapshotBaseline, mergeById } from "@/lib/storage/safeSnapshotMerge";
 import type { Teacher } from "@/lib/types/index";
 
 const KEY = "tutorweb_teachers_v1";
@@ -17,6 +18,7 @@ export const TEACHERS_EVENT = "tutorweb:teachersUpdated";
 
 type SaveTeachersOptions = {
   skipSharedSnapshot?: boolean;
+  snapshotMode?: "merge" | "replace";
 };
 
 function dispatchTeachersUpdated() {
@@ -81,11 +83,18 @@ function syncTeacherRoleBindings(previous: Teacher[], next: Teacher[]): void {
   });
 }
 
-function syncSharedSnapshot(nextTeachers: Teacher[]): void {
-  void pushSharedSnapshot({
-    teachers: nextTeachers,
-    students: readLocalStudents(),
-  }).catch((err) => {
+function syncSharedSnapshot(nextTeachers: Teacher[], mode: "merge" | "replace"): void {
+  void (async () => {
+    const baseline = await loadLatestCoreSnapshotBaseline();
+    const mergedTeachers = mode === "replace"
+      ? nextTeachers
+      : mergeById(baseline.teachers, nextTeachers);
+
+    await pushSharedSnapshot({
+      teachers: mergedTeachers,
+      students: baseline.students.length > 0 ? baseline.students : readLocalStudents(),
+    });
+  })().catch((err) => {
     console.error("공유 스냅샷 동기화 실패(teachers):", err);
   });
 }
@@ -119,7 +128,7 @@ export function saveTeachers(list: Teacher[], options?: SaveTeachersOptions): vo
   dispatchTeachersUpdated();
   syncTeacherRoleBindings(previous, list);
   if (!options?.skipSharedSnapshot) {
-    syncSharedSnapshot(list);
+    syncSharedSnapshot(list, options?.snapshotMode ?? "merge");
   }
   if (changedEmailIds.length > 0) {
     requestCalendarResyncForTeacherIds(changedEmailIds);
@@ -145,7 +154,7 @@ export function upsertTeacher(t: Teacher): Teacher[] {
 
 export function removeTeacher(teacherId: string): Teacher[] {
   const list = loadTeachers().filter((t) => t.id !== teacherId);
-  saveTeachers(list);
+  saveTeachers(list, { snapshotMode: "replace" });
   return list;
 }
 
@@ -159,5 +168,5 @@ export function clearTeachers(): void {
   browserStorage.removeItem(KEY);
   dispatchTeachersUpdated();
   syncTeacherRoleBindings(previous, []);
-  syncSharedSnapshot([]);
+  syncSharedSnapshot([], "replace");
 }
