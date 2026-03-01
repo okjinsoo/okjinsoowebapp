@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import type { Student } from "@/lib/types/index";
 import { browserStorage } from "@/lib/storage/browserStorage";
 import { ymdFromISO_KST } from "@/lib/utils/date";
-import { buildBaseDatesISO, computeEffectiveISO, metaMapKey } from "@/lib/ui/session/sessionEffective";
+import { buildBadges, buildBaseDatesISO, computeEffectiveISO, metaMapKey } from "@/lib/ui/session/sessionEffective";
 
 function sampleStudent(): Student {
   return {
@@ -79,5 +79,28 @@ describe("sessionEffective schedule change by date", () => {
     expect(ymdOf(5)).toBe("2026-03-10");
     expect(ymdOf(6)).toBe("2026-03-12");
     expect(ymdOf(7)).toBe("2026-03-13");
+  });
+
+  it("hides '변경' badge for extension-generated override and shows it for manual override", () => {
+    expect(
+      buildBadges({
+        overrideDate: "2026-03-10",
+        overrideHour: 20,
+        overrideMinute: 0,
+        overrideSource: "extension",
+        reason: "",
+        record: "",
+      })
+    ).toEqual([]);
+
+    expect(
+      buildBadges({
+        overrideDate: "2026-03-10",
+        overrideHour: 20,
+        overrideMinute: 0,
+        overrideSource: "manual",
+        reason: "학원 일정 변경",
+      })
+    ).toEqual(["변경"]);
   });
 });

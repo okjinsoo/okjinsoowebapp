@@ -1489,6 +1489,10 @@ export default function StudentHubCore({
             merged.overrideMinute === undefined || merged.overrideMinute === null
               ? null
               : Math.max(0, Math.min(59, Math.floor(Number(merged.overrideMinute) || 0))),
+          overrideSource:
+            merged.overrideSource === "manual" || merged.overrideSource === "extension"
+              ? merged.overrideSource
+              : "",
           reason: typeof merged.reason === "string" ? merged.reason : "",
           record: typeof merged.record === "string" ? merged.record : "",
         },
@@ -1580,6 +1584,7 @@ export default function StudentHubCore({
               overrideDate: ymd,
               overrideHour: hm.hour,
               overrideMinute: hm.minute,
+              overrideSource: "extension",
             });
           }
           const nextRules = rulesForIndex(updatedStudent, idx + 1);
@@ -1591,7 +1596,7 @@ export default function StudentHubCore({
       }
 
       for (let idx = nextTotal + 1; idx <= prevMaxIndex; idx++) {
-        applyMetaPatch(idx, { overrideDate: "", overrideHour: null, overrideMinute: null });
+        applyMetaPatch(idx, { overrideDate: "", overrideHour: null, overrideMinute: null, overrideSource: "" });
       }
 
       const syncedBaseDates = buildBaseDatesISO(updatedStudent, 60);

@@ -40,6 +40,7 @@ export type SessionMeta = {
   overrideDate?: string;
   overrideHour?: number | null;
   overrideMinute?: number | null;
+  overrideSource?: "manual" | "extension" | "";
 
   reason?: string;
   record?: string;
@@ -81,6 +82,11 @@ function safeMinute(n: unknown): number | null {
   const m = Math.floor(x);
   if (m < 0 || m > 59) return null;
   return m;
+}
+
+function normalizeOverrideSource(v: unknown): "manual" | "extension" | "" {
+  if (v === "manual" || v === "extension") return v;
+  return "";
 }
 
 // -------------------- meta map (browserStorage) --------------------
@@ -126,6 +132,7 @@ export function readMetaMap(token: string): Record<number, SessionMeta> {
         meta?.overrideHour === null || meta?.overrideHour === undefined ? null : safeHour(meta.overrideHour);
       merged.overrideMinute =
         meta?.overrideMinute === null || meta?.overrideMinute === undefined ? null : safeMinute(meta.overrideMinute);
+      merged.overrideSource = normalizeOverrideSource(meta?.overrideSource);
       merged.reason = typeof meta?.reason === "string" ? meta.reason : "";
       merged.record = typeof meta?.record === "string" ? meta.record : "";
 
@@ -147,6 +154,7 @@ export function upsertMeta(token: string, index: number, patch: Partial<SessionM
   next.overrideHour = next.overrideHour === null || next.overrideHour === undefined ? null : safeHour(next.overrideHour);
   next.overrideMinute =
     next.overrideMinute === null || next.overrideMinute === undefined ? null : safeMinute(next.overrideMinute);
+  next.overrideSource = normalizeOverrideSource(next.overrideSource);
   next.reason = typeof next.reason === "string" ? next.reason : "";
   next.record = typeof next.record === "string" ? next.record : "";
 
@@ -535,7 +543,12 @@ export function buildBadges(meta: SessionMeta): string[] {
   // ✅ 출결은 배지에서 제외 (UI에서 별도 칩으로 강하게 표시)
   const carry = safeInt(meta.carry ?? 0, 0);
   if (carry > 0) out.push(`이월+${carry}`);
-  if (meta.overrideDate) out.push("변경");
+  if (meta.overrideDate) {
+    const source = normalizeOverrideSource(meta.overrideSource);
+    const hasManualNote = Boolean((meta.reason ?? "").trim() || (meta.record ?? "").trim());
+    const isExtensionAuto = source === "extension" || (source === "" && !hasManualNote);
+    if (!isExtensionAuto) out.push("변경");
+  }
 
   return out;
 }

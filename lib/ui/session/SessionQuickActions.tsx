@@ -352,6 +352,7 @@ export default function SessionQuickActions({ role, token, index }: Props) {
       overrideDate: checkOverride ? draftOverrideDate : "",
       overrideHour: checkOverride ? h : null,
       overrideMinute: checkOverride ? m : null,
+      overrideSource: checkOverride ? "manual" : "",
       reason: needReasonUI ? draftReason : "",
       record: needReasonUI ? draftRecord : "",
     });
