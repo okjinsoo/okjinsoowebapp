@@ -239,16 +239,16 @@ button {
 .google-signin-btn {
   width: auto;
   max-width: 100%;
-  min-height: 64px;
+  min-height: 60px;
   border-radius: 999px !important;
   border: 2px solid var(--google-signin-border) !important;
   background: var(--google-signin-bg) !important;
   color: var(--google-signin-text) !important;
-  padding: 0 28px !important;
+  padding: 0 22px !important;
   display: inline-flex !important;
   align-items: center;
   justify-content: center;
-  gap: 14px;
+  gap: 10px;
   font-size: 16px !important;
   font-weight: 800 !important;
   letter-spacing: -0.01em;
@@ -288,7 +288,7 @@ button {
 @media (max-width: 520px) {
   .google-signin-btn {
     width: 100%;
-    padding: 0 20px !important;
+    padding: 0 16px !important;
   }
 }
 
