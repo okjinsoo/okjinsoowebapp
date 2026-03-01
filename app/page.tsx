@@ -155,15 +155,7 @@ export default function HomePage() {
           </p>
         </div>
 
-        <div
-          style={{
-            marginTop: 20,
-            border: "1px solid var(--surface-border)",
-            borderRadius: 12,
-            background: "var(--home-card-sub-bg)",
-            padding: 14,
-          }}
-        >
+        <div style={{ marginTop: 20 }}>
           {!loggedIn ? (
             <>
               <button
