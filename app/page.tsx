@@ -139,7 +139,7 @@ export default function HomePage() {
               color: "var(--foreground)",
             }}
           >
-            🎉 옥진수학에 오신 것을 환영합니다!
+            📚 옥진수학에 오신 것을 환영합니다!
           </h1>
           <div
             style={{
