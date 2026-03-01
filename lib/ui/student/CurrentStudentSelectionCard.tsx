@@ -26,6 +26,8 @@ export default function CurrentStudentSelectionCard({
   roleSelectDisabled = false,
   studentSelectDisabled = false,
 }: Props) {
+  if (role !== "a") return null;
+
   const selectStyle = {
     height: 40,
     padding: 10,

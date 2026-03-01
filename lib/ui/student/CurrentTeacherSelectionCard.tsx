@@ -22,6 +22,8 @@ export default function CurrentTeacherSelectionCard({
   onRoleChange,
   onTeacherChange,
 }: Props) {
+  if (role !== "a") return null;
+
   const selectStyle = {
     height: 40,
     padding: 10,

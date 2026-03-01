@@ -44,6 +44,9 @@ export default function RoleGateCard({
   onStudentChange,
 }: Props) {
   const pathname = usePathname();
+
+  if (role !== "a") return null;
+
   const selectStyle = {
     height: 40,
     padding: 10,
