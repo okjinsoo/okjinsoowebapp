@@ -1825,10 +1825,6 @@ export default function StudentHubCore({
           </button>
         ) : null}
 
-        <button onClick={() => router.push(sessionListHref)} className="btn btn-green">
-          수업 목록
-        </button>
-
         {canTriggerCalendarSync(accessRole) ? (
           <button
             className="btn btn-white"
@@ -1839,6 +1835,10 @@ export default function StudentHubCore({
             {calendarSyncing ? "회차 동기화 중..." : "회차 동기화"}
           </button>
         ) : null}
+
+        <button onClick={() => router.push(sessionListHref)} className="btn btn-green">
+          수업 목록
+        </button>
 
         {isAdmin ? (
           <button onClick={() => openConsultNew("extension")} className="btn btn-blue" title="연장 요청">
