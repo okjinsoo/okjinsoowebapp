@@ -82,7 +82,7 @@ function addMinutes(iso: string, minutes: number): string | null {
   return new Date(d.getTime() + minutes * 60 * 1000).toISOString();
 }
 
-function collectAttendees(student: Student, teacher: Teacher | null): Array<{ email: string }> {
+function collectAttendees(student: Student): Array<{ email: string }> {
   const out: Array<{ email: string }> = [];
   const used = new Set<string>();
 
@@ -94,7 +94,6 @@ function collectAttendees(student: Student, teacher: Teacher | null): Array<{ em
   };
 
   push(student.googleEmail);
-  push(teacher?.email);
   return out;
 }
 
@@ -313,6 +312,10 @@ function hasDisplayAtChanged(previous: Session | undefined, next: Session): bool
 
 function calendarIdOf(session: Session | undefined): string {
   return text(session?.googleCalendarId) || "primary";
+}
+
+function isPrimaryCalendarId(calendarId: string): boolean {
+  return text(calendarId) === "primary";
 }
 
 function isPermissionOrNotFound(message: string): boolean {
@@ -619,7 +622,7 @@ function buildEventPayload(args: {
     args.session.memo ? `메모: ${args.session.memo}` : "",
   ].filter((line) => Boolean(line));
 
-  const attendees = collectAttendees(args.student, args.teacher);
+  const attendees = collectAttendees(args.student);
 
   const payload: Record<string, unknown> = {
     summary,
@@ -894,7 +897,7 @@ async function runStudentMirrorSync(args: {
       const teacher = student.teacherId ? teacherById.get(student.teacherId) ?? null : null;
       await purgeManagedEventsForStudent({
         token: providerToken,
-        calendarIds: [calendarId, "primary"],
+        calendarIds: [calendarId],
         student,
         teacherEmail: teacher?.email,
       });
@@ -998,7 +1001,7 @@ async function runTeacherCalendarRebuild(args: {
       });
       await purgeManagedEventsForStudent({
         token: providerToken,
-        calendarIds: [calendarId, "primary"],
+        calendarIds: [calendarId],
         student,
         teacherEmail: ownerEmail,
       });
@@ -1160,10 +1163,12 @@ async function runSync(args: SyncArgs): Promise<void> {
     const prevTeacher = prevStudent?.teacherId ? teacherById.get(prevStudent.teacherId) ?? null : null;
     const expectedOwnerEmail = normalizeEmail(prevTeacher?.email);
     if (!expectedOwnerEmail || expectedOwnerEmail !== currentEmail) continue;
+    const prevCalendarId = calendarIdOf(prev);
+    if (isPrimaryCalendarId(prevCalendarId)) continue;
     try {
       await deleteEvent({
         token: providerToken,
-        calendarId: calendarIdOf(prev),
+        calendarId: prevCalendarId,
         eventId: prev.googleCalendarEventId,
       });
     } catch (err) {
@@ -1216,14 +1221,17 @@ async function runSync(args: SyncArgs): Promise<void> {
     if (ownerEmail !== currentEmail) {
       // 과거에 잘못된 소유자로 저장된 이벤트가 현재 로그인 계정 소유라면 정리
       if (ownerMismatch && savedOwnerEmail === currentEmail && next.googleCalendarEventId) {
-        try {
-          await deleteEvent({
-            token: providerToken,
-            calendarId: calendarIdOf(next),
-            eventId: next.googleCalendarEventId,
-          });
-        } catch (err) {
-          console.error("잘못된 소유자 이벤트 정리 실패:", err);
+        const nextCalendarId = calendarIdOf(next);
+        if (!isPrimaryCalendarId(nextCalendarId)) {
+          try {
+            await deleteEvent({
+              token: providerToken,
+              calendarId: nextCalendarId,
+              eventId: next.googleCalendarEventId,
+            });
+          } catch (err) {
+            console.error("잘못된 소유자 이벤트 정리 실패:", err);
+          }
         }
       }
 
@@ -1265,35 +1273,38 @@ async function runSync(args: SyncArgs): Promise<void> {
       let sessionCalendarId = calendarIdOf(sessionForOwner);
 
       if (sessionCalendarId !== targetCalendarId) {
+        const canCleanupCurrentCalendar = !isPrimaryCalendarId(sessionCalendarId);
         // 캘린더 이동(primary -> 앱 전용) 시, 이전 캘린더에 남아있는 같은 회차 이벤트를 먼저 정리
         let cleanedBySignature = false;
-        try {
-          const staleEvents = await findSignatureEvents({
-            token: providerToken,
-            calendarId: sessionCalendarId,
-            session: sessionForOwner,
-            student,
-          });
-          if (staleEvents.length > 0) {
-            cleanedBySignature = true;
-          }
-          for (const stale of staleEvents) {
-            try {
-              await deleteEvent({
-                token: providerToken,
-                calendarId: sessionCalendarId,
-                eventId: stale.eventId,
-                sendUpdates: "none",
-              });
-            } catch (err) {
-              console.error("Google Calendar 캘린더 이동 중 이전 캘린더 이벤트 정리 실패:", err);
+        if (canCleanupCurrentCalendar) {
+          try {
+            const staleEvents = await findSignatureEvents({
+              token: providerToken,
+              calendarId: sessionCalendarId,
+              session: sessionForOwner,
+              student,
+            });
+            if (staleEvents.length > 0) {
+              cleanedBySignature = true;
             }
+            for (const stale of staleEvents) {
+              try {
+                await deleteEvent({
+                  token: providerToken,
+                  calendarId: sessionCalendarId,
+                  eventId: stale.eventId,
+                  sendUpdates: "none",
+                });
+              } catch (err) {
+                console.error("Google Calendar 캘린더 이동 중 이전 캘린더 이벤트 정리 실패:", err);
+              }
+            }
+          } catch (err) {
+            console.error("Google Calendar 캘린더 이동 중 이전 캘린더 이벤트 조회 실패:", err);
           }
-        } catch (err) {
-          console.error("Google Calendar 캘린더 이동 중 이전 캘린더 이벤트 조회 실패:", err);
         }
 
-        if (!cleanedBySignature && sessionForOwner.googleCalendarEventId) {
+        if (canCleanupCurrentCalendar && !cleanedBySignature && sessionForOwner.googleCalendarEventId) {
           try {
             await deleteEvent({
               token: providerToken,
@@ -1319,27 +1330,29 @@ async function runSync(args: SyncArgs): Promise<void> {
       // 2) 추적된 eventId도 재생성 흐름으로 강제 전환
       if (prev && hasDisplayAtChanged(prev, next)) {
         const previousCalendarId = calendarIdOf(prev);
-        try {
-          const oldSlotEvents = await findSignatureEvents({
-            token: providerToken,
-            calendarId: previousCalendarId,
-            session: prev,
-            student,
-          });
-          for (const oldEvent of oldSlotEvents) {
-            try {
-              await deleteEvent({
-                token: providerToken,
-                calendarId: previousCalendarId,
-                eventId: oldEvent.eventId,
-                sendUpdates: "none",
-              });
-            } catch (err) {
-              console.error("Google Calendar 이전 시간대 이벤트 정리 실패:", err);
+        if (!isPrimaryCalendarId(previousCalendarId)) {
+          try {
+            const oldSlotEvents = await findSignatureEvents({
+              token: providerToken,
+              calendarId: previousCalendarId,
+              session: prev,
+              student,
+            });
+            for (const oldEvent of oldSlotEvents) {
+              try {
+                await deleteEvent({
+                  token: providerToken,
+                  calendarId: previousCalendarId,
+                  eventId: oldEvent.eventId,
+                  sendUpdates: "none",
+                });
+              } catch (err) {
+                console.error("Google Calendar 이전 시간대 이벤트 정리 실패:", err);
+              }
             }
+          } catch (err) {
+            console.error("Google Calendar 이전 시간대 이벤트 조회 실패:", err);
           }
-        } catch (err) {
-          console.error("Google Calendar 이전 시간대 이벤트 조회 실패:", err);
         }
 
         if (sessionForOwner.googleCalendarEventId) {
@@ -1452,12 +1465,12 @@ async function runSync(args: SyncArgs): Promise<void> {
         }
       }
 
-      // 같은 회차가 target 캘린더 외(primary 포함)에 남아 있으면 정리
+      // 같은 회차가 target 캘린더 외의 앱 캘린더에 남아 있으면 정리
       const staleCalendarIds = new Set<string>();
-      staleCalendarIds.add("primary");
       staleCalendarIds.add(calendarIdOf(prev));
       staleCalendarIds.add(calendarIdOf(next));
       staleCalendarIds.delete("");
+      staleCalendarIds.delete("primary");
       staleCalendarIds.delete(sessionCalendarId);
       for (const staleCalendarId of staleCalendarIds) {
         try {
