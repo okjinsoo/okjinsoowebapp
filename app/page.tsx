@@ -118,15 +118,29 @@ export default function HomePage() {
           boxShadow: "0 10px 30px rgba(15, 23, 42, 0.08)",
         }}
       >
-        <div style={{ fontSize: 13, color: "var(--text-subtle)", fontWeight: 700 }}>
-          OKJINSOO Mathematics
+        <div style={{ textAlign: "center" }}>
+          <div style={{ fontSize: 13, color: "var(--text-subtle)", fontWeight: 700 }}>
+            OKJINSOO Mathematics
+          </div>
+          <h1
+            style={{
+              marginTop: 10,
+              fontSize: 30,
+              fontWeight: 900,
+              lineHeight: 1.25,
+              display: "inline-block",
+              padding: "10px 14px",
+              borderRadius: 12,
+              border: "1px solid var(--surface-border)",
+              background: "var(--home-card-sub-bg)",
+            }}
+          >
+            🎉 옥진수학에 오신 것을 환영합니다 !
+          </h1>
+          <p style={{ marginTop: 10, color: "var(--text-subtle)", lineHeight: 1.6 }}>
+            구글 아이디로 로그인해주세요.
+          </p>
         </div>
-        <h1 style={{ marginTop: 8, fontSize: 28, fontWeight: 900, lineHeight: 1.25 }}>
-          🎉 옥진수학에 오신 것을 환영합니다 !
-        </h1>
-        <p style={{ marginTop: 10, color: "var(--text-subtle)", lineHeight: 1.6 }}>
-          구글 아이디로 로그인해주세요.
-        </p>
 
         <div
           style={{
@@ -281,16 +295,6 @@ export default function HomePage() {
               등록 후 다시 로그인하면 자동으로 권한이 반영됩니다.
             </div>
           ) : null}
-        </div>
-
-        <div style={{ marginTop: 16, fontSize: 13, color: "var(--text-muted)", lineHeight: 1.6 }}>
-          다음 단계:
-          <br />
-          1) Supabase/Google 키 설정
-          <br />
-          2) Vercel 환경변수 등록
-          <br />
-          3) 배포 후 실제 로그인 테스트
         </div>
       </section>
     </main>
