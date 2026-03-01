@@ -45,6 +45,10 @@ export type TodaySessionRow = {
 type Props = {
   rows: TodaySessionRow[];
   role: "a" | "t" | "s";
+  title?: string;
+  emptyText?: string;
+  leadBadgeLabel?: string;
+  leadBadgeClassName?: string;
 };
 
 function toDateYmd(iso?: string): string {
@@ -52,7 +56,14 @@ function toDateYmd(iso?: string): string {
   return ymd ?? todayYmdKST();
 }
 
-export default function TodaySessionsCard({ rows, role }: Props) {
+export default function TodaySessionsCard({
+  rows,
+  role,
+  title = "오늘의 수업",
+  emptyText = "오늘 수업이 없습니다.",
+  leadBadgeLabel = "D-day",
+  leadBadgeClassName = "bg-emerald-600 text-white",
+}: Props) {
   const isAdmin = role === "a";
   const [consultOpen, setConsultOpen] = useState(false);
   const [consultStudentId, setConsultStudentId] = useState<string | null>(null);
@@ -188,12 +199,12 @@ export default function TodaySessionsCard({ rows, role }: Props) {
       }}
     >
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-        <Badge className="bg-emerald-600 text-white">D-day</Badge>
-        <div className="card-title">오늘의 수업</div>
+        <Badge className={leadBadgeClassName}>{leadBadgeLabel}</Badge>
+        <div className="card-title">{title}</div>
         <Badge className="bg-slate-200 text-slate-700">{rows.length}개</Badge>
       </div>
       {rows.length === 0 ? (
-        <div className="text-muted">오늘 수업이 없습니다.</div>
+        <div className="text-muted">{emptyText}</div>
       ) : (
         <div style={{ display: "grid", gap: 8 }}>
           {rows.map((r) => {

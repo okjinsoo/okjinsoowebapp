@@ -269,6 +269,84 @@ export default function TeacherMainClient({ initialRole = "t" }: { initialRole?:
     });
   }, [visibleStudents, isHydrated, timelineTick]);
 
+  const nextRows = useMemo<TodaySessionRow[]>(() => {
+    if (!isHydrated) return [];
+    void timelineTick;
+    const now = new Date();
+    const rows: TodaySessionRow[] = [];
+
+    for (const st of visibleStudents) {
+      if (!st.token) continue;
+      const baseDatesISO = buildBaseDatesISOByToken(st.token, 60);
+      const metaMap = readMetaMap(st.token);
+      const sessions = sessionsByStudent(st.id);
+      const consultRecords = loadConsultationsByStudent(st.id);
+      const consultMap = buildConsultationMap({
+        token: st.token,
+        sessions,
+        baseDatesISO,
+        metaMap,
+        records: consultRecords,
+      });
+      const lastClassIndex =
+        (st.pauseStatus === "confirmed" || st.pauseStatus === "paused") && st.pauseEffectiveDate
+          ? findLastClassIndex({
+              token: st.token,
+              sessions,
+              baseDatesISO,
+              metaMap,
+              pauseEffectiveDate: st.pauseEffectiveDate,
+            })
+          : null;
+
+      let nearest: TodaySessionRow | null = null;
+      for (const s of sessions) {
+        const { effectiveISO, meta } = computeEffectiveISO({
+          token: st.token,
+          index: s.index,
+          baseDatesISO,
+          metaMap,
+        });
+        const dday = getDdayMeta(effectiveISO, now);
+        if (dday.diff === null || dday.diff <= 0) continue;
+        if (!effectiveISO) continue;
+
+        const { dateText, timeText } = parseDateTime(effectiveISO);
+        const percent = calculateSessionAchievementPercent({
+          token: st.token,
+          sessionIndex: s.index,
+        });
+        const candidate: TodaySessionRow = {
+          studentId: st.id,
+          token: st.token,
+          studentName: st.name,
+          index: s.index,
+          effectiveISO,
+          dateText,
+          timeText,
+          status: meta.status ?? "planned",
+          badges: buildBadges(meta),
+          ddayLabel: dday.label,
+          ddayClass: dday.className,
+          percent,
+          consultTag: pickPrimaryConsultTag(consultMap[s.index]),
+          lastClass: lastClassIndex ? s.index === lastClassIndex : false,
+        };
+        if (!nearest || candidate.effectiveISO < nearest.effectiveISO) {
+          nearest = candidate;
+        }
+      }
+
+      if (nearest) rows.push(nearest);
+    }
+
+    return rows.sort((a, b) => {
+      const timeCmp = a.effectiveISO.localeCompare(b.effectiveISO);
+      if (timeCmp !== 0) return timeCmp;
+      return a.studentName.localeCompare(b.studentName, "ko");
+    });
+  }, [visibleStudents, isHydrated, timelineTick]);
+
   if (!isHydrated) {
     return (
       <main className="p-6" style={{ maxWidth: 720, margin: "0 auto" }}>
@@ -318,6 +396,14 @@ export default function TeacherMainClient({ initialRole = "t" }: { initialRole?:
       </div>
 
       <TodaySessionsCard rows={todayRows} role={initialRole} />
+      <TodaySessionsCard
+        rows={nextRows}
+        role={initialRole}
+        title="다음 수업"
+        emptyText="다음 수업이 없습니다."
+        leadBadgeLabel="Next"
+        leadBadgeClassName="bg-blue-600 text-white"
+      />
 
       {teacherId ? (
         <TeacherStudentListCard
