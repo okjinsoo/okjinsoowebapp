@@ -5,7 +5,11 @@ import { AUTH_EVENT, loadAuthSession } from "@/lib/auth/supabaseAuth";
 import { BROWSER_STORAGE_EVENT } from "@/lib/storage/browserStorage";
 import { pullSharedSnapshotAndHydrateWithOptions, pushSharedSnapshot } from "@/lib/storage/sharedSnapshot";
 import { syncGoogleCalendarForExistingSessions } from "@/lib/storage/sessions";
-import { isSharedStateKvKey, SHARED_LECTURE_TREE_KEY } from "@/lib/storage/sharedStateKeys";
+import {
+  isSessionProgressStateKey,
+  isSharedStateKvKey,
+  SHARED_LECTURE_TREE_KEY,
+} from "@/lib/storage/sharedStateKeys";
 
 const PUSH_DEBOUNCE_MS = 700;
 const PUSH_RETRY_MS = 1500;
@@ -27,6 +31,10 @@ export default function SharedSnapshotAgent() {
 
     const hydrate = async (forceRemote = false) => {
       if (hydratingRef.current) return;
+      if (Object.keys(pendingStateKvRef.current).length > 0) {
+        // 로컬 변경이 아직 서버로 올라가는 중이면, 더 오래된 원격값으로 덮어쓰지 않음
+        return;
+      }
       hydratingRef.current = true;
       try {
         const snapshot = await pullSharedSnapshotAndHydrateWithOptions({ forceRemote });
@@ -85,8 +93,8 @@ export default function SharedSnapshotAgent() {
       const newValue = ce.detail?.newValue;
       if (typeof newValue !== "string") return;
       pendingStateKvRef.current[key] = newValue;
-      // 강의 트리는 회차 상세에서 즉시 참조하므로 지연 없이 업로드
-      if (key === SHARED_LECTURE_TREE_KEY) {
+      // 강의 트리/회차 강의 배치/진도는 화면 체감이 커서 지연 없이 업로드
+      if (key === SHARED_LECTURE_TREE_KEY || isSessionProgressStateKey(key)) {
         schedulePush(0);
         return;
       }
