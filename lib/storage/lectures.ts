@@ -1,6 +1,7 @@
 "use client";
 
 import { browserStorage } from "@/lib/storage/browserStorage";
+import { TUTORWEB_EVENTS } from "@/lib/events/tutorwebEvents";
 import { SHARED_LECTURE_TREE_KEY } from "@/lib/storage/sharedStateKeys";
 import type {
   LectureTree,
@@ -136,7 +137,11 @@ export function parseLectureTreeRaw(raw: string | null): LectureTree {
 
 function persistTree(tree: LectureTree): void {
   if (typeof window === "undefined") return;
-  browserStorage.setItem(KEY_LECTURE_TREE, JSON.stringify(tree));
+  const raw = JSON.stringify(tree);
+  const prev = browserStorage.getItem(KEY_LECTURE_TREE);
+  if (prev === raw) return;
+  browserStorage.setItem(KEY_LECTURE_TREE, raw);
+  window.dispatchEvent(new CustomEvent(TUTORWEB_EVENTS.lectureTreeUpdated));
 }
 
 export function makeEmptyLectureTree(): LectureTree {

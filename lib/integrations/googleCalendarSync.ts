@@ -24,6 +24,8 @@ const DUPLICATE_TIME_WINDOW_MS = 5 * 60 * 1000;
 const RECENT_CREATED_TTL_MS = 60 * 1000;
 const APP_CALENDAR_SUMMARY = "옥진수학";
 const APP_CALENDAR_DESCRIPTION = "옥진수학 자동 생성 수업 일정";
+const APP_EVENT_MARKER = "옥진수학 자동 생성 일정";
+const STUDENT_MIRROR_MARKER = "학생용 보조 일정";
 const CALENDAR_CACHE_TTL_MS = 5 * 60 * 1000;
 
 let syncTimer: ReturnType<typeof setTimeout> | null = null;
@@ -210,11 +212,11 @@ async function ensureAppCalendarId(args: {
 }): Promise<string> {
   const cacheKey = normalizeEmail(args.ownerEmail);
   const cached = ownerCalendarIdCache.get(cacheKey);
-  if (cached && Date.now() - cached.ts < CALENDAR_CACHE_TTL_MS && cached.calendarId) {
+  if (cached && cached.calendarId !== "primary" && Date.now() - cached.ts < CALENDAR_CACHE_TTL_MS && cached.calendarId) {
     return cached.calendarId;
   }
 
-  let foundId = "primary";
+  let foundId = "";
   try {
     foundId =
       (await findNamedCalendarId({
@@ -227,12 +229,10 @@ async function ensureAppCalendarId(args: {
       }));
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err ?? "");
-    if (!isInsufficientScopeError(message)) {
-      throw err;
+    if (isInsufficientScopeError(message)) {
+      throw new Error("Google Calendar 권한에 전용 캘린더 생성 권한이 없습니다. 다시 로그인 후 권한을 다시 허용해주세요.");
     }
-    // calendar scope가 빠진 토큰이면 전용 캘린더 대신 primary에라도 생성해 기능을 유지한다.
-    console.warn("Google Calendar scope 부족: primary 캘린더로 폴백합니다.");
-    foundId = "primary";
+    throw err;
   }
 
   ownerCalendarIdCache.set(cacheKey, { calendarId: foundId, ts: Date.now() });
@@ -326,10 +326,6 @@ function isInsufficientScopeError(message: string): boolean {
   );
 }
 
-function expectedSummary(session: Session, student: Student): string {
-  return `${student.name} ${session.index}회차 수업`;
-}
-
 type CandidateEvent = {
   eventId: string;
   meetUrl: string | null;
@@ -337,6 +333,7 @@ type CandidateEvent = {
   summary: string;
   description: string;
   sessionId: string;
+  studentId: string;
   createdAtMs: number;
 };
 
@@ -365,6 +362,7 @@ function parseCandidateEvents(body: unknown): CandidateEvent[] {
         ? (extendedProps.private as Record<string, unknown>)
         : null;
     const sessionId = text(privateProps?.tutorweb_session_id);
+    const studentId = text(privateProps?.tutorweb_student_id);
     out.push({
       eventId,
       meetUrl: extractMeetUrl(row),
@@ -372,10 +370,70 @@ function parseCandidateEvents(body: unknown): CandidateEvent[] {
       summary,
       description,
       sessionId,
+      studentId,
       createdAtMs,
     });
   }
   return out;
+}
+
+async function listManagedEventsByStudent(args: {
+  token: string;
+  calendarId: string;
+  studentId: string;
+}): Promise<CandidateEvent[]> {
+  const studentId = text(args.studentId);
+  if (!studentId) return [];
+
+  const body = await requestGoogle({
+    token: args.token,
+    method: "GET",
+    path: `/calendars/${encodeURIComponent(args.calendarId)}/events`,
+    query: {
+      singleEvents: "true",
+      showDeleted: "false",
+      maxResults: "250",
+      privateExtendedProperty: `tutorweb_student_id=${studentId}`,
+    },
+  });
+
+  return parseCandidateEvents(body).filter(
+    (event) => event.studentId === studentId && event.description.includes(APP_EVENT_MARKER)
+  );
+}
+
+async function purgeManagedEventsForStudent(args: {
+  token: string;
+  calendarIds: string[];
+  studentId: string;
+}): Promise<void> {
+  const uniqueCalendarIds = Array.from(
+    new Set((args.calendarIds ?? []).map((calendarId) => text(calendarId)).filter(Boolean))
+  );
+
+  for (const calendarId of uniqueCalendarIds) {
+    try {
+      const events = await listManagedEventsByStudent({
+        token: args.token,
+        calendarId,
+        studentId: args.studentId,
+      });
+      for (const event of events) {
+        try {
+          await deleteEvent({
+            token: args.token,
+            calendarId,
+            eventId: event.eventId,
+            sendUpdates: "none",
+          });
+        } catch (err) {
+          console.error("Google Calendar 앱 생성 일정 일괄 삭제 실패:", err);
+        }
+      }
+    } catch (err) {
+      console.error("Google Calendar 앱 생성 일정 조회 실패:", err);
+    }
+  }
 }
 
 async function findSignatureEvents(args: {
@@ -390,7 +448,6 @@ async function findSignatureEvents(args: {
   const startMs = new Date(startIso).getTime();
   const timeMin = new Date(startMs - DUPLICATE_TIME_WINDOW_MS).toISOString();
   const timeMax = new Date(startMs + DUPLICATE_TIME_WINDOW_MS).toISOString();
-  const summary = expectedSummary(args.session, args.student);
 
   const body = await requestGoogle({
     token: args.token,
@@ -408,17 +465,20 @@ async function findSignatureEvents(args: {
 
   const all = parseCandidateEvents(body);
   return all
-    .filter((event) => event.summary === summary)
     .filter((event) => {
       if (!event.startIso) return false;
       const eventMs = new Date(event.startIso).getTime();
       return Math.abs(eventMs - startMs) <= DUPLICATE_TIME_WINDOW_MS;
     })
-    .filter(
-      (event) =>
-        event.sessionId === args.session.id ||
-        event.description.includes("옥진수학 자동 생성 일정")
-    )
+    .filter((event) => {
+      const summary = event.summary;
+      const description = event.description;
+      const hasSessionId = event.sessionId === args.session.id;
+      const hasAppMarker = description.includes(APP_EVENT_MARKER);
+      const matchesStudent = summary.includes(args.student.name) || description.includes(`학생: ${args.student.name}`);
+      const matchesIndex = summary.includes(`${args.session.index}회차`) || description.includes(`회차: ${args.session.index}`);
+      return hasSessionId || (hasAppMarker && matchesStudent && matchesIndex);
+    })
     .sort((a, b) => {
       const aMeet = a.meetUrl ? 1 : 0;
       const bMeet = b.meetUrl ? 1 : 0;
@@ -441,7 +501,7 @@ function buildEventPayload(args: {
 
   const summary = `${args.student.name} ${args.session.index}회차 수업`;
   const descriptionLines = [
-    "옥진수학 자동 생성 일정",
+    APP_EVENT_MARKER,
     `학생: ${args.student.name}`,
     args.teacher ? `선생님: ${args.teacher.name}` : "",
     `회차: ${args.session.index}`,
@@ -488,6 +548,7 @@ async function createEvent(args: {
   session: Session;
   student: Student;
   teacher: Teacher | null;
+  sendUpdates?: "all" | "none";
 }): Promise<{ eventId: string | null; meetUrl: string | null }> {
   const payload = buildEventPayload({
     session: args.session,
@@ -505,7 +566,7 @@ async function createEvent(args: {
     path: `/calendars/${encodeURIComponent(args.calendarId)}/events`,
     query: {
       conferenceDataVersion: "1",
-      sendUpdates: "all",
+      sendUpdates: args.sendUpdates ?? "all",
     },
     body: payload,
   });
@@ -582,6 +643,325 @@ async function deleteEvent(args: {
     if (msg.startsWith("404")) return;
     throw err;
   }
+}
+
+function buildStudentMirrorPayload(args: {
+  session: Session;
+  student: Student;
+  teacher: Teacher | null;
+}): Record<string, unknown> | null {
+  const startIso = safeIso(args.session.displayAt);
+  if (!startIso) return null;
+
+  const endIso = addMinutes(startIso, DEFAULT_DURATION_MIN);
+  if (!endIso) return null;
+
+  const meetUrl = text(args.session.googleMeetUrl);
+  const descriptionLines = [
+    APP_EVENT_MARKER,
+    STUDENT_MIRROR_MARKER,
+    `학생: ${args.student.name}`,
+    args.teacher ? `선생님: ${args.teacher.name}` : "",
+    `회차: ${args.session.index}`,
+    meetUrl ? `Meet 링크: ${meetUrl}` : "",
+    args.session.memo ? `메모: ${args.session.memo}` : "",
+  ].filter((line) => Boolean(line));
+
+  return {
+    summary: `${args.student.name} ${args.session.index}회차 수업`,
+    description: descriptionLines.join("\n"),
+    ...(meetUrl ? { location: meetUrl } : {}),
+    start: {
+      dateTime: startIso,
+      timeZone: "Asia/Seoul",
+    },
+    end: {
+      dateTime: endIso,
+      timeZone: "Asia/Seoul",
+    },
+    extendedProperties: {
+      private: {
+        tutorweb_session_id: args.session.id,
+        tutorweb_student_id: args.student.id,
+        tutorweb_mirror_owner: "student",
+      },
+    },
+  };
+}
+
+async function upsertStudentMirrorEvent(args: {
+  token: string;
+  calendarId: string;
+  session: Session;
+  student: Student;
+  teacher: Teacher | null;
+}): Promise<void> {
+  const payload = buildStudentMirrorPayload(args);
+  if (!payload) return;
+
+  const signatureEvents = await findSignatureEvents({
+    token: args.token,
+    calendarId: args.calendarId,
+    session: args.session,
+    student: args.student,
+  });
+
+  const canonical = signatureEvents[0] ?? null;
+  const duplicates = signatureEvents.slice(1);
+  for (const duplicate of duplicates) {
+    try {
+      await deleteEvent({
+        token: args.token,
+        calendarId: args.calendarId,
+        eventId: duplicate.eventId,
+        sendUpdates: "none",
+      });
+    } catch (err) {
+      console.error("학생 캘린더 중복 이벤트 정리 실패:", err);
+    }
+  }
+
+  if (canonical) {
+    await requestGoogle({
+      token: args.token,
+      method: "PATCH",
+      path: `/calendars/${encodeURIComponent(args.calendarId)}/events/${encodeURIComponent(canonical.eventId)}`,
+      query: {
+        sendUpdates: "none",
+      },
+      body: payload,
+    });
+  } else {
+    await requestGoogle({
+      token: args.token,
+      method: "POST",
+      path: `/calendars/${encodeURIComponent(args.calendarId)}/events`,
+      query: {
+        sendUpdates: "none",
+      },
+      body: payload,
+    });
+  }
+}
+
+async function runStudentMirrorSync(args: {
+  studentIds: string[];
+  sessions: Session[];
+}): Promise<void> {
+  const auth = loadAuthSession();
+  const providerToken = text(auth?.providerAccessToken);
+  const currentEmail = normalizeEmail(auth?.email);
+  if (!providerToken || !currentEmail) return;
+
+  const targetStudentIds = new Set(
+    (args.studentIds ?? []).map((id) => text(id)).filter((id) => Boolean(id))
+  );
+  if (targetStudentIds.size === 0) return;
+
+  const students = loadStudents();
+  const teachers = loadTeachers();
+  const studentById = new Map(students.map((student) => [student.id, student] as const));
+  const teacherById = new Map(teachers.map((teacher) => [teacher.id, teacher] as const));
+  const sessionsByStudent = new Map<string, Session[]>();
+  for (const session of args.sessions ?? []) {
+    if (!targetStudentIds.has(session.studentId)) continue;
+    const bucket = sessionsByStudent.get(session.studentId) ?? [];
+    bucket.push(session);
+    sessionsByStudent.set(session.studentId, bucket);
+  }
+
+  for (const [studentId, rows] of sessionsByStudent.entries()) {
+    const student = studentById.get(studentId);
+    if (!student) continue;
+    if (normalizeEmail(student.googleEmail) !== currentEmail) continue;
+
+    try {
+      const calendarId = await ensureAppCalendarId({
+        token: providerToken,
+        ownerEmail: currentEmail,
+      });
+      const teacher = student.teacherId ? teacherById.get(student.teacherId) ?? null : null;
+      await purgeManagedEventsForStudent({
+        token: providerToken,
+        calendarIds: [calendarId, "primary"],
+        studentId: student.id,
+      });
+
+      const orderedSessions = [...rows].sort((a, b) => {
+        const ta = new Date(a.displayAt).getTime();
+        const tb = new Date(b.displayAt).getTime();
+        if (Number.isFinite(ta) && Number.isFinite(tb) && ta !== tb) return ta - tb;
+        return a.index - b.index;
+      });
+
+      for (const session of orderedSessions) {
+        await upsertStudentMirrorEvent({
+          token: providerToken,
+          calendarId,
+          session: { ...session, googleCalendarEventId: undefined, googleMeetUrl: undefined },
+          student,
+          teacher,
+        });
+      }
+    } catch (err) {
+      console.error("학생 캘린더 동기화 실패:", err);
+    }
+  }
+}
+
+export function syncStudentGoogleCalendarMirror(args: {
+  studentIds: string[];
+  sessions: Session[];
+}): void {
+  void runStudentMirrorSync(args);
+}
+
+async function runTeacherCalendarRebuild(args: {
+  studentIds: string[];
+  sessions: Session[];
+  applyPatches: (patches: SessionPatch[]) => void;
+}): Promise<void> {
+  const auth = loadAuthSession();
+  const providerToken = text(auth?.providerAccessToken);
+  const currentEmail = normalizeEmail(auth?.email);
+  if (!providerToken || !currentEmail) {
+    return;
+  }
+
+  const targetStudentIds = new Set(
+    (args.studentIds ?? []).map((id) => text(id)).filter(Boolean)
+  );
+  if (targetStudentIds.size === 0) return;
+
+  const students = loadStudents();
+  const teachers = loadTeachers();
+  const studentById = new Map(students.map((student) => [student.id, student] as const));
+  const teacherById = new Map(teachers.map((teacher) => [teacher.id, teacher] as const));
+  const sessionsByStudent = new Map<string, Session[]>();
+  const patches: SessionPatch[] = [];
+
+  for (const session of args.sessions ?? []) {
+    if (!targetStudentIds.has(session.studentId)) continue;
+    const bucket = sessionsByStudent.get(session.studentId) ?? [];
+    bucket.push(session);
+    sessionsByStudent.set(session.studentId, bucket);
+  }
+
+  for (const [studentId, rows] of sessionsByStudent.entries()) {
+    const student = studentById.get(studentId);
+    if (!student) continue;
+    const teacher = student.teacherId ? teacherById.get(student.teacherId) ?? null : null;
+    const ownerEmail = normalizeEmail(teacher?.email);
+
+    if (!teacher || !ownerEmail || !isValidEmail(ownerEmail)) {
+      for (const session of rows) {
+        patches.push({
+          id: session.id,
+          patch: {
+            googleCalendarStatus: "error",
+            googleCalendarError: "담당 선생님 이메일이 없어 캘린더를 다시 만들 수 없습니다.",
+          },
+        });
+      }
+      continue;
+    }
+
+    if (currentEmail !== ownerEmail) {
+      for (const session of rows) {
+        patches.push({
+          id: session.id,
+          patch: {
+            googleCalendarStatus: "error",
+            googleCalendarError: `담당 선생님 계정(${ownerEmail})으로 로그인한 뒤 다시 동기화해주세요.`,
+          },
+        });
+      }
+      continue;
+    }
+
+    try {
+      const calendarId = await ensureAppCalendarId({
+        token: providerToken,
+        ownerEmail,
+      });
+      await purgeManagedEventsForStudent({
+        token: providerToken,
+        calendarIds: [calendarId, "primary"],
+        studentId,
+      });
+
+      const orderedSessions = [...rows].sort((a, b) => {
+        const ta = new Date(a.displayAt).getTime();
+        const tb = new Date(b.displayAt).getTime();
+        if (Number.isFinite(ta) && Number.isFinite(tb) && ta !== tb) return ta - tb;
+        return a.index - b.index;
+      });
+
+      for (const session of orderedSessions) {
+        try {
+          const result = await createEvent({
+            token: providerToken,
+            calendarId,
+            session: { ...session, googleCalendarEventId: undefined, googleMeetUrl: undefined },
+            student,
+            teacher,
+            sendUpdates: "none",
+          });
+          if (!result.eventId) {
+            throw new Error("유효한 수업 시간이 없어 캘린더 일정을 만들지 못했습니다.");
+          }
+          patches.push({
+            id: session.id,
+            patch: {
+              googleCalendarId: calendarId,
+              googleCalendarEventId: result.eventId ?? undefined,
+              googleMeetUrl: result.meetUrl ?? undefined,
+              googleCalendarOwnerEmail: ownerEmail,
+              googleCalendarStatus: "synced",
+              googleCalendarError: "",
+              googleCalendarSyncedAt: new Date().toISOString(),
+            },
+          });
+        } catch (err) {
+          const message = err instanceof Error ? err.message : "Google Calendar 동기화 실패";
+          patches.push({
+            id: session.id,
+            patch: {
+              googleCalendarId: calendarId,
+              googleCalendarEventId: undefined,
+              googleMeetUrl: undefined,
+              googleCalendarOwnerEmail: ownerEmail,
+              googleCalendarStatus: "error",
+              googleCalendarError: message,
+            },
+          });
+        }
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Google Calendar 동기화 실패";
+      for (const session of rows) {
+        patches.push({
+          id: session.id,
+          patch: {
+            googleCalendarStatus: "error",
+            googleCalendarError: message,
+          },
+        });
+      }
+    }
+  }
+
+  if (patches.length > 0) {
+    args.applyPatches(patches);
+  }
+}
+
+export function rebuildTeacherGoogleCalendar(args: {
+  studentIds: string[];
+  sessions: Session[];
+  applyPatches: (patches: SessionPatch[]) => void;
+}): void {
+  void runTeacherCalendarRebuild(args);
 }
 
 async function runSync(args: SyncArgs): Promise<void> {

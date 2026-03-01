@@ -19,10 +19,10 @@ import { formatGrade, formatPhone, formatSchedule } from "@/lib/ui/student/forma
 import {
   hydrateSessionsForStudentFromServer,
   loadSessions,
-  requestCalendarResyncForStudentIds,
+  rebuildTeacherGoogleCalendarForStudentIds,
   saveSessions,
   sessionsByStudent,
-  syncGoogleCalendarForExistingSessions,
+  syncStudentGoogleCalendarMirrorForStudentIds,
 } from "@/lib/storage/sessions";
 import {
   buildBadges,
@@ -509,6 +509,8 @@ export default function StudentHubCore({
     const auth = loadAuthSession();
     const currentEmail = normalizeEmail(auth?.email);
     const ownerEmail = normalizeEmail(teacherEmail === "-" ? "" : teacherEmail);
+    const studentEmail = normalizeEmail(student.googleEmail);
+    const isStudentSelf = Boolean(currentEmail && studentEmail && currentEmail === studentEmail);
     const hasProviderToken = Boolean((auth?.providerAccessToken ?? "").trim());
 
     if (!hasProviderToken) {
@@ -517,21 +519,29 @@ export default function StudentHubCore({
       return;
     }
 
-    requestCalendarResyncForStudentIds([student.id]);
-    // 이미 pending 상태여도 재시도가 돌도록 직접 한 번 더 트리거
-    syncGoogleCalendarForExistingSessions();
+    if (isStudentSelf) {
+      syncStudentGoogleCalendarMirrorForStudentIds([student.id]);
+      setCalendarSyncMessage("학생 본인 캘린더 동기화를 시작했어요. 1~3초 뒤 구글 캘린더에서 확인해주세요.");
+    } else if (currentEmail && ownerEmail && currentEmail === ownerEmail) {
+      rebuildTeacherGoogleCalendarForStudentIds([student.id]);
+    }
 
-    if (!ownerEmail) {
+    if (!ownerEmail && !isStudentSelf) {
       setCalendarSyncMessage("요청은 보냈지만 담당 선생님 이메일이 없어 생성할 수 없습니다. 선생님 이메일을 먼저 확인해주세요.");
-    } else if (currentEmail && currentEmail !== ownerEmail) {
+    } else if (currentEmail && currentEmail !== ownerEmail && !isStudentSelf) {
       setCalendarSyncMessage(
         `요청은 저장됐지만 현재 로그인 계정(${currentEmail})은 담당 선생님(${ownerEmail})이 아니어서 실제 생성은 안 됩니다. 담당 선생님 계정으로 로그인 후 다시 눌러주세요.`
       );
-    } else {
-      setCalendarSyncMessage("회차 동기화 요청을 보냈어요. 1~3초 뒤 캘린더/Meet 상태가 갱신됩니다.");
+    } else if (!isStudentSelf) {
+      setCalendarSyncMessage("기존 일정을 정리하고 다시 만드는 중이에요. 1~3초 뒤 캘린더/Meet 상태가 갱신됩니다.");
     }
 
     window.setTimeout(() => {
+      if (isStudentSelf) {
+        setCalendarSyncMessage("학생 본인 캘린더 동기화 요청을 마쳤어요. 구글 캘린더 앱에서 '옥진수학' 캘린더를 확인해주세요.");
+        setCalendarSyncing(false);
+        return;
+      }
       const rows = loadSessions().filter((s) => s.studentId === student.id);
       const synced = rows.filter((s) => s.googleCalendarStatus === "synced").length;
       const pendingCount = rows.filter((s) => s.googleCalendarStatus === "pending").length;

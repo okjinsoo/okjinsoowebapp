@@ -84,14 +84,14 @@ export default function LecturesPage() {
     }
   }
 
-  async function pushLectureTreeToDbNow() {
+  async function pushLectureTreeToDbNow(treeOverride?: ReturnType<typeof loadLectureTree>) {
     setDbSyncing(true);
     setDbSyncError(null);
     try {
-      const rawTree = JSON.stringify(loadLectureTree());
+      const rawTree = JSON.stringify(treeOverride ?? loadLectureTree());
       const result = await pushSharedSnapshot({
         stateKv: {
-            [SHARED_LECTURE_TREE_KEY]: rawTree,
+          [SHARED_LECTURE_TREE_KEY]: rawTree,
         },
       });
       if (!result.stateKvSynced) {
@@ -127,10 +127,19 @@ export default function LecturesPage() {
     };
   }, []);
 
-  function persist(next: LectureLeafNode[]) {
+  function persist(next: LectureLeafNode[], options?: { immediateRemote?: boolean }) {
     const saved = saveLectureCatalog(next);
     setLectures(saved);
-    scheduleDbSync();
+    if (options?.immediateRemote) {
+      if (dbSyncTimerRef.current) {
+        clearTimeout(dbSyncTimerRef.current);
+        dbSyncTimerRef.current = null;
+      }
+      void pushLectureTreeToDbNow();
+    } else {
+      scheduleDbSync();
+    }
+    return saved;
   }
 
   function addLecture() {
@@ -141,15 +150,17 @@ export default function LecturesPage() {
     }
 
     const created = createLectureLeaf({ title });
-    const next = [...lectures, created];
-    persist(next);
+    const base = loadLectureCatalog();
+    const next = [...base, created];
+    persist(next, { immediateRemote: true });
     setSelectedLeafId(created.leafId);
     setNewTitle("");
   }
 
   function patchSelected(args: { title?: string; lectureUrl?: string; problemUrl?: string }) {
     if (!activeLeafId) return;
-    const next = lectures.map((leaf) => {
+    const base = loadLectureCatalog();
+    const next = base.map((leaf) => {
       if (leaf.leafId !== activeLeafId) return leaf;
       return {
         ...leaf,
@@ -163,27 +174,34 @@ export default function LecturesPage() {
   }
 
   function removeSelected() {
-    if (!selectedLecture) return;
-    const ok = window.confirm(`"${selectedLecture.title || "제목 없는 강의"}" 강의를 삭제할까요?`);
+    const base = loadLectureCatalog();
+    const current = base.find((leaf) => leaf.leafId === activeLeafId) ?? selectedLecture;
+    if (!current) return;
+    const ok = window.confirm(`"${current.title || "제목 없는 강의"}" 강의를 삭제할까요?`);
     if (!ok) return;
 
-    const next = lectures.filter((leaf) => leaf.leafId !== selectedLecture.leafId);
-    persist(next);
+    const next = base.filter((leaf) => leaf.leafId !== current.leafId);
+    const saved = persist(next, { immediateRemote: true });
+    if (activeLeafId === current.leafId) {
+      setSelectedLeafId(saved[0]?.leafId ?? null);
+    }
   }
 
   function moveSelected(offset: -1 | 1) {
-    if (!selectedLecture) return;
-    const idx = lectures.findIndex((leaf) => leaf.leafId === selectedLecture.leafId);
+    const base = loadLectureCatalog();
+    const current = base.find((leaf) => leaf.leafId === activeLeafId) ?? selectedLecture;
+    if (!current) return;
+    const idx = base.findIndex((leaf) => leaf.leafId === current.leafId);
     if (idx < 0) return;
 
     const nextIdx = idx + offset;
-    if (nextIdx < 0 || nextIdx >= lectures.length) return;
+    if (nextIdx < 0 || nextIdx >= base.length) return;
 
-    const next = [...lectures];
+    const next = [...base];
     const tmp = next[idx];
     next[idx] = next[nextIdx];
     next[nextIdx] = tmp;
-    persist(next);
+    persist(next, { immediateRemote: true });
     setSelectedLeafId(tmp.leafId);
   }
 

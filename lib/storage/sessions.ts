@@ -4,7 +4,11 @@
 import { browserStorage } from "@/lib/storage/browserStorage";
 import { fetchServerStudentSessions } from "@/lib/storage/serverRead";
 import { pushSharedSnapshot, readLocalStudents, readLocalTeachers } from "@/lib/storage/sharedSnapshot";
-import { scheduleGoogleCalendarSync } from "@/lib/integrations/googleCalendarSync";
+import {
+  rebuildTeacherGoogleCalendar,
+  scheduleGoogleCalendarSync,
+  syncStudentGoogleCalendarMirror,
+} from "@/lib/integrations/googleCalendarSync";
 import { safeParseJson } from "@/lib/storage/safeParse";
 import type { Session } from "@/lib/types/index";
 
@@ -184,6 +188,24 @@ export function syncGoogleCalendarForExistingSessions(): void {
   scheduleGoogleCalendarSync({
     previous: current,
     next: current,
+    applyPatches: applySessionPatches,
+  });
+}
+
+export function syncStudentGoogleCalendarMirrorForStudentIds(studentIds: string[]): void {
+  if (!Array.isArray(studentIds) || studentIds.length === 0) return;
+  syncStudentGoogleCalendarMirror({
+    studentIds,
+    sessions: loadSessions(),
+  });
+}
+
+export function rebuildTeacherGoogleCalendarForStudentIds(studentIds: string[]): void {
+  if (!Array.isArray(studentIds) || studentIds.length === 0) return;
+  const current = loadSessions();
+  rebuildTeacherGoogleCalendar({
+    studentIds,
+    sessions: current,
     applyPatches: applySessionPatches,
   });
 }
