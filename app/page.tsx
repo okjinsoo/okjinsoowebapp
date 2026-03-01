@@ -104,7 +104,7 @@ export default function HomePage() {
         display: "grid",
         placeItems: "center",
         padding: 16,
-        background: "#ffffff",
+        background: "var(--background)",
       }}
     >
       <section
