@@ -21,6 +21,13 @@
   --google-signin-text: #1f2937;
   --google-signin-hover-bg: #f8fafc;
   --google-signin-shadow: 0 2px 8px rgba(15, 23, 42, 0.08);
+  --action-primary-bg: #e8f1ff;
+  --action-primary-border: #a9c9ff;
+  --action-secondary-bg: #f0f1f3;
+  --action-secondary-border: #cfd4dc;
+  --action-success-bg: #e9f7eb;
+  --action-success-border: #9bd7a0;
+  --action-contrast-text: #1f2937;
 }
 
 @theme inline {
@@ -52,6 +59,13 @@
     --google-signin-text: #f8fafc;
     --google-signin-hover-bg: #111827;
     --google-signin-shadow: 0 3px 10px rgba(2, 6, 23, 0.45);
+    --action-primary-bg: #1e3a8a;
+    --action-primary-border: #3b82f6;
+    --action-secondary-bg: #1f2937;
+    --action-secondary-border: #475569;
+    --action-success-bg: #14532d;
+    --action-success-border: #22c55e;
+    --action-contrast-text: #e5e7eb;
   }
 }
 

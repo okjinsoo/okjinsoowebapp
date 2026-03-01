@@ -328,7 +328,7 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
             {pickerSyncing ? "강의 동기화 중..." : "+ 강의 추가"}
           </button>
         ) : (
-          <div style={{ fontWeight: 400, color: "#444" }}>
+          <div style={{ fontWeight: 400, color: "var(--text-muted)" }}>
             ※ 필기 초기화는 담당 선생님께 부탁드리면 도와드릴게요!
           </div>
         )}
@@ -413,16 +413,17 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
 
               <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
                 {(() => {
-                  const primaryBorder = noteLocked ? "#cfd4dc" : "#a9c9ff";
-                  const primaryBg = noteLocked ? "#f0f1f3" : "#e8f1ff";
-                  const secondaryBorder = noteLocked ? "#a9c9ff" : "#cfd4dc";
-                  const secondaryBg = noteLocked ? "#e8f1ff" : "#f0f1f3";
+                  const primaryBorder = noteLocked ? "var(--action-secondary-border)" : "var(--action-primary-border)";
+                  const primaryBg = noteLocked ? "var(--action-secondary-bg)" : "var(--action-primary-bg)";
+                  const secondaryBorder = noteLocked ? "var(--action-primary-border)" : "var(--action-secondary-border)";
+                  const secondaryBg = noteLocked ? "var(--action-primary-bg)" : "var(--action-secondary-bg)";
 
                   const lectureStyle = {
                     padding: "8px 10px",
                     borderRadius: 10,
                     border: `1px solid ${primaryBorder}`,
                     background: primaryBg,
+                    color: "var(--action-contrast-text)",
                     cursor: canOpenLecture ? "pointer" : "not-allowed",
                   } as const;
 
@@ -431,6 +432,7 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
                     borderRadius: 10,
                     border: `1px solid ${primaryBorder}`,
                     background: primaryBg,
+                    color: "var(--action-contrast-text)",
                     cursor: canSubmitNote ? "pointer" : "not-allowed",
                   } as const;
 
@@ -439,6 +441,7 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
                     borderRadius: 10,
                     border: `1px solid ${secondaryBorder}`,
                     background: secondaryBg,
+                    color: "var(--action-contrast-text)",
                     cursor: canOpenProblem ? "pointer" : "not-allowed",
                   } as const;
 
@@ -447,6 +450,7 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
                     borderRadius: 10,
                     border: `1px solid ${secondaryBorder}`,
                     background: secondaryBg,
+                    color: "var(--action-contrast-text)",
                     cursor: canSubmitSolve ? "pointer" : "not-allowed",
                   } as const;
 
@@ -588,8 +592,9 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
                 style={{
                   padding: "8px 12px",
                   borderRadius: 10,
-                  border: "1px solid #a9c9ff",
-                  background: "#e8f1ff",
+                  border: "1px solid var(--action-primary-border)",
+                  background: "var(--action-primary-bg)",
+                  color: "var(--action-contrast-text)",
                 }}
               >
                 제출
@@ -663,8 +668,9 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
                 style={{
                   padding: "8px 12px",
                   borderRadius: 10,
-                  border: "1px solid #9bd7a0",
-                  background: "#e9f7eb",
+                  border: "1px solid var(--action-success-border)",
+                  background: "var(--action-success-bg)",
+                  color: "var(--action-contrast-text)",
                 }}
               >
                 제출
