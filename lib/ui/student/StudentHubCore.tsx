@@ -632,8 +632,19 @@ export default function StudentHubCore({
       metaMap,
     });
   }, [student, token, sessions, consultRecords, baseDatesISO, metaMap]);
-
-
+  const consultHooks = useStudentConsult({
+    isAdmin,
+    student,
+    history,
+    consultRecords,
+    token,
+    sessions,
+    baseDatesISO,
+    metaMap,
+    displayRecords,
+    applyHistory,
+    persistConsultationState,
+  });
 
   if (!mounted) return null;
 
@@ -1090,19 +1101,6 @@ export default function StudentHubCore({
     }
   }
 
-  const consultHooks = useStudentConsult({
-    isAdmin,
-    student,
-    history,
-    consultRecords,
-    token,
-    sessions,
-    baseDatesISO,
-    metaMap,
-    displayRecords,
-    applyHistory,
-    persistConsultationState,
-  });
   return (
     <main style={{ padding: 20, maxWidth: 980, margin: "0 auto" }}>
       <section style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
