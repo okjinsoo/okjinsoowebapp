@@ -3,11 +3,12 @@ import { ConsultationRecord, PaymentRecord, Session, Student } from "@/lib/types
 import { ConsultFormState } from "@/lib/ui/common/ConsultModal";
 import { makeId } from "@/lib/utils/id";
 import { nowIso, todayYmdKST } from "@/lib/utils/date";
-import { buildConsultationRecord, normalizeConsultPurpose, validateConsultForm } from "@/lib/factories/consultationFactory";
-import { computeRefundRatio } from "@/lib/factories/lessonStatusFactory";
+import { normalizeConsultPurpose } from "@/lib/factories/consultationFactory";
 import { useMetaMap } from "@/lib/factories/sessionFactories";
 import { computePauseLifecycle } from "@/lib/factories/studentStatusFactory";
-import { findClassIndexByDatePreferFuture } from "@/lib/ui/session/pauseHelpers";
+import { findLastClassIndex } from "@/lib/ui/session/pauseHelpers";
+import { computeRefundRatio } from "@/lib/factories/lessonStatusFactory";
+import { useConsultationSubmit } from "./useConsultationSubmit";
 
 export interface UseStudentConsultProps {
     isAdmin: boolean;
@@ -148,157 +149,60 @@ export function useStudentConsult({
         openConsultNew();
     }
 
-    async function saveConsultRecord() {
-        if (!student) return;
-        const err = validateConsultForm(consultForm, isAdmin);
-        if (err) return setConsultError(err);
-        const list = consultRecords ?? [];
-        const { previous: existing, next, updated } = buildConsultationRecord({
-            records: list,
-            editingId: consultEditingId,
-            form: consultForm,
-            nowIso: nowIso(),
-            makeId,
+    const { submit: submitConsult } = useConsultationSubmit({
+        isAdmin,
+        student,
+        history,
+        consultRecords: consultRecords ?? [],
+        sessions,
+        token,
+        applyHistory,
+        persistConsultationState,
+    });
+
+    useEffect(() => {
+        if (!student || consultForm.purpose !== "pause_request" || consultForm.finalResult !== "pause_confirm" || !consultForm.pauseEffectiveDate) return;
+
+        const lastIdx = findLastClassIndex({
+            token,
+            sessions,
+            baseDatesISO,
+            metaMap,
+            pauseEffectiveDate: consultForm.pauseEffectiveDate,
         });
 
-        const wantsExtended = consultForm.purpose === "extension" && consultForm.extensionResult === "extended";
-        const paymentConfirmed = Boolean(consultForm.extensionPaymentConfirmed);
-        const prevApplied = Boolean(existing?.extensionAppliedAt && existing?.extensionPaymentRecordId);
-        let nextStudentOverride: Student | undefined;
+        if (!lastIdx) return;
+        const requestIndex = lastIdx + 1;
+        const refundTarget = displayRecords.find((r) => requestIndex >= r.startIndex && requestIndex <= r.endIndex);
+        const nextRatio = refundTarget
+            ? computeRefundRatio(refundTarget, requestIndex, Boolean(refundTarget.isBase))
+            : "";
 
-        let nextConsultRecords = updated;
-        if (!wantsExtended || !paymentConfirmed) {
-            nextConsultRecords = updated.map((r) =>
-                r.id === next.id ? { ...r, extensionAppliedAt: undefined, extensionPaymentRecordId: undefined } : r
-            );
+        if (consultForm.pauseRefundRatio !== nextRatio) {
+            setConsultForm((prev) => ({ ...prev, pauseRefundRatio: nextRatio as ConsultFormState["pauseRefundRatio"] }));
         }
+    }, [
+        student,
+        consultForm.purpose,
+        consultForm.finalResult,
+        consultForm.pauseEffectiveDate,
+        consultForm.pauseRefundRatio,
+        token,
+        sessions,
+        baseDatesISO,
+        metaMap,
+        displayRecords,
+    ]);
 
-        if (isAdmin && consultForm.purpose === "pause_request") {
-            if (consultForm.finalResult === "pause_confirm" && consultForm.pauseEffectiveDate) {
-                const lastYmd = consultForm.pauseEffectiveDate;
-                const lastIdx = findClassIndexByDatePreferFuture({
-                    token,
-                    sessions,
-                    baseDatesISO,
-                    metaMap,
-                    targetDate: lastYmd,
-                });
-                const requestIndex = lastIdx ? lastIdx + 1 : null;
-                const refundTarget =
-                    requestIndex !== null
-                        ? displayRecords.find((r) => requestIndex >= r.startIndex && requestIndex <= r.endIndex)
-                        : undefined;
-                const pauseRefundRatio = refundTarget
-                    ? computeRefundRatio(refundTarget, requestIndex as number, Boolean(refundTarget.isBase))
-                    : undefined;
-
-                nextConsultRecords = nextConsultRecords.map((r) =>
-                    r.id === next.id
-                        ? {
-                            ...r,
-                            pauseEffectiveDate: lastYmd,
-                            pauseRefundRatio,
-                            pauseRefundCompleted: Boolean(consultForm.pauseRefundCompleted),
-                        }
-                        : r
-                );
-            }
-
-            nextStudentOverride = applyPauseStateFromConsultations(student, nextConsultRecords);
-        }
-        const nextStudentPatch = nextStudentOverride
-            ? {
-                status: nextStudentOverride.status,
-                pauseEffectiveDate: nextStudentOverride.pauseEffectiveDate,
-                pauseStatus: nextStudentOverride.pauseStatus,
-            }
-            : undefined;
-
-        if (isAdmin && prevApplied && (!wantsExtended || !paymentConfirmed) && existing?.extensionPaymentRecordId) {
-            const nextHistory = history.filter((h) => h.id !== existing.extensionPaymentRecordId);
-            const ok = await applyHistory(nextHistory, nextStudentPatch, false, {
-                consultationRecords: nextConsultRecords,
-            });
-            if (!ok) return;
-            setConsultOpen(false);
+    async function saveConsultRecord() {
+        const res = await submitConsult(consultForm, consultEditingId);
+        if (res.error) {
+            setConsultError(res.error);
             return;
         }
-
-        if (isAdmin && wantsExtended && paymentConfirmed) {
-            const cnt = Math.max(1, Math.floor(Number(consultForm.extensionAddedCount) || 0));
-            const nextPaymentDate = consultForm.extensionPaymentDate;
-            const nextMemo = consultForm.content.trim() || "연장 상담";
-            let nextHistory: PaymentRecord[] | null = null;
-            let refreshed = nextConsultRecords;
-
-            if (prevApplied && existing?.extensionPaymentRecordId) {
-                const recId = existing.extensionPaymentRecordId;
-                const recIdx = history.findIndex((h) => h.id === recId);
-
-                if (recIdx >= 0) {
-                    const prev = history[recIdx];
-                    const patched: PaymentRecord = {
-                        ...prev,
-                        paymentDate: nextPaymentDate,
-                        addedCount: cnt,
-                        memo: nextMemo,
-                    };
-                    nextHistory = history.map((h, i) => (i === recIdx ? patched : h));
-                    refreshed = nextConsultRecords.map((r) =>
-                        r.id === next.id
-                            ? {
-                                ...r,
-                                extensionAppliedAt: r.extensionAppliedAt ?? existing.extensionAppliedAt ?? nowIso(),
-                                extensionPaymentRecordId: recId,
-                            }
-                            : r
-                    );
-                } else {
-                    const paymentRecord: PaymentRecord = {
-                        id: makeId(),
-                        paymentDate: nextPaymentDate,
-                        addedCount: cnt,
-                        startIndex: 0,
-                        endIndex: 0,
-                        memo: nextMemo,
-                        createdAt: nowIso(),
-                    };
-                    nextHistory = [...history, paymentRecord];
-                    refreshed = nextConsultRecords.map((r) =>
-                        r.id === next.id ? { ...r, extensionAppliedAt: nowIso(), extensionPaymentRecordId: paymentRecord.id } : r
-                    );
-                }
-            } else {
-                const paymentRecord: PaymentRecord = {
-                    id: makeId(),
-                    paymentDate: nextPaymentDate,
-                    addedCount: cnt,
-                    startIndex: 0,
-                    endIndex: 0,
-                    memo: nextMemo,
-                    createdAt: nowIso(),
-                };
-                nextHistory = [...history, paymentRecord];
-                refreshed = nextConsultRecords.map((r) =>
-                    r.id === next.id ? { ...r, extensionAppliedAt: nowIso(), extensionPaymentRecordId: paymentRecord.id } : r
-                );
-            }
-
-            if (!nextHistory) {
-                setConsultError("연장 결제 기록을 준비하지 못했어요. 다시 시도해주세요.");
-                return;
-            }
-            const ok = await applyHistory(nextHistory, nextStudentPatch, false, {
-                consultationRecords: refreshed,
-            });
-            if (!ok) return;
+        if (res.ok) {
             setConsultOpen(false);
-            return;
         }
-
-        const ok = await persistConsultationState(nextConsultRecords, nextStudentOverride);
-        if (!ok) return setConsultError("서버 저장에 실패했어요. 잠시 뒤 다시 시도해주세요.");
-        setConsultOpen(false);
     }
 
     async function deleteConsultRecord() {

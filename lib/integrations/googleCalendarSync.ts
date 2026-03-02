@@ -4,6 +4,40 @@ import { loadAuthSession } from "@/lib/auth/supabaseAuth";
 import { loadStudents } from "@/lib/storage/students";
 import { loadTeachers } from "@/lib/storage/teachers";
 import type { Session, Student, Teacher } from "@/lib/types/index";
+import {
+  buildBaseDatesISOByToken,
+  readMetaMap,
+  getSessionVisibility,
+} from "@/lib/factories/sessionFactories";
+import { findLastClassIndex } from "@/lib/ui/session/pauseHelpers";
+
+function filterVisibleSessions(student: Student, sessions: Session[]): Session[] {
+  if (
+    (student.pauseStatus !== "confirmed" && student.pauseStatus !== "paused") ||
+    !student.pauseEffectiveDate ||
+    !student.token
+  ) {
+    return sessions;
+  }
+
+  const baseDatesISO = buildBaseDatesISOByToken(student.token, 60);
+  const metaMap = readMetaMap(student.token);
+
+  const lastClassIndex = findLastClassIndex({
+    token: student.token,
+    sessions,
+    baseDatesISO,
+    metaMap,
+    pauseEffectiveDate: student.pauseEffectiveDate,
+  });
+
+  if (lastClassIndex === null) return sessions;
+
+  return sessions.filter(s => {
+    const visibility = getSessionVisibility({ index: s.index, lastVisibleIndex: lastClassIndex });
+    return visibility !== "hidden";
+  });
+}
 
 type SessionPatch = {
   id: string;
@@ -932,7 +966,8 @@ async function runStudentMirrorSync(args: {
         teacherEmail: teacher?.email,
       });
 
-      const orderedSessions = [...rows].sort((a, b) => {
+      const visibleRows = filterVisibleSessions(student, rows);
+      const orderedSessions = [...visibleRows].sort((a, b) => {
         const ta = new Date(a.displayAt).getTime();
         const tb = new Date(b.displayAt).getTime();
         if (Number.isFinite(ta) && Number.isFinite(tb) && ta !== tb) return ta - tb;
@@ -1036,7 +1071,8 @@ async function runTeacherCalendarRebuild(args: {
         teacherEmail: ownerEmail,
       });
 
-      const orderedSessions = [...rows].sort((a, b) => {
+      const visibleRows = filterVisibleSessions(student, rows);
+      const orderedSessions = [...visibleRows].sort((a, b) => {
         const ta = new Date(a.displayAt).getTime();
         const tb = new Date(b.displayAt).getTime();
         if (Number.isFinite(ta) && Number.isFinite(tb) && ta !== tb) return ta - tb;
@@ -1168,8 +1204,15 @@ async function runSync(args: SyncArgs): Promise<void> {
     }
   }
 
+  const visibleNextSessions: Session[] = [];
+  for (const student of students) {
+    const studentSessions = args.next.filter(s => s.studentId === student.id);
+    visibleNextSessions.push(...filterVisibleSessions(student, studentSessions));
+  }
+  const visibleSet = new Set(visibleNextSessions.map(s => s.id));
+
   // 이메일 변경처럼 "세션 행 자체는 안 바뀌었지만 소유자가 달라진 경우"를 포함해서 동기화 대상 선정
-  const targetSessions = args.next.filter((next) => {
+  const targetSessions = visibleNextSessions.filter((next) => {
     const prev = previousById.get(next.id);
     const status = text(next.googleCalendarStatus);
     const statusDriven = status === "pending" || status === "error";
@@ -1187,7 +1230,7 @@ async function runSync(args: SyncArgs): Promise<void> {
   });
 
   for (const prev of args.previous) {
-    if (nextById.has(prev.id)) continue;
+    if (visibleSet.has(prev.id)) continue;
     if (!prev.googleCalendarEventId) continue;
     const prevStudent = studentById.get(prev.studentId);
     const prevTeacher = prevStudent?.teacherId ? teacherById.get(prevStudent.teacherId) ?? null : null;
@@ -1201,6 +1244,19 @@ async function runSync(args: SyncArgs): Promise<void> {
         calendarId: prevCalendarId,
         eventId: prev.googleCalendarEventId,
       });
+      if (nextById.has(prev.id)) {
+        patches.push({
+          id: prev.id,
+          patch: {
+            googleCalendarId: undefined,
+            googleCalendarEventId: undefined,
+            googleMeetUrl: undefined,
+            googleCalendarOwnerEmail: undefined,
+            googleCalendarStatus: "synced",
+            googleCalendarError: "",
+          },
+        });
+      }
     } catch (err) {
       console.error("Google Calendar 이벤트 삭제 실패:", err);
     }
@@ -1294,11 +1350,11 @@ async function runSync(args: SyncArgs): Promise<void> {
 
       let sessionForOwner: Session = ownerMismatch
         ? {
-            ...next,
-            googleCalendarId: targetCalendarId,
-            googleCalendarEventId: undefined,
-            googleMeetUrl: undefined,
-          }
+          ...next,
+          googleCalendarId: targetCalendarId,
+          googleCalendarEventId: undefined,
+          googleMeetUrl: undefined,
+        }
         : next;
       let sessionCalendarId = calendarIdOf(sessionForOwner);
 

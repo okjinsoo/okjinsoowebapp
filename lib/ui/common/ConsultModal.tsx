@@ -92,6 +92,13 @@ export default function ConsultModal({
               style={baseFieldStyle}
               value={state.purpose}
               onChange={(e) => onChange({ ...state, purpose: e.target.value as ConsultFormState["purpose"] })}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  onSave();
+                }
+              }}
               disabled={baseDisabled}
             >
               <option value="general">일반 상담</option>
@@ -107,6 +114,13 @@ export default function ConsultModal({
               style={baseFieldStyle}
               value={state.target}
               onChange={(e) => onChange({ ...state, target: e.target.value as ConsultFormState["target"] })}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  onSave();
+                }
+              }}
               disabled={baseDisabled}
             >
               <option value="student">학생</option>
@@ -121,6 +135,13 @@ export default function ConsultModal({
               style={baseFieldStyle}
               value={state.content}
               onChange={(e) => onChange({ ...state, content: e.target.value })}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  onSave();
+                }
+              }}
               placeholder="상담 내용을 입력해주세요"
               readOnly={baseDisabled}
             />
@@ -137,6 +158,13 @@ export default function ConsultModal({
                   onChange={(e) =>
                     onChange({ ...state, extensionResult: e.target.value as ConsultFormState["extensionResult"] })
                   }
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      onSave();
+                    }
+                  }}
                   disabled={baseDisabled}
                 >
                   <option value="">선택 안함</option>
@@ -155,6 +183,13 @@ export default function ConsultModal({
                       style={baseFieldStyle}
                       value={state.extensionPaymentDate}
                       onChange={(e) => onChange({ ...state, extensionPaymentDate: e.target.value })}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          onSave();
+                        }
+                      }}
                       disabled={baseDisabled}
                     />
                   </label>
@@ -173,6 +208,13 @@ export default function ConsultModal({
                           extensionAddedCount: Math.max(0, Math.floor(Number(e.target.value) || 0)),
                         })
                       }
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          onSave();
+                        }
+                      }}
                       disabled={baseDisabled}
                     />
                   </label>
@@ -201,6 +243,13 @@ export default function ConsultModal({
                   style={{ ...baseFieldStyle, ...lockedInputStyle }}
                   value={state.adminConsultDate}
                   onChange={(e) => onChange({ ...state, adminConsultDate: e.target.value })}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      onSave();
+                    }
+                  }}
                   disabled={pauseAdminLocked}
                 />
               </label>
@@ -214,6 +263,13 @@ export default function ConsultModal({
                   onChange={(e) =>
                     onChange({ ...state, finalResult: e.target.value as ConsultFormState["finalResult"] })
                   }
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      onSave();
+                    }
+                  }}
                   disabled={pauseAdminLocked}
                 >
                   <option value="">선택 안함</option>
@@ -229,6 +285,13 @@ export default function ConsultModal({
                   style={{ ...baseFieldStyle, ...lockedInputStyle }}
                   value={state.finalNote}
                   onChange={(e) => onChange({ ...state, finalNote: e.target.value })}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      onSave();
+                    }
+                  }}
                   placeholder="최종 상담 내용을 입력해주세요"
                   readOnly={pauseAdminLocked}
                 />
@@ -244,6 +307,13 @@ export default function ConsultModal({
                       style={{ ...baseFieldStyle, ...lockedInputStyle }}
                       value={state.pauseEffectiveDate}
                       onChange={(e) => onChange({ ...state, pauseEffectiveDate: e.target.value })}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          onSave();
+                        }
+                      }}
                       disabled={pauseAdminLocked}
                     />
                   </label>

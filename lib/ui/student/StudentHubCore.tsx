@@ -649,6 +649,13 @@ export default function StudentHubCore({
     persistConsultationState,
   });
 
+  useEffect(() => {
+    if (mounted && !student && (accessRole === "a" || accessRole === "t")) {
+      console.warn("학생 데이터를 찾을 수 없어 목록으로 이동합니다.");
+      router.push(accessRole === "a" ? "/a/students" : "/t/tmain");
+    }
+  }, [mounted, student, accessRole, router]);
+
   if (!mounted) return null;
 
   if (!token) {

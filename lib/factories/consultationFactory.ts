@@ -14,16 +14,8 @@ export function validateConsultForm(form: ConsultFormState, isAdmin: boolean): s
   if (!form.content.trim()) return "상담 내용을 입력해주세요.";
 
   if (form.purpose === "extension") {
-    if (!form.extensionResult) return "연장 결과를 선택해주세요.";
-    if (form.extensionResult === "extended") {
-      if (!form.extensionPaymentDate) return "결제일을 입력해주세요.";
-      if (!Number.isFinite(form.extensionAddedCount) || form.extensionAddedCount <= 0) {
-        return "추가 회차를 1 이상으로 입력해주세요.";
-      }
-      if (!form.extensionPaymentConfirmed) {
-        return "연장 결과를 '연장'으로 확정하려면 '결제 완료'를 체크해주세요.";
-      }
-    }
+    // 연장 목적 및 '연장' 결과 선택 시에도 결제 여부와 상관없이 저장 가능하도록 함
+    // (결제 완료 체크 시에만 세션 증설 로직이 작동하므로, 여기서는 차단하지 않음)
   }
 
   if (isAdmin && form.finalResult === "pause_confirm" && !form.pauseEffectiveDate) {

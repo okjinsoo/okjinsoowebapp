@@ -30,9 +30,11 @@ import {
   calculateSessionAchievementPercent,
   isSessionProgressEventKeyForToken,
 } from "@/lib/factories/sessionProgressFactory";
+import { useConsultationSubmit } from "../student/hooks/useConsultationSubmit";
 import { todayYmdKST } from "@/lib/utils/date";
 import { syncSessionDisplayAtByToken } from "@/lib/ui/session/syncSessionDisplayAt";
 import { canEditSessionMeta, type SessionRole } from "@/lib/policies/sessionRolePolicy";
+import { ConsultationRecord, PaymentRecord, Student } from "@/lib/types/index";
 
 type Props = {
   role: SessionRole;
@@ -176,11 +178,16 @@ export default function SessionTopBarCore({ role, token, index }: Props) {
       metaMap: hydratedMetaMap,
     });
   }, [student, token, sessions, consultRecords, baseDatesISO, hydratedMetaMap]);
+  const studentHistory = useMemo(() => {
+    if (!student) return [];
+    const h = student.paymentHistory ?? [];
+    return h;
+  }, [student]);
+
   const displayRecords = useMemo(() => {
     if (!student) return [];
-    const history = student.paymentHistory ?? [];
-    return buildDisplayRecords(student, history).displayRecords;
-  }, [student]);
+    return buildDisplayRecords(student, studentHistory).displayRecords;
+  }, [student, studentHistory]);
 
   useEffect(() => {
     if (!student) return;
@@ -337,40 +344,38 @@ export default function SessionTopBarCore({ role, token, index }: Props) {
     setConsultOpen(true);
   };
 
-  const saveConsultRecord = () => {
-    if (!student) return;
-    const list = loadConsultationsByStudent(student.id);
-    const err = validateConsultForm(consultForm, isAdmin);
-    if (err) return setConsultError(err);
-    const { updated } = buildConsultationRecord({
-      records: list,
-      editingId: consultEditingId,
-      form: consultForm,
-      nowIso: new Date().toISOString(),
-      makeId: () => Math.random().toString(36).slice(2),
-    });
-    saveConsultationsByStudent(student.id, updated);
-    setConsultTick((x) => x + 1);
-    setConsultOpen(false);
+  const { submit: submitConsult } = useConsultationSubmit({
+    isAdmin,
+    student,
+    history: studentHistory,
+    consultRecords: consultRecords ?? [],
+    sessions,
+    token,
+    applyHistory: async (recs: PaymentRecord[], patch?: Partial<Student>, skip?: boolean, opts?: { consultationRecords?: ConsultationRecord[] }) => {
+      if (!student) return false;
+      const nextConsultRecords = opts?.consultationRecords ?? consultRecords;
+      const updatedStudent = { ...student, ...patch, paymentHistory: recs };
+      upsertStudent(updatedStudent);
+      saveConsultationsByStudent(student.id, nextConsultRecords);
+      return true;
+    },
+    persistConsultationState: async (recs: ConsultationRecord[], patch?: Student) => {
+      if (!student) return false;
+      if (patch) upsertStudent(patch);
+      saveConsultationsByStudent(student.id, recs);
+      return true;
+    },
+  });
 
-    if (isAdmin && consultForm.purpose === "pause_request") {
-      if (consultForm.finalResult === "pause_confirm" && consultForm.pauseEffectiveDate) {
-        const today = todayYmdKST();
-        const pauseStatus = computePauseLifecycle(today, consultForm.pauseEffectiveDate) === "paused" ? "paused" : "confirmed";
-        upsertStudent({
-          ...student,
-          status: "paused",
-          pauseEffectiveDate: consultForm.pauseEffectiveDate,
-          pauseStatus,
-        });
-      } else if (consultForm.finalResult === "pause_cancel") {
-        upsertStudent({
-          ...student,
-          status: "active",
-          pauseEffectiveDate: undefined,
-          pauseStatus: "none",
-        });
-      }
+  const saveConsultRecord = async () => {
+    const res = await submitConsult(consultForm, consultEditingId);
+    if (res.error) {
+      setConsultError(res.error);
+      return;
+    }
+    if (res.ok) {
+      setConsultOpen(false);
+      setConsultTick((x) => x + 1);
     }
   };
 
@@ -534,7 +539,7 @@ export default function SessionTopBarCore({ role, token, index }: Props) {
       if (calendarStatus === "error") {
         alert(
           `Meet 링크 생성에 실패했어요.\n원인: ${calendarError || "알 수 없는 오류"}\n\n` +
-            "해결: Google Calendar API 활성화 + 다시 로그인(권한 동의) 후 다시 시도해주세요."
+          "해결: Google Calendar API 활성화 + 다시 로그인(권한 동의) 후 다시 시도해주세요."
         );
         return;
       }
@@ -588,10 +593,10 @@ export default function SessionTopBarCore({ role, token, index }: Props) {
           ) : null}
           {mounted && badges.length > 0
             ? badges.map((b) => (
-                <Badge key={`${index}:${b}`} className="bg-slate-100 text-slate-700">
-                  {b}
-                </Badge>
-              ))
+              <Badge key={`${index}:${b}`} className="bg-slate-100 text-slate-700">
+                {b}
+              </Badge>
+            ))
             : null}
         </div>
       </div>

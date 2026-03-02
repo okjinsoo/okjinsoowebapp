@@ -28,6 +28,7 @@ import {
   computeEffectiveISO,
   getDdayMeta,
   readMetaMap,
+  getSessionVisibility,
 } from "@/lib/factories/sessionFactories";
 import { computeStudentStatus } from "@/lib/factories/studentStatusFactory";
 import { GATE_EVENT } from "@/lib/ui/common/roleGateStorage";
@@ -200,6 +201,12 @@ export default function TeacherMainClient({ initialRole = "t" }: { initialRole?:
           : null;
 
       for (const s of sessions) {
+        const visibility = getSessionVisibility({
+          index: s.index,
+          lastVisibleIndex: lastClassIndex,
+        });
+        if (visibility === "hidden") continue;
+
         const { effectiveISO, meta } = computeEffectiveISO({
           token: st.token,
           index: s.index,
@@ -274,6 +281,12 @@ export default function TeacherMainClient({ initialRole = "t" }: { initialRole?:
 
       const candidates: TodaySessionRow[] = [];
       for (const s of sessions) {
+        const visibility = getSessionVisibility({
+          index: s.index,
+          lastVisibleIndex: lastClassIndex,
+        });
+        if (visibility === "hidden") continue;
+
         const { effectiveISO, meta } = computeEffectiveISO({
           token: st.token,
           index: s.index,

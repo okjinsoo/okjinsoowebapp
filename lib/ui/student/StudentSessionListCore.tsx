@@ -25,7 +25,8 @@ import { getAchievementBadgeStyle } from "@/lib/ui/common/achievementBadge";
 import { getSessionStatusBadge } from "@/lib/ui/common/sessionStatusBadge";
 import { buildSessionContextBadges, getSessionExtraBadgeStyle } from "@/lib/ui/common/sessionExtraBadge";
 import type { ConsultTag } from "@/lib/ui/session/consultationMap";
-import type { ConsultationRecord } from "@/lib/types/index";
+import { ConsultationRecord, PaymentRecord, Session, Student } from "@/lib/types/index";
+import { useConsultationSubmit } from "./hooks/useConsultationSubmit";
 import { ConsultBadge, ConsultButton } from "@/lib/ui/common/ConsultParts";
 import ConsultModal, { ConsultFormState } from "@/lib/ui/common/ConsultModal";
 import { TUTORWEB_EVENTS } from "@/lib/events/tutorwebEvents";
@@ -217,12 +218,12 @@ export default function StudentSessionListCore({ role, token, prefix, hideTokenI
     const lastClassIndex =
       (student.pauseStatus === "confirmed" || student.pauseStatus === "paused") && student.pauseEffectiveDate
         ? findLastClassIndex({
-            token,
-            sessions,
-            baseDatesISO,
-            metaMap,
-            pauseEffectiveDate: student.pauseEffectiveDate,
-          })
+          token,
+          sessions,
+          baseDatesISO,
+          metaMap,
+          pauseEffectiveDate: student.pauseEffectiveDate,
+        })
         : null;
 
     return sessions
@@ -372,43 +373,49 @@ export default function StudentSessionListCore({ role, token, prefix, hideTokenI
     setConsultOpen(true);
   };
 
-  const saveConsultRecord = () => {
+  const { submit: submitConsult } = useConsultationSubmit({
+    isAdmin,
+    student,
+    history: student?.paymentHistory ?? [],
+    consultRecords: consultRecords ?? [],
+    sessions,
+    token,
+    applyHistory: async (recs: PaymentRecord[], patch?: Partial<Student>, skip?: boolean, opts?: { consultationRecords?: ConsultationRecord[] }) => {
+      if (!student) return false;
+      const nextConsultRecords = opts?.consultationRecords ?? consultRecords;
+      const updatedStudent = { ...student, ...patch, paymentHistory: recs };
+      // Simple session count update
+      const baseCount = student.planCount ?? 0;
+      const added = recs.reduce((sum: number, r: PaymentRecord) => sum + r.addedCount, 0);
+      updatedStudent.planCount = baseCount + added;
+
+      upsertStudent(updatedStudent);
+      saveConsultationsByStudent(student.id, nextConsultRecords);
+      return true;
+    },
+    persistConsultationState: async (recs: ConsultationRecord[], patch?: Student) => {
+      if (!student) return false;
+      if (patch) upsertStudent(patch);
+      saveConsultationsByStudent(student.id, recs);
+      return true;
+    },
+  });
+
+  const saveConsultRecord = async () => {
     if (!student) return;
     const formForSave =
       consultForm.purpose === "pause_request" && consultForm.finalResult === "pause_confirm"
         ? { ...consultForm, pauseRefundRatio: computedPauseRefundRatio }
         : consultForm;
-    const err = validateConsultForm(formForSave, isAdmin);
-    if (err) return setConsultError(err);
-    const { updated } = buildConsultationRecord({
-      records: consultRecords,
-      editingId: consultEditingId,
-      form: formForSave,
-      nowIso: new Date().toISOString(),
-      makeId: () => Math.random().toString(36).slice(2),
-    });
-    saveConsultationsByStudent(student.id, updated);
-    setConsultTick((x) => x + 1);
-    setConsultOpen(false);
 
-    if (isAdmin && formForSave.purpose === "pause_request") {
-      if (formForSave.finalResult === "pause_confirm" && formForSave.pauseEffectiveDate) {
-        const today = todayYmdKST();
-        const pauseStatus = computePauseLifecycle(today, formForSave.pauseEffectiveDate) === "paused" ? "paused" : "confirmed";
-        upsertStudent({
-          ...student,
-          status: "paused",
-          pauseEffectiveDate: formForSave.pauseEffectiveDate,
-          pauseStatus,
-        });
-      } else if (formForSave.finalResult === "pause_cancel") {
-        upsertStudent({
-          ...student,
-          status: "active",
-          pauseEffectiveDate: undefined,
-          pauseStatus: "none",
-        });
-      }
+    const res = await submitConsult(formForSave, consultEditingId);
+    if (res.error) {
+      setConsultError(res.error);
+      return;
+    }
+    if (res.ok) {
+      setConsultOpen(false);
+      setConsultTick((x) => x + 1);
     }
   };
 

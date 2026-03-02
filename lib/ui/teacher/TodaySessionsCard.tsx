@@ -8,7 +8,7 @@ import { saveCurrentStudentToken } from "@/lib/ui/common/roleGateStorage";
 import SessionQuickActions from "@/lib/ui/session/SessionQuickActions";
 import { saveConsultationsByStudent, loadConsultationsByStudent } from "@/lib/storage/consultations";
 import { loadStudents, upsertStudent } from "@/lib/storage/students";
-import { buildConsultationRecord, validateConsultForm } from "@/lib/factories/consultationFactory";
+import { normalizeConsultPurpose, validateConsultForm } from "@/lib/factories/consultationFactory";
 import { computePauseLifecycle } from "@/lib/factories/studentStatusFactory";
 import { ConsultBadge, ConsultButton } from "@/lib/ui/common/ConsultParts";
 import { getAchievementBadgeStyle } from "@/lib/ui/common/achievementBadge";
@@ -17,6 +17,9 @@ import { getSessionExtraBadgeStyle } from "@/lib/ui/common/sessionExtraBadge";
 import ConsultModal, { ConsultFormState } from "@/lib/ui/common/ConsultModal";
 import { makeId } from "@/lib/utils/id";
 import { nowIso, todayYmdKST, ymdFromISO_KST } from "@/lib/utils/date";
+import { submitConsultation } from "@/lib/ui/student/hooks/useConsultationSubmit";
+import { ConsultationRecord, PaymentRecord, Session, Student } from "@/lib/types/index";
+import { buildConsultationRecord } from "@/lib/factories/consultationFactory";
 
 export type TodaySessionRow = {
   studentId: string;
@@ -141,42 +144,51 @@ export default function TodaySessionsCard({
     setConsultOpen(true);
   }
 
-  function saveConsult() {
+  async function saveConsult() {
     if (!consultStudentId) return;
-    const list = loadConsultationsByStudent(consultStudentId);
-    const err = validateConsultForm(consultForm, isAdmin);
-    if (err) return setConsultError(err);
-    const { updated } = buildConsultationRecord({
-      records: list,
-      editingId: consultEditingId,
-      form: consultForm,
-      nowIso: nowIso(),
-      makeId,
-    });
-    saveConsultationsByStudent(consultStudentId, updated);
-    setConsultOpen(false);
+    const student = loadStudents().find((s) => s.id === consultStudentId);
+    if (!student) return;
 
-    if (isAdmin && consultForm.purpose === "pause_request") {
-      const student = loadStudents().find((s) => s.id === consultStudentId);
-      if (student) {
-        if (consultForm.finalResult === "pause_confirm" && consultForm.pauseEffectiveDate) {
-          const today = todayYmdKST();
-          const pauseStatus = computePauseLifecycle(today, consultForm.pauseEffectiveDate) === "paused" ? "paused" : "confirmed";
-          upsertStudent({
-            ...student,
-            status: "paused",
-            pauseEffectiveDate: consultForm.pauseEffectiveDate,
-            pauseStatus,
-          });
-        } else if (consultForm.finalResult === "pause_cancel") {
-          upsertStudent({
-            ...student,
-            status: "active",
-            pauseEffectiveDate: undefined,
-            pauseStatus: "none",
-          });
-        }
-      }
+    const list = loadConsultationsByStudent(consultStudentId);
+    const history = student.paymentHistory ?? [];
+    const sessions: Session[] = []; // TodaySessionsCard에서는 세션 목록을 비워둬도 기본 저장 가능
+
+    const res = await submitConsultation(
+      {
+        isAdmin,
+        student,
+        history,
+        consultRecords: list,
+        sessions,
+        token: student.token || "",
+        applyHistory: async (recs: PaymentRecord[], patch?: Partial<Student>, skip?: boolean, opts?: { consultationRecords?: ConsultationRecord[] }) => {
+          const nextConsultRecords = opts?.consultationRecords ?? list;
+          const updatedStudent = { ...student, ...patch, paymentHistory: recs };
+          // Simple session count update
+          const baseCount = student.planCount ?? 0;
+          const added = recs.reduce((sum: number, r: PaymentRecord) => sum + r.addedCount, 0);
+          updatedStudent.planCount = baseCount + added;
+
+          upsertStudent(updatedStudent);
+          saveConsultationsByStudent(student.id, nextConsultRecords);
+          return true;
+        },
+        persistConsultationState: async (recs: ConsultationRecord[], patch?: Student) => {
+          if (patch) upsertStudent(patch);
+          saveConsultationsByStudent(student.id, recs);
+          return true;
+        },
+      },
+      consultForm,
+      consultEditingId
+    );
+
+    if (res.error) {
+      setConsultError(res.error);
+      return;
+    }
+    if (res.ok) {
+      setConsultOpen(false);
     }
   }
 

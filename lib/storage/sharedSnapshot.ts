@@ -459,27 +459,16 @@ export async function pushSharedSnapshot(args?: {
   const hasSessionsArg = Object.prototype.hasOwnProperty.call(args ?? {}, "sessions");
   const hasStateKvArg = Object.prototype.hasOwnProperty.call(args ?? {}, "stateKv");
   const hasDropStateKeysArg = Object.prototype.hasOwnProperty.call(args ?? {}, "dropStateKeys");
-  const includeCoreSnapshot = !args || Object.keys(args).length === 0;
-  const includeTeachers = includeCoreSnapshot || hasTeachersArg;
-  const includeStudents = includeCoreSnapshot || hasStudentsArg;
-  const includeSessions = includeCoreSnapshot || hasSessionsArg;
+
+  // 서버 측에서 데이터를 재구성하기 위해 항상 핵심 컬렉션을 포함하는 것이 안전함
+  const includeTeachers = true;
+  const includeStudents = true;
+  const includeSessions = true;
   const touchesStateKv = hasStateKvArg || hasDropStateKeysArg;
 
-  const teachers = includeTeachers
-    ? hasTeachersArg
-      ? (args?.teachers ?? [])
-      : readLocalTeachers()
-    : undefined;
-  const students = includeStudents
-    ? hasStudentsArg
-      ? (args?.students ?? [])
-      : readLocalStudents()
-    : undefined;
-  const sessions = includeSessions
-    ? hasSessionsArg
-      ? (args?.sessions ?? [])
-      : readLocalSessions()
-    : undefined;
+  const teachers = hasTeachersArg ? (args?.teachers ?? []) : readLocalTeachers();
+  const students = hasStudentsArg ? (args?.students ?? []) : readLocalStudents();
+  const sessions = hasSessionsArg ? (args?.sessions ?? []) : readLocalSessions();
   const stateKvPatch = hasStateKvArg ? toStateKv(args?.stateKv ?? {}) : undefined;
 
   const internal = await fetchInternalSnapshot({

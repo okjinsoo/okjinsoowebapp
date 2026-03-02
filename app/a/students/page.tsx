@@ -8,6 +8,7 @@ import {
   saveCurrentTeacherId,
   TEACHERS_EVENT,
 } from "@/lib/storage/teachers";
+import { pullSharedSnapshotAndHydrate } from "@/lib/storage/sharedSnapshot";
 import { saveCurrentStudentToken } from "@/lib/ui/common/roleGateStorage";
 import { computeStudentStatus, getStudentStatusMeta, type StudentStatusKind } from "@/lib/factories/studentStatusFactory";
 import Badge from "@/lib/ui/common/Badge";
@@ -38,6 +39,11 @@ export default function AdminStudentsPage() {
 
   useEffect(() => {
     const refresh = async () => {
+      try {
+        await pullSharedSnapshotAndHydrate();
+      } catch (err) {
+        console.error("공유 스냅샷 불러오기 실패(admin students):", err);
+      }
       setStudents(loadStudents());
       setTeachers(loadTeachers());
     };
