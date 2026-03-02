@@ -28,22 +28,6 @@ export function useStudentPayment({
     const [paymentConfirmed, setPaymentConfirmed] = useState(false);
     const [paymentError, setPaymentError] = useState("");
 
-    // Refund Panel State
-    const [refundOpen, setRefundOpen] = useState(false);
-    const [refundMode, setRefundMode] = useState<"request" | "process">("request");
-    const [refundRecordId, setRefundRecordId] = useState<string | null>(null);
-    const [refundSessionInput, setRefundSessionInput] = useState<number | "">("");
-    const [refundReasonInput, setRefundReasonInput] = useState("");
-    const [refundConsultInput, setRefundConsultInput] = useState("");
-    const [refundProcessedDate, setRefundProcessedDate] = useState(() => todayYmdKST());
-    const [refundConfirmed, setRefundConfirmed] = useState(false);
-    const [refundError, setRefundError] = useState("");
-
-    const refundRecord = useMemo(
-        () => history.find((h) => h.id === refundRecordId),
-        [history, refundRecordId]
-    );
-
     const editingRange = useMemo(() => {
         if (!editingRecordId) {
             if (history.length === 0) return { start: 1, end: addedCount };
@@ -82,17 +66,6 @@ export function useStudentPayment({
         setPaymentConfirmed(false);
         setPaymentError("");
         setShowPaymentPanel(true);
-    }
-
-    function closeRefundPanel() {
-        setRefundOpen(false);
-        setRefundRecordId(null);
-        setRefundSessionInput("");
-        setRefundReasonInput("");
-        setRefundConsultInput("");
-        setRefundProcessedDate(todayYmdKST());
-        setRefundConfirmed(false);
-        setRefundError("");
     }
 
     async function onApplyPayment() {
@@ -134,152 +107,6 @@ export function useStudentPayment({
         closePaymentPanel();
     }
 
-    async function onSubmitRefundRequest() {
-        if (!refundRecordId) return;
-        setRefundError("");
-
-        const record = refundRecord;
-        if (!record) return;
-
-        const req = Math.floor(Number(refundSessionInput));
-        if (!Number.isFinite(req)) return setRefundError("환불 요청 회차를 입력해주세요.");
-        if (req < record.startIndex || req > record.endIndex) {
-            return setRefundError("환불 요청 회차는 해당 연장 구간 안이어야 합니다.");
-        }
-        if (!refundReasonInput.trim()) return setRefundError("환불 예상 사유를 입력해주세요.");
-
-        const ratio = computeRefundRatio(record, req, Boolean(record.isBase));
-        if (record.isBase) {
-            const ok = await applyHistory(
-                history,
-                {
-                    baseRefundStatus: "requested",
-                    baseRefundSessionIndex: req,
-                    baseRefundRatio: ratio,
-                    baseRefundReason: refundReasonInput.trim(),
-                    baseRefundRequestedAt: nowIso(),
-                },
-                true
-            );
-            if (!ok) return setRefundError("서버 저장에 실패했어요. 잠시 뒤 다시 시도해주세요.");
-        } else {
-            const nextHistory = history.map((h) =>
-                h.id === record.id
-                    ? {
-                        ...h,
-                        refundStatus: "requested" as const,
-                        refundSessionIndex: req,
-                        refundRatio: ratio,
-                        refundReason: refundReasonInput.trim(),
-                        refundRequestedAt: nowIso(),
-                    }
-                    : h
-            );
-            const ok = await applyHistory(nextHistory, undefined, true);
-            if (!ok) return setRefundError("서버 저장에 실패했어요. 잠시 뒤 다시 시도해주세요.");
-        }
-        closeRefundPanel();
-    }
-
-    async function onSubmitRefundProcess() {
-        if (!refundRecordId) return;
-        setRefundError("");
-
-        const record = refundRecord;
-        if (!record) return;
-        const req = Math.floor(Number(refundSessionInput));
-        if (!Number.isFinite(req)) return setRefundError("환불 요청 회차를 입력해주세요.");
-        if (req < record.startIndex || req > record.endIndex) {
-            return setRefundError("환불 요청 회차는 해당 연장 구간 안이어야 합니다.");
-        }
-        if (!refundReasonInput.trim()) return setRefundError("환불 예상 사유를 입력해주세요.");
-        if (!refundConsultInput.trim()) return setRefundError("상담 내용을 입력해주세요.");
-        if (!refundProcessedDate) return setRefundError("환불 처리 날짜를 입력해주세요.");
-        if (!refundConfirmed) return setRefundError("환불 처리 완료를 체크해주세요.");
-
-        const ratio = computeRefundRatio(record, req, Boolean(record.isBase));
-
-        if (record.isBase) {
-            const ok = await applyHistory(
-                history,
-                {
-                    baseRefundStatus: "completed",
-                    baseRefundSessionIndex: req,
-                    baseRefundRatio: ratio,
-                    baseRefundReason: refundReasonInput.trim(),
-                    baseRefundRequestedAt: record.refundRequestedAt ?? nowIso(),
-                    baseRefundConsultNote: refundConsultInput.trim(),
-                    baseRefundProcessedDate: refundProcessedDate,
-                    baseRefundProcessedAt: nowIso(),
-                },
-                true
-            );
-            if (!ok) return setRefundError("서버 저장에 실패했어요. 잠시 뒤 다시 시도해주세요.");
-        } else {
-            const nextHistory = history.map((h) =>
-                h.id === record.id
-                    ? {
-                        ...h,
-                        refundStatus: "completed" as const,
-                        refundSessionIndex: req,
-                        refundRatio: ratio,
-                        refundReason: refundReasonInput.trim(),
-                        refundRequestedAt: h.refundRequestedAt ?? nowIso(),
-                        refundConsultNote: refundConsultInput.trim(),
-                        refundProcessedDate,
-                        refundProcessedAt: nowIso(),
-                    }
-                    : h
-            );
-            const ok = await applyHistory(nextHistory, undefined, true);
-            if (!ok) return setRefundError("서버 저장에 실패했어요. 잠시 뒤 다시 시도해주세요.");
-        }
-        closeRefundPanel();
-    }
-
-    async function onCancelRefundRequest() {
-        if (!refundRecordId) return;
-        const record = refundRecord;
-        if (!record) return;
-
-        if (record.isBase) {
-            const ok = await applyHistory(
-                history,
-                {
-                    baseRefundStatus: undefined,
-                    baseRefundSessionIndex: undefined,
-                    baseRefundRatio: undefined,
-                    baseRefundReason: undefined,
-                    baseRefundRequestedAt: undefined,
-                    baseRefundProcessedAt: undefined,
-                    baseRefundProcessedDate: undefined,
-                    baseRefundConsultNote: undefined,
-                },
-                true
-            );
-            if (!ok) return setRefundError("서버 저장에 실패했어요. 잠시 뒤 다시 시도해주세요.");
-        } else {
-            const nextHistory = history.map((h) =>
-                h.id === record.id
-                    ? {
-                        ...h,
-                        refundStatus: undefined,
-                        refundSessionIndex: undefined,
-                        refundRatio: undefined,
-                        refundReason: undefined,
-                        refundRequestedAt: undefined,
-                        refundProcessedAt: undefined,
-                        refundProcessedDate: undefined,
-                        refundConsultNote: undefined,
-                    }
-                    : h
-            );
-            const ok = await applyHistory(nextHistory, undefined, true);
-            if (!ok) return setRefundError("서버 저장에 실패했어요. 잠시 뒤 다시 시도해주세요.");
-        }
-        closeRefundPanel();
-    }
-
     return {
         state: {
             showPaymentPanel,
@@ -289,18 +116,8 @@ export function useStudentPayment({
             paymentMemo,
             paymentConfirmed,
             paymentError,
-            refundOpen,
-            refundMode,
-            refundRecordId,
-            refundSessionInput,
-            refundReasonInput,
-            refundConsultInput,
-            refundProcessedDate,
-            refundConfirmed,
-            refundError,
         },
         derived: {
-            refundRecord,
             editingRange,
         },
         actions: {
@@ -309,22 +126,10 @@ export function useStudentPayment({
             setAddedCount,
             setPaymentMemo,
             setPaymentConfirmed,
-            setRefundOpen,
-            setRefundMode,
-            setRefundRecordId,
-            setRefundSessionInput,
-            setRefundReasonInput,
-            setRefundConsultInput,
-            setRefundProcessedDate,
-            setRefundConfirmed,
             closePaymentPanel,
             openEditPayment,
-            closeRefundPanel,
             onApplyPayment,
             onDeletePaymentRecord,
-            onSubmitRefundRequest,
-            onSubmitRefundProcess,
-            onCancelRefundRequest,
         },
     };
 }

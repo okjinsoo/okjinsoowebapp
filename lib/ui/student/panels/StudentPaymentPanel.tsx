@@ -70,14 +70,6 @@ export function StudentPaymentPanel({
                                 수정
                             </button>
                         ) : null}
-                        {isAdmin ? (
-                            <button
-                                className="btn btn-blue"
-                                onClick={() => actions.setShowPaymentPanel(true)}
-                            >
-                                결제 추가
-                            </button>
-                        ) : null}
                     </div>
                 </div>
                 {displayRecords.length === 0 ? (
@@ -132,34 +124,6 @@ export function StudentPaymentPanel({
                                             수정
                                         </button>
                                     ) : null}
-                                    {!h.refundStatus && isAdmin ? (
-                                        <button
-                                            onClick={() => {
-                                                actions.setRefundRecordId(h.id);
-                                                actions.setRefundMode("request");
-                                                actions.setRefundOpen(true);
-                                            }}
-                                            className="btn"
-                                        >
-                                            환불요청
-                                        </button>
-                                    ) : null}
-                                    {h.refundStatus === "requested" && isAdmin ? (
-                                        <button
-                                            onClick={() => {
-                                                actions.setRefundRecordId(h.id);
-                                                actions.setRefundMode("process");
-                                                actions.setRefundSessionInput(h.refundSessionIndex ?? "");
-                                                actions.setRefundReasonInput(h.refundReason ?? "");
-                                                actions.setRefundConsultInput(h.refundConsultNote ?? "");
-                                                actions.setRefundProcessedDate(h.refundProcessedDate ?? "");
-                                                actions.setRefundOpen(true);
-                                            }}
-                                            className="btn btn-red"
-                                        >
-                                            환불처리
-                                        </button>
-                                    ) : null}
                                 </div>
                             </div>
                         ))}
@@ -193,7 +157,7 @@ export function StudentPaymentPanel({
                     >
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                             <div style={{ fontWeight: 900 }}>
-                                {state.editingRecordId ? "수업 현황 수정" : "추가 결제 등록"}
+                                수업 현황 수정
                             </div>
                         </div>
 
@@ -251,16 +215,14 @@ export function StudentPaymentPanel({
                             {state.paymentError ? <div style={{ color: "#dc2626" }}>{state.paymentError}</div> : null}
 
                             <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 4 }}>
-                                {state.editingRecordId ? (
-                                    <button
-                                        onMouseEnter={(e) => (e.currentTarget.style.background = "#b91c1c")}
-                                        onMouseLeave={(e) => (e.currentTarget.style.background = "#dc2626")}
-                                        onClick={actions.onDeletePaymentRecord}
-                                        style={{ ...boxButton, padding: "10px 14px", fontWeight: 800, color: "#fff", background: "#dc2626" }}
-                                    >
-                                        삭제
-                                    </button>
-                                ) : null}
+                                <button
+                                    onMouseEnter={(e) => (e.currentTarget.style.background = "#b91c1c")}
+                                    onMouseLeave={(e) => (e.currentTarget.style.background = "#dc2626")}
+                                    onClick={actions.onDeletePaymentRecord}
+                                    style={{ ...boxButton, padding: "10px 14px", fontWeight: 800, color: "#fff", background: "#dc2626" }}
+                                >
+                                    삭제
+                                </button>
                                 <button
                                     onMouseEnter={(e) => (e.currentTarget.style.background = "var(--surface-hover)")}
                                     onMouseLeave={(e) => (e.currentTarget.style.background = "var(--surface-bg)")}
@@ -275,7 +237,7 @@ export function StudentPaymentPanel({
                                     onClick={actions.onApplyPayment}
                                     style={{ ...boxButton, padding: "10px 14px", fontWeight: 800 }}
                                 >
-                                    {state.editingRecordId ? "저장" : "추가"}
+                                    저장
                                 </button>
                             </div>
                         </div>
@@ -283,174 +245,7 @@ export function StudentPaymentPanel({
                 </div>
             ) : null}
 
-            {state.refundOpen ? (
-                <div
-                    style={{
-                        position: "fixed",
-                        inset: 0,
-                        background: "rgba(0,0,0,0.35)",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        padding: 16,
-                        zIndex: 60,
-                    }}
-                >
-                    <div
-                        style={{
-                            width: "100%",
-                            maxWidth: 380,
-                            background: "var(--surface-bg)",
-                            border: "1px solid var(--surface-border)",
-                            color: "var(--foreground)",
-                            borderRadius: 12,
-                            padding: 12,
-                        }}
-                    >
-                        <div style={{ fontWeight: 900 }}>
-                            {state.refundMode === "process" ? "환불 처리" : "환불 요청"}
-                        </div>
 
-                        {state.refundMode === "process" ? (
-                            <div style={{ display: "grid", gap: 10, marginTop: 10 }}>
-                                <div style={{ display: "grid", gridTemplateColumns: "120px 1fr", gap: 10, alignItems: "center" }}>
-                                    <div style={{ fontWeight: 800 }}>환불 회차</div>
-                                    <input
-                                        type="number"
-                                        value={state.refundSessionInput}
-                                        onChange={(e) => actions.setRefundSessionInput(Number(e.target.value))}
-                                        style={inputStyle}
-                                    />
-                                </div>
-
-                                <div style={{ display: "grid", gap: 6 }}>
-                                    <div style={{ fontWeight: 800 }}>환불 예상 사유</div>
-                                    <AutoResizeTextarea
-                                        rows={2}
-                                        value={state.refundReasonInput}
-                                        onChange={(e) => actions.setRefundReasonInput(e.target.value)}
-                                        style={inputStyle}
-                                    />
-                                </div>
-
-                                <div style={{ display: "grid", gap: 6 }}>
-                                    <div style={{ fontWeight: 800 }}>상담 내용</div>
-                                    <AutoResizeTextarea
-                                        rows={2}
-                                        value={state.refundConsultInput}
-                                        onChange={(e) => actions.setRefundConsultInput(e.target.value)}
-                                        style={inputStyle}
-                                    />
-                                </div>
-
-                                <div style={{ display: "grid", gridTemplateColumns: "120px 1fr", gap: 10, alignItems: "center" }}>
-                                    <div style={{ fontWeight: 800 }}>처리 날짜</div>
-                                    <input
-                                        type="date"
-                                        value={state.refundProcessedDate}
-                                        onChange={(e) => actions.setRefundProcessedDate(e.target.value)}
-                                        style={inputStyle}
-                                    />
-                                </div>
-
-                                <label style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                                    <span>환불 처리 완료</span>
-                                    <input
-                                        type="checkbox"
-                                        checked={state.refundConfirmed}
-                                        onChange={(e) => actions.setRefundConfirmed(e.target.checked)}
-                                    />
-                                </label>
-
-                                {state.refundError ? <div style={{ color: "#dc2626" }}>{state.refundError}</div> : null}
-
-                                <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-                                    <button
-                                        onMouseEnter={(e) => (e.currentTarget.style.background = "var(--surface-hover)")}
-                                        onMouseLeave={(e) => (e.currentTarget.style.background = "var(--surface-bg)")}
-                                        onClick={actions.closeRefundPanel}
-                                        style={{ ...boxButton, padding: "8px 12px" }}
-                                    >
-                                        취소
-                                    </button>
-                                    <button
-                                        onMouseEnter={(e) => (e.currentTarget.style.background = "var(--surface-hover)")}
-                                        onMouseLeave={(e) => (e.currentTarget.style.background = "var(--surface-bg)")}
-                                        onClick={actions.onCancelRefundRequest}
-                                        style={{ ...boxButton, padding: "8px 12px" }}
-                                    >
-                                        환불 취소
-                                    </button>
-                                    <button
-                                        onMouseEnter={(e) => (e.currentTarget.style.background = "#dc2626")}
-                                        onMouseLeave={(e) => (e.currentTarget.style.background = "#ef4444")}
-                                        onClick={actions.onSubmitRefundProcess}
-                                        style={{
-                                            ...boxButton,
-                                            padding: "8px 12px",
-                                            fontWeight: 700,
-                                            border: "1px solid #dc2626",
-                                            background: "#ef4444",
-                                            color: "#fff",
-                                        }}
-                                    >
-                                        환불 처리 완료
-                                    </button>
-                                </div>
-                            </div>
-                        ) : (
-                            <div style={{ display: "grid", gap: 10, marginTop: 10 }}>
-                                <div style={{ display: "grid", gridTemplateColumns: "120px 1fr", gap: 10, alignItems: "center" }}>
-                                    <div style={{ fontWeight: 800 }}>환불 회차</div>
-                                    <input
-                                        type="number"
-                                        value={state.refundSessionInput}
-                                        onChange={(e) => actions.setRefundSessionInput(Number(e.target.value))}
-                                        style={inputStyle}
-                                    />
-                                </div>
-
-                                <div style={{ display: "grid", gap: 6 }}>
-                                    <div style={{ fontWeight: 800 }}>환불 예상 사유</div>
-                                    <AutoResizeTextarea
-                                        rows={2}
-                                        value={state.refundReasonInput}
-                                        onChange={(e) => actions.setRefundReasonInput(e.target.value)}
-                                        style={inputStyle}
-                                    />
-                                </div>
-
-                                {state.refundError ? <div style={{ color: "#dc2626" }}>{state.refundError}</div> : null}
-
-                                <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-                                    <button
-                                        onMouseEnter={(e) => (e.currentTarget.style.background = "var(--surface-hover)")}
-                                        onMouseLeave={(e) => (e.currentTarget.style.background = "var(--surface-bg)")}
-                                        onClick={actions.closeRefundPanel}
-                                        style={{ ...boxButton, padding: "8px 12px" }}
-                                    >
-                                        취소
-                                    </button>
-                                    <button
-                                        onMouseEnter={(e) => (e.currentTarget.style.background = "#e67e00")}
-                                        onMouseLeave={(e) => (e.currentTarget.style.background = "#ff8a00")}
-                                        onClick={actions.onSubmitRefundRequest}
-                                        style={{
-                                            ...boxButton,
-                                            padding: "8px 12px",
-                                            fontWeight: 600,
-                                            color: "#fff",
-                                            background: "#ff8a00",
-                                        }}
-                                    >
-                                        환불 요청
-                                    </button>
-                                </div>
-                            </div>
-                        )}
-                    </div>
-                </div>
-            ) : null}
         </>
     );
 }
