@@ -3,7 +3,7 @@
 
 import { browserStorage } from "@/lib/storage/browserStorage";
 import { syncRoleBindingEmails } from "@/lib/auth/roleBindings";
-import { fetchServerStudents } from "@/lib/storage/serverRead";
+
 import { pushSharedSnapshot, readLocalTeachers } from "@/lib/storage/sharedSnapshot";
 import { requestCalendarResyncForStudentIds } from "@/lib/storage/sessions";
 import { safeParseJson } from "@/lib/storage/safeParse";
@@ -83,13 +83,6 @@ function replaceStudentsLocal(list: Student[]): boolean {
   browserStorage.setItem(KEY, nextRaw);
   dispatchStudentsUpdated();
   return true;
-}
-
-export async function hydrateStudentsFromServer(): Promise<Student[]> {
-  const remote = await fetchServerStudents();
-  if (!remote) return loadStudents();
-  replaceStudentsLocal(remote);
-  return remote;
 }
 
 export function saveStudents(list: Student[], options?: SaveStudentsOptions): void {

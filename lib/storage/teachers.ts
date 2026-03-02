@@ -4,7 +4,7 @@
 
 import { browserStorage } from "@/lib/storage/browserStorage";
 import { syncRoleBindingEmails } from "@/lib/auth/roleBindings";
-import { fetchServerTeachers } from "@/lib/storage/serverRead";
+
 import { pushSharedSnapshot, readLocalStudents } from "@/lib/storage/sharedSnapshot";
 import { safeParseJson } from "@/lib/storage/safeParse";
 import { requestCalendarResyncForTeacherIds } from "@/lib/storage/sessions";
@@ -40,14 +40,14 @@ export function saveCurrentTeacherId(id: string) {
   if (typeof window === "undefined") return;
   try {
     browserStorage.setItem(LS_CURRENT_TEACHER, id);
-  } catch {}
+  } catch { }
 }
 
 export function clearCurrentTeacherId() {
   if (typeof window === "undefined") return;
   try {
     browserStorage.removeItem(LS_CURRENT_TEACHER);
-  } catch {}
+  } catch { }
 }
 
 function extractTeacherEmails(list: Teacher[]): string[] {
@@ -113,12 +113,7 @@ function replaceTeachersLocal(list: Teacher[]): boolean {
   return true;
 }
 
-export async function hydrateTeachersFromServer(): Promise<Teacher[]> {
-  const remote = await fetchServerTeachers();
-  if (!remote) return loadTeachers();
-  replaceTeachersLocal(remote);
-  return remote;
-}
+
 
 export function saveTeachers(list: Teacher[], options?: SaveTeachersOptions): void {
   if (typeof window === "undefined") return;

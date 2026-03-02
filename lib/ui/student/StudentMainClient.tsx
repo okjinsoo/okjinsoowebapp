@@ -4,10 +4,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { AUTH_EVENT } from "@/lib/auth/supabaseAuth";
 import { resolveSelectionForRole } from "@/lib/auth/loginSelection";
-import { hydrateStudentsFromServer, loadStudents } from "@/lib/storage/students";
+import { loadStudents } from "@/lib/storage/students";
 import {
   clearCurrentTeacherId,
-  hydrateTeachersFromServer,
   loadTeachers,
   loadCurrentTeacherId,
   saveCurrentTeacherId,
@@ -22,6 +21,7 @@ import {
   loadCurrentStudentToken,
   saveCurrentStudentToken,
 } from "@/lib/ui/common/roleGateStorage";
+import { pullSharedSnapshotAndHydrateWithOptions } from "@/lib/storage/sharedSnapshot";
 
 export default function StudentMainClient({ role }: { role: "a" | "t" | "s" }) {
   const [hydrated, setHydrated] = useState(false);
@@ -64,14 +64,13 @@ export default function StudentMainClient({ role }: { role: "a" | "t" | "s" }) {
       }
 
       // 2) 서버 최신 데이터 반영
-      const [nextStudents, nextTeachers] = await Promise.all([
-        hydrateStudentsFromServer(),
-        hydrateTeachersFromServer(),
-      ]);
+      const snapshot = await pullSharedSnapshotAndHydrateWithOptions({ forceRemote: true });
       if (cancelled) return;
-      setStudents(nextStudents);
-      setTeachers(nextTeachers);
-      applySelection(nextStudents, nextTeachers);
+      if (snapshot) {
+        setStudents(snapshot.students);
+        setTeachers(snapshot.teachers);
+        applySelection(snapshot.students, snapshot.teachers);
+      }
     }
 
     void bootstrap();
@@ -88,13 +87,12 @@ export default function StudentMainClient({ role }: { role: "a" | "t" | "s" }) {
       setTeachers(localTeachers);
       applySelection(localStudents, localTeachers);
 
-      const [nextStudents, nextTeachers] = await Promise.all([
-        hydrateStudentsFromServer(),
-        hydrateTeachersFromServer(),
-      ]);
-      setStudents(nextStudents);
-      setTeachers(nextTeachers);
-      applySelection(nextStudents, nextTeachers);
+      const snapshot = await pullSharedSnapshotAndHydrateWithOptions({ forceRemote: true });
+      if (snapshot) {
+        setStudents(snapshot.students);
+        setTeachers(snapshot.teachers);
+        applySelection(snapshot.students, snapshot.teachers);
+      }
     };
 
     const requestGateRefresh = () => {

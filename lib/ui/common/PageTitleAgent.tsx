@@ -3,7 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { usePathname } from "next/navigation";
 import type { Student } from "@/lib/types/index";
-import { hydrateStudentsFromServer, loadStudents } from "@/lib/storage/students";
+import { loadStudents } from "@/lib/storage/students";
+import { pullSharedSnapshotAndHydrateWithOptions } from "@/lib/storage/sharedSnapshot";
 import { GATE_EVENT, loadCurrentStudentToken } from "@/lib/ui/common/roleGateStorage";
 import { TUTORWEB_EVENTS } from "@/lib/events/tutorwebEvents";
 
@@ -91,10 +92,10 @@ export default function PageTitleAgent() {
     const onGateUpdated = () => setGateTick((v) => v + 1);
 
     refreshStudents();
-    void hydrateStudentsFromServer()
-      .then((rows) => {
+    void pullSharedSnapshotAndHydrateWithOptions({ forceRemote: true })
+      .then((snapshot) => {
         if (cancelled) return;
-        setStudents(rows);
+        if (snapshot) setStudents(snapshot.students);
       })
       .catch(() => {
         // 로그인 전 홈 화면에서는 서버 호출 실패가 정상일 수 있음.

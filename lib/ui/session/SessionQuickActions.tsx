@@ -3,7 +3,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { TUTORWEB_EVENTS } from "@/lib/events/tutorwebEvents";
-import { hydrateStudentsFromServer, loadStudents } from "@/lib/storage/students";
+import { loadStudents } from "@/lib/storage/students";
+import { pullSharedSnapshotAndHydrateWithOptions } from "@/lib/storage/sharedSnapshot";
 import { loadCurrentTeacherId } from "@/lib/storage/teachers";
 import { sessionsByStudent } from "@/lib/storage/sessions";
 import {
@@ -48,8 +49,10 @@ export default function SessionQuickActions({ role, token, index }: Props) {
       setStudents(loadStudents());
       setTeacherId(loadCurrentTeacherId());
     }, 0);
-    void hydrateStudentsFromServer()
-      .then((nextStudents) => setStudents(nextStudents))
+    void pullSharedSnapshotAndHydrateWithOptions({ forceRemote: true })
+      .then((snapshot) => {
+        if (snapshot) setStudents(snapshot.students);
+      })
       .catch((err) => {
         console.error("학생 목록 서버 새로고침 실패(quick actions):", err);
       });
@@ -276,7 +279,7 @@ export default function SessionQuickActions({ role, token, index }: Props) {
       if (calendarStatus === "error") {
         alert(
           `Meet 링크 생성에 실패했어요.\n원인: ${calendarError || "알 수 없는 오류"}\n\n` +
-            "해결: Google Calendar API 활성화 + 다시 로그인(권한 동의) 후 다시 시도해주세요."
+          "해결: Google Calendar API 활성화 + 다시 로그인(권한 동의) 후 다시 시도해주세요."
         );
         return;
       }

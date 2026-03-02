@@ -2,9 +2,9 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { hydrateStudentsFromServer } from "@/lib/storage/students";
+import { loadStudents } from "@/lib/storage/students";
 import {
-  hydrateTeachersFromServer,
+  loadTeachers,
   saveCurrentTeacherId,
   TEACHERS_EVENT,
 } from "@/lib/storage/teachers";
@@ -38,12 +38,8 @@ export default function AdminStudentsPage() {
 
   useEffect(() => {
     const refresh = async () => {
-      const [nextStudents, nextTeachers] = await Promise.all([
-        hydrateStudentsFromServer(),
-        hydrateTeachersFromServer(),
-      ]);
-      setStudents(nextStudents);
-      setTeachers(nextTeachers);
+      setStudents(loadStudents());
+      setTeachers(loadTeachers());
     };
     void refresh();
     const id = setTimeout(() => setMounted(true), 0);

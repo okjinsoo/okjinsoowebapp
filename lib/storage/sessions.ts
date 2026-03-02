@@ -2,7 +2,6 @@
 "use client";
 
 import { browserStorage } from "@/lib/storage/browserStorage";
-import { fetchServerStudentSessions } from "@/lib/storage/serverRead";
 import { pushSharedSnapshot, readLocalStudents, readLocalTeachers } from "@/lib/storage/sharedSnapshot";
 import {
   rebuildTeacherGoogleCalendar,
@@ -35,28 +34,6 @@ function replaceSessionsLocal(list: Session[]): boolean {
   return true;
 }
 
-export async function hydrateSessionsForStudentFromServer(studentId: string): Promise<Session[]> {
-  const remote = await fetchServerStudentSessions(studentId);
-  if (!remote) return sessionsByStudent(studentId);
-
-  const current = loadSessions();
-  const merged = [
-    ...current.filter((session) => session.studentId !== studentId),
-    ...remote,
-  ];
-  replaceSessionsLocal(merged);
-  return remote
-    .slice()
-    .sort((a, b) => a.index - b.index);
-}
-
-export async function hydrateSessionsForStudentsFromServer(studentIds: string[]): Promise<void> {
-  const uniqueIds = Array.from(
-    new Set((studentIds ?? []).map((id) => (typeof id === "string" ? id.trim() : "")).filter(Boolean))
-  );
-  if (uniqueIds.length === 0) return;
-  await Promise.all(uniqueIds.map((studentId) => hydrateSessionsForStudentFromServer(studentId)));
-}
 
 function syncSharedSnapshot(nextSessions: Session[], mode: "merge" | "replace"): void {
   void (async () => {

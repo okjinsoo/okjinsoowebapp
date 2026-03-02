@@ -7,16 +7,12 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Student, Teacher } from "@/lib/types/index";
 import { findTeacherByLoginEmail } from "@/lib/auth/loginSelection";
-import { hydrateStudentsFromServer, loadStudents } from "@/lib/storage/students";
-import { hydrateSessionsForStudentsFromServer, sessionsByStudent } from "@/lib/storage/sessions";
-import {
-  hydrateConsultationsForStudentsFromServer,
-  loadConsultationsByStudent,
-} from "@/lib/storage/consultations";
+import { loadStudents } from "@/lib/storage/students";
+import { sessionsByStudent } from "@/lib/storage/sessions";
+import { loadConsultationsByStudent } from "@/lib/storage/consultations";
 import { AUTH_EVENT } from "@/lib/auth/supabaseAuth";
 import {
   clearCurrentTeacherId,
-  hydrateTeachersFromServer,
   loadTeachers,
   loadCurrentTeacherId,
   saveCurrentTeacherId,
@@ -25,6 +21,7 @@ import {
 import TodaySessionsCard, { type TodaySessionRow } from "@/lib/ui/teacher/TodaySessionsCard";
 import TeacherStudentListCard from "@/lib/ui/teacher/TeacherStudentListCard";
 import RoleGateCard from "@/lib/ui/common/RoleGateCard";
+import { pullSharedSnapshotAndHydrateWithOptions } from "@/lib/storage/sharedSnapshot";
 import {
   buildBadges,
   buildBaseDatesISOByToken,
@@ -101,24 +98,12 @@ export default function TeacherMainClient({ initialRole = "t" }: { initialRole?:
     let cancelled = false;
 
     async function bootstrap() {
-      const [nextStudents, nextTeachers] = await Promise.all([
-        hydrateStudentsFromServer(),
-        hydrateTeachersFromServer(),
-      ]);
+      const snapshot = await pullSharedSnapshotAndHydrateWithOptions({ forceRemote: true });
       if (cancelled) return;
-      setTeachers(nextTeachers);
-      setStudents(nextStudents);
-      const nextTeacherId = applyTeacherSelection(nextTeachers);
-      if (nextTeacherId) {
-        const visibleStudentIds = nextStudents
-          .filter((student) => (student.teacherId ?? null) === nextTeacherId && !isPausedOrOverdueExtension(student))
-          .map((student) => student.id);
-        void hydrateSessionsForStudentsFromServer(visibleStudentIds).catch((err) => {
-          console.error("회차 목록 서버 새로고침 실패(teacher):", err);
-        });
-        void hydrateConsultationsForStudentsFromServer(visibleStudentIds).catch((err) => {
-          console.error("상담 목록 서버 새로고침 실패(teacher):", err);
-        });
+      if (snapshot) {
+        setTeachers(snapshot.teachers);
+        setStudents(snapshot.students);
+        applyTeacherSelection(snapshot.teachers);
       }
       setIsHydrated(true);
     }
@@ -131,23 +116,11 @@ export default function TeacherMainClient({ initialRole = "t" }: { initialRole?:
 
   useEffect(() => {
     const onGate = async () => {
-      const [nextStudents, nextTeachers] = await Promise.all([
-        hydrateStudentsFromServer(),
-        hydrateTeachersFromServer(),
-      ]);
-      setStudents(nextStudents);
-      setTeachers(nextTeachers);
-      const nextTeacherId = applyTeacherSelection(nextTeachers);
-      if (nextTeacherId) {
-        const visibleStudentIds = nextStudents
-          .filter((student) => (student.teacherId ?? null) === nextTeacherId && !isPausedOrOverdueExtension(student))
-          .map((student) => student.id);
-        void hydrateSessionsForStudentsFromServer(visibleStudentIds).catch((err) => {
-          console.error("회차 목록 서버 새로고침 실패(teacher):", err);
-        });
-        void hydrateConsultationsForStudentsFromServer(visibleStudentIds).catch((err) => {
-          console.error("상담 목록 서버 새로고침 실패(teacher):", err);
-        });
+      const snapshot = await pullSharedSnapshotAndHydrateWithOptions({ forceRemote: true });
+      if (snapshot) {
+        setStudents(snapshot.students);
+        setTeachers(snapshot.teachers);
+        applyTeacherSelection(snapshot.teachers);
       }
     };
 
@@ -218,12 +191,12 @@ export default function TeacherMainClient({ initialRole = "t" }: { initialRole?:
       const lastClassIndex =
         (st.pauseStatus === "confirmed" || st.pauseStatus === "paused") && st.pauseEffectiveDate
           ? findLastClassIndex({
-              token: st.token,
-              sessions,
-              baseDatesISO,
-              metaMap,
-              pauseEffectiveDate: st.pauseEffectiveDate,
-            })
+            token: st.token,
+            sessions,
+            baseDatesISO,
+            metaMap,
+            pauseEffectiveDate: st.pauseEffectiveDate,
+          })
           : null;
 
       for (const s of sessions) {
@@ -291,12 +264,12 @@ export default function TeacherMainClient({ initialRole = "t" }: { initialRole?:
       const lastClassIndex =
         (st.pauseStatus === "confirmed" || st.pauseStatus === "paused") && st.pauseEffectiveDate
           ? findLastClassIndex({
-              token: st.token,
-              sessions,
-              baseDatesISO,
-              metaMap,
-              pauseEffectiveDate: st.pauseEffectiveDate,
-            })
+            token: st.token,
+            sessions,
+            baseDatesISO,
+            metaMap,
+            pauseEffectiveDate: st.pauseEffectiveDate,
+          })
           : null;
 
       const candidates: TodaySessionRow[] = [];

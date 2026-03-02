@@ -8,7 +8,6 @@ import { useRouter } from "next/navigation";
 import { findStudentByToken, loadStudents, saveStudents } from "@/lib/storage/students";
 import { loadTeachers, TEACHERS_EVENT } from "@/lib/storage/teachers";
 import {
-  hydrateConsultationsByStudentFromServer,
   loadAllConsultationsStore,
   loadConsultationsByStudent,
   saveAllConsultationsStore,
@@ -17,7 +16,6 @@ import { buildConsultationMap, pickPrimaryConsultTag, type ConsultTag } from "@/
 import { findClassIndexByDatePreferFuture, findLastClassIndex } from "@/lib/ui/session/pauseHelpers";
 import { formatGrade, formatPhone, formatSchedule } from "@/lib/ui/student/formatters";
 import {
-  hydrateSessionsForStudentFromServer,
   loadSessions,
   rebuildTeacherGoogleCalendarForStudentIds,
   saveSessions,
@@ -386,12 +384,6 @@ export default function StudentHubCore({
       return;
     }
     setConsultRecords(loadConsultationsByStudent(student.id));
-    void hydrateSessionsForStudentFromServer(student.id).catch((err) => {
-      console.error("회차 목록 서버 새로고침 실패(student hub):", err);
-    });
-    void hydrateConsultationsByStudentFromServer(student.id).catch((err) => {
-      console.error("상담 목록 서버 새로고침 실패(student hub):", err);
-    });
   }, [student]);
 
   useEffect(() => {
@@ -542,8 +534,7 @@ export default function StudentHubCore({
       const firstError = errored.find((s) => (s.googleCalendarError ?? "").trim())?.googleCalendarError ?? "";
       if (errored.length > 0) {
         setCalendarSyncMessage(
-          `동기화 결과: 성공 ${synced}개, 대기 ${pendingCount}개, 오류 ${errored.length}개. ${
-            firstError ? `오류: ${firstError}` : ""
+          `동기화 결과: 성공 ${synced}개, 대기 ${pendingCount}개, 오류 ${errored.length}개. ${firstError ? `오류: ${firstError}` : ""
           }`
         );
       } else {
@@ -657,12 +648,12 @@ export default function StudentHubCore({
     const lastClassIndex =
       (student.pauseStatus === "confirmed" || student.pauseStatus === "paused") && student.pauseEffectiveDate
         ? findLastClassIndex({
-            token,
-            sessions,
-            baseDatesISO,
-            metaMap,
-            pauseEffectiveDate: student.pauseEffectiveDate,
-          })
+          token,
+          sessions,
+          baseDatesISO,
+          metaMap,
+          pauseEffectiveDate: student.pauseEffectiveDate,
+        })
         : null;
     const candidates: {
       index: number;
@@ -783,7 +774,7 @@ export default function StudentHubCore({
 
   if (!token) {
     return (
-      <main style={{ padding: 20, maxWidth: 980, margin: "0 auto"}}>
+      <main style={{ padding: 20, maxWidth: 980, margin: "0 auto" }}>
         <h1 className="page-title">학생 페이지</h1>
         <p style={{ marginTop: 8, color: "var(--text-muted)" }}>token이 없습니다.</p>
       </main>
@@ -792,7 +783,7 @@ export default function StudentHubCore({
 
   if (!student) {
     return (
-      <main style={{ padding: 20, maxWidth: 980, margin: "0 auto"}}>
+      <main style={{ padding: 20, maxWidth: 980, margin: "0 auto" }}>
         <h1 className="page-title">학생 페이지</h1>
         <p style={{ marginTop: 8, color: "var(--text-muted)" }}>
           학생을 찾지 못했습니다. <code>{token}</code>
@@ -1141,11 +1132,11 @@ export default function StudentHubCore({
         nextConsultRecords = nextConsultRecords.map((r) =>
           r.id === next.id
             ? {
-                ...r,
-                pauseEffectiveDate: lastYmd,
-                pauseRefundRatio,
-                pauseRefundCompleted: Boolean(consultForm.pauseRefundCompleted),
-              }
+              ...r,
+              pauseEffectiveDate: lastYmd,
+              pauseRefundRatio,
+              pauseRefundCompleted: Boolean(consultForm.pauseRefundCompleted),
+            }
             : r
         );
       }
@@ -1154,10 +1145,10 @@ export default function StudentHubCore({
     }
     const nextStudentPatch = nextStudentOverride
       ? {
-          status: nextStudentOverride.status,
-          pauseEffectiveDate: nextStudentOverride.pauseEffectiveDate,
-          pauseStatus: nextStudentOverride.pauseStatus,
-        }
+        status: nextStudentOverride.status,
+        pauseEffectiveDate: nextStudentOverride.pauseEffectiveDate,
+        pauseStatus: nextStudentOverride.pauseStatus,
+      }
       : undefined;
 
     if (isAdmin && prevApplied && (!wantsExtended || !paymentConfirmed) && existing?.extensionPaymentRecordId) {
@@ -1193,10 +1184,10 @@ export default function StudentHubCore({
           refreshed = nextConsultRecords.map((r) =>
             r.id === next.id
               ? {
-                  ...r,
-                  extensionAppliedAt: r.extensionAppliedAt ?? existing.extensionAppliedAt ?? nowIso(),
-                  extensionPaymentRecordId: recId,
-                }
+                ...r,
+                extensionAppliedAt: r.extensionAppliedAt ?? existing.extensionAppliedAt ?? nowIso(),
+                extensionPaymentRecordId: recId,
+              }
               : r
           );
         } else {
@@ -1256,10 +1247,10 @@ export default function StudentHubCore({
       isAdmin && deleting?.purpose === "pause_request" ? applyPauseStateFromConsultations(student, updated) : undefined;
     const nextStudentPatch = nextStudentOverride
       ? {
-          status: nextStudentOverride.status,
-          pauseEffectiveDate: nextStudentOverride.pauseEffectiveDate,
-          pauseStatus: nextStudentOverride.pauseStatus,
-        }
+        status: nextStudentOverride.status,
+        pauseEffectiveDate: nextStudentOverride.pauseEffectiveDate,
+        pauseStatus: nextStudentOverride.pauseStatus,
+      }
       : undefined;
 
     if (deleting?.purpose === "extension" && deleting.extensionPaymentRecordId) {
@@ -1295,11 +1286,11 @@ export default function StudentHubCore({
       const ok = await applyHistory(
         history,
         {
-        baseRefundStatus: "requested",
-        baseRefundSessionIndex: req,
-        baseRefundRatio: ratio,
-        baseRefundReason: refundReasonInput.trim(),
-        baseRefundRequestedAt: nowIso(),
+          baseRefundStatus: "requested",
+          baseRefundSessionIndex: req,
+          baseRefundRatio: ratio,
+          baseRefundReason: refundReasonInput.trim(),
+          baseRefundRequestedAt: nowIso(),
         },
         true
       );
@@ -1311,13 +1302,13 @@ export default function StudentHubCore({
       const nextHistory = history.map((h) =>
         h.id === record.id
           ? {
-              ...h,
-              refundStatus: "requested" as const,
-              refundSessionIndex: req,
-              refundRatio: ratio,
-              refundReason: refundReasonInput.trim(),
-              refundRequestedAt: nowIso(),
-            }
+            ...h,
+            refundStatus: "requested" as const,
+            refundSessionIndex: req,
+            refundRatio: ratio,
+            refundReason: refundReasonInput.trim(),
+            refundRequestedAt: nowIso(),
+          }
           : h
       );
       const ok = await applyHistory(nextHistory, undefined, true);
@@ -1370,16 +1361,16 @@ export default function StudentHubCore({
       const nextHistory = history.map((h) =>
         h.id === record.id
           ? {
-              ...h,
-              refundStatus: "completed" as const,
-              refundSessionIndex: req,
-              refundRatio: ratio,
-              refundReason: refundReasonInput.trim(),
-              refundRequestedAt: h.refundRequestedAt ?? nowIso(),
-              refundConsultNote: refundConsultInput.trim(),
-              refundProcessedDate,
-              refundProcessedAt: nowIso(),
-            }
+            ...h,
+            refundStatus: "completed" as const,
+            refundSessionIndex: req,
+            refundRatio: ratio,
+            refundReason: refundReasonInput.trim(),
+            refundRequestedAt: h.refundRequestedAt ?? nowIso(),
+            refundConsultNote: refundConsultInput.trim(),
+            refundProcessedDate,
+            refundProcessedAt: nowIso(),
+          }
           : h
       );
       const ok = await applyHistory(nextHistory, undefined, true);
@@ -1399,14 +1390,14 @@ export default function StudentHubCore({
       const ok = await applyHistory(
         history,
         {
-        baseRefundStatus: undefined,
-        baseRefundSessionIndex: undefined,
-        baseRefundRatio: undefined,
-        baseRefundReason: undefined,
-        baseRefundRequestedAt: undefined,
-        baseRefundProcessedAt: undefined,
-        baseRefundProcessedDate: undefined,
-        baseRefundConsultNote: undefined,
+          baseRefundStatus: undefined,
+          baseRefundSessionIndex: undefined,
+          baseRefundRatio: undefined,
+          baseRefundReason: undefined,
+          baseRefundRequestedAt: undefined,
+          baseRefundProcessedAt: undefined,
+          baseRefundProcessedDate: undefined,
+          baseRefundConsultNote: undefined,
         },
         true
       );
@@ -1418,16 +1409,16 @@ export default function StudentHubCore({
       const nextHistory = history.map((h) =>
         h.id === record.id
           ? {
-              ...h,
-              refundStatus: undefined,
-              refundSessionIndex: undefined,
-              refundRatio: undefined,
-              refundReason: undefined,
-              refundRequestedAt: undefined,
-              refundProcessedAt: undefined,
-              refundProcessedDate: undefined,
-              refundConsultNote: undefined,
-            }
+            ...h,
+            refundStatus: undefined,
+            refundSessionIndex: undefined,
+            refundRatio: undefined,
+            refundReason: undefined,
+            refundRequestedAt: undefined,
+            refundProcessedAt: undefined,
+            refundProcessedDate: undefined,
+            refundConsultNote: undefined,
+          }
           : h
       );
       const ok = await applyHistory(nextHistory, undefined, true);
@@ -1465,9 +1456,9 @@ export default function StudentHubCore({
     let nextMetaMap = readMetaMap(token);
     const nextConsultStore = options?.consultationRecords
       ? {
-          ...loadAllConsultationsStore(),
-          [student.id]: options.consultationRecords,
-        }
+        ...loadAllConsultationsStore(),
+        [student.id]: options.consultationRecords,
+      }
       : null;
 
     const applyMetaPatch = (index: number, patch: Partial<NonNullable<typeof nextMetaMap[number]>>) => {
@@ -1702,7 +1693,7 @@ export default function StudentHubCore({
   }
 
   return (
-    <main style={{ padding: 20, maxWidth: 980, margin: "0 auto"}}>
+    <main style={{ padding: 20, maxWidth: 980, margin: "0 auto" }}>
       <section style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
         {backToTmain ? (
           <div style={{ width: "100%", marginBottom: 8 }}>
@@ -1922,11 +1913,11 @@ export default function StudentHubCore({
                         </Badge>
                       ))}
                       {canUseConsultFeatures(accessRole) &&
-                      !(
-                        item.lastClass &&
-                        consultTag &&
-                        consultTag.label === "휴회 예정"
-                      ) ? (
+                        !(
+                          item.lastClass &&
+                          consultTag &&
+                          consultTag.label === "휴회 예정"
+                        ) ? (
                         <ConsultBadge tag={consultTag} />
                       ) : null}
                     </div>
@@ -1964,16 +1955,16 @@ export default function StudentHubCore({
                     background: "var(--surface-bg)",
                   }}
                 >
-                    <div
-                      style={{
-                        display: "grid",
-                        gridTemplateColumns: "110px 90px 1fr",
-                        gap: 30,
-                        flex: "1 1 auto",
-                        alignItems: "center",
-                      }}
-                    >
-                      <div style={{ fontWeight: 700 }}>{formatYmdDot(e.createdAt?.slice(0, 10))}</div>
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "110px 90px 1fr",
+                      gap: 30,
+                      flex: "1 1 auto",
+                      alignItems: "center",
+                    }}
+                  >
+                    <div style={{ fontWeight: 700 }}>{formatYmdDot(e.createdAt?.slice(0, 10))}</div>
                     <div>{e.startDate ? `${formatYmdDot(e.startDate)}부터` : `${e.startIndex}회차부터`}</div>
                     <div style={{ color: "#374151" }}>{formatSchedule(e.newRules)}</div>
                   </div>
@@ -2086,28 +2077,28 @@ export default function StudentHubCore({
                       const tag: ConsultTag =
                         r.purpose === "general"
                           ? {
-                              purpose: "general",
+                            purpose: "general",
+                            target: "student",
+                            label: "",
+                            badgeClassName: "",
+                            buttonClassName: "btn btn-gray",
+                            recordId: r.id,
+                          }
+                          : r.purpose === "extension"
+                            ? {
+                              purpose: "extension",
                               target: "student",
                               label: "",
                               badgeClassName: "",
-                              buttonClassName: "btn btn-gray",
+                              buttonClassName:
+                                r.extensionResult === "extended"
+                                  ? "btn btn-blue"
+                                  : r.extensionResult === "not_extended"
+                                    ? "btn btn-red"
+                                    : "btn btn-gray",
                               recordId: r.id,
                             }
-                          : r.purpose === "extension"
-                            ? {
-                                purpose: "extension",
-                                target: "student",
-                                label: "",
-                                badgeClassName: "",
-                                buttonClassName:
-                                  r.extensionResult === "extended"
-                                    ? "btn btn-blue"
-                                    : r.extensionResult === "not_extended"
-                                      ? "btn btn-red"
-                                      : "btn btn-gray",
-                                recordId: r.id,
-                              }
-                          : {
+                            : {
                               purpose: "pause_request",
                               target: "student",
                               label: "",
@@ -2165,8 +2156,8 @@ export default function StudentHubCore({
                       gridTemplateColumns: "110px 90px 1fr",
                       gap: 30,
                       flex: "1 1 auto",
-                    alignItems: "center",
-                  }}
+                      alignItems: "center",
+                    }}
                   >
                     <div style={{ fontWeight: 700, whiteSpace: "nowrap" }}>{formatYmdDot(h.paymentDate)}</div>
                     <div style={{ whiteSpace: "nowrap" }}>+{h.addedCount}회</div>
@@ -2175,16 +2166,16 @@ export default function StudentHubCore({
                         {h.startIndex}회차 ~ {h.endIndex}회차
                       </span>
                       {h.refundStatus ? (
-                      <Badge
-                        style={{
-                          background: h.refundStatus === "completed" ? "#fecaca" : "#fed7aa",
-                          color: "#9a3412",
-                        }}
-                      >
-                        {h.refundStatus === "completed" ? "환불완료" : "환불요청"} · {h.refundSessionIndex ?? "-"}회차
-                        {` · ${refundRatioLabel(h.refundRatio)}`}
-                      </Badge>
-                    ) : null}
+                        <Badge
+                          style={{
+                            background: h.refundStatus === "completed" ? "#fecaca" : "#fed7aa",
+                            color: "#9a3412",
+                          }}
+                        >
+                          {h.refundStatus === "completed" ? "환불완료" : "환불요청"} · {h.refundSessionIndex ?? "-"}회차
+                          {` · ${refundRatioLabel(h.refundRatio)}`}
+                        </Badge>
+                      ) : null}
                     </div>
                   </div>
                   <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, flex: "0 0 auto" }}>
@@ -2282,7 +2273,7 @@ export default function StudentHubCore({
                 />
               </label>
 
-              {paymentError ? <div style={{ color: "#dc2626"}}>{paymentError}</div> : null}
+              {paymentError ? <div style={{ color: "#dc2626" }}>{paymentError}</div> : null}
 
               <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 4 }}>
                 {editingRecordId ? (
@@ -2396,7 +2387,7 @@ export default function StudentHubCore({
                   />
                 </label>
 
-                {refundError ? <div style={{ color: "#dc2626"}}>{refundError}</div> : null}
+                {refundError ? <div style={{ color: "#dc2626" }}>{refundError}</div> : null}
 
                 <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
                   <button
@@ -2454,7 +2445,7 @@ export default function StudentHubCore({
                   />
                 </div>
 
-                {refundError ? <div style={{ color: "#dc2626"}}>{refundError}</div> : null}
+                {refundError ? <div style={{ color: "#dc2626" }}>{refundError}</div> : null}
 
                 <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
                   <button
@@ -2615,7 +2606,7 @@ export default function StudentHubCore({
                     ))}
 
                   {[0, 1, 2, 3, 4, 5, 6].every((d) => !scheduleDays[d]?.on) ? (
-                    <div style={{ color: "var(--text-muted)"}}>선택된 요일이 없습니다.</div>
+                    <div style={{ color: "var(--text-muted)" }}>선택된 요일이 없습니다.</div>
                   ) : null}
                 </div>
               </div>
@@ -2624,7 +2615,7 @@ export default function StudentHubCore({
                 현재 적용중인 시간표 : {currentScheduleText}
               </div>
 
-              {scheduleError ? <div style={{ color: "#dc2626"}}>{scheduleError}</div> : null}
+              {scheduleError ? <div style={{ color: "#dc2626" }}>{scheduleError}</div> : null}
 
               <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
                 <button

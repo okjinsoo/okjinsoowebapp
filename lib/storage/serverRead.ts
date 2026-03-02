@@ -71,29 +71,3 @@ async function fetchServerJson<T>(url: string, dataKey: string): Promise<FetchRe
   }
 }
 
-export async function fetchServerTeachers(): Promise<Teacher[] | null> {
-  const result = await fetchServerJson<Teacher[]>("/api/teachers", "teachers");
-  return result.ok ? result.data ?? [] : null;
-}
-
-export async function fetchServerStudents(): Promise<Student[] | null> {
-  const result = await fetchServerJson<Student[]>("/api/students", "students");
-  return result.ok ? result.data ?? [] : null;
-}
-
-export async function fetchServerStudentSessions(studentId: string): Promise<Session[] | null> {
-  const id = (studentId ?? "").trim();
-  if (!id) return null;
-  const result = await fetchServerJson<Session[]>(`/api/students/${encodeURIComponent(id)}/sessions`, "sessions");
-  return result.ok ? result.data ?? [] : null;
-}
-
-export async function fetchServerStudentConsultations(studentId: string): Promise<ConsultationRecord[] | null> {
-  const id = (studentId ?? "").trim();
-  if (!id) return null;
-  const result = await fetchServerJson<ConsultationRecord[]>(
-    `/api/students/${encodeURIComponent(id)}/consultations`,
-    "consultations"
-  );
-  return result.ok ? result.data ?? [] : null;
-}

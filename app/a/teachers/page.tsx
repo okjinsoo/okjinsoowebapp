@@ -5,7 +5,6 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Teacher, Student } from "@/lib/types/index";
 import {
-  hydrateTeachersFromServer,
   loadTeachers,
   saveTeachers,
   saveCurrentTeacherId,
@@ -21,10 +20,10 @@ export default function AdminTeachersPage() {
 
   useEffect(() => {
     const id = setTimeout(() => {
-      void hydrateTeachersFromServer().then((nextTeachers) => setTeachers(nextTeachers));
+      setTeachers(loadTeachers());
     }, 0);
     const refresh = () => {
-      void hydrateTeachersFromServer().then((nextTeachers) => setTeachers(nextTeachers));
+      setTeachers(loadTeachers());
     };
     window.addEventListener(TEACHERS_EVENT, refresh);
     return () => {
@@ -60,9 +59,9 @@ export default function AdminTeachersPage() {
     const nextStudents =
       assigned.length > 0
         ? allStudents.map((s: Student) => {
-            if ((s.teacherId ?? null) !== teacherId) return s;
-            return { ...s, teacherId: null };
-          })
+          if ((s.teacherId ?? null) !== teacherId) return s;
+          return { ...s, teacherId: null };
+        })
         : allStudents;
     const nextTeachers = allTeachers.filter((row) => row.id !== teacherId);
 

@@ -5,12 +5,10 @@ import { useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { AUTH_EVENT } from "@/lib/auth/supabaseAuth";
 import { resolveSelectionForRole } from "@/lib/auth/loginSelection";
-import { hydrateStudentsFromServer, loadStudents } from "@/lib/storage/students";
-import { hydrateConsultationsByStudentFromServer } from "@/lib/storage/consultations";
-import { hydrateSessionsForStudentFromServer } from "@/lib/storage/sessions";
+import { loadStudents } from "@/lib/storage/students";
+import { pullSharedSnapshotAndHydrateWithOptions } from "@/lib/storage/sharedSnapshot";
 import {
   clearCurrentTeacherId,
-  hydrateTeachersFromServer,
   loadTeachers,
   loadCurrentTeacherId,
   saveCurrentTeacherId,
@@ -48,10 +46,6 @@ export default function StudentMainSessionDetailBase({ role }: { role: "a" | "t"
     setTeacherId(selection.teacherId);
 
     const selectedStudent = nextStudents.find((student) => student.token === selection.studentToken);
-    if (selectedStudent) {
-      void hydrateSessionsForStudentFromServer(selectedStudent.id);
-      void hydrateConsultationsByStudentFromServer(selectedStudent.id);
-    }
 
     if (selection.studentToken) saveCurrentStudentToken(selection.studentToken);
     else clearCurrentStudentToken();
@@ -72,14 +66,13 @@ export default function StudentMainSessionDetailBase({ role }: { role: "a" | "t"
         applySelection(localStudents, localTeachers);
       }
 
-      const [nextStudents, nextTeachers] = await Promise.all([
-        hydrateStudentsFromServer(),
-        hydrateTeachersFromServer(),
-      ]);
+      const snapshot = await pullSharedSnapshotAndHydrateWithOptions({ forceRemote: true });
       if (cancelled) return;
-      setStudents(nextStudents);
-      setTeachers(nextTeachers);
-      applySelection(nextStudents, nextTeachers);
+      if (snapshot) {
+        setStudents(snapshot.students);
+        setTeachers(snapshot.teachers);
+        applySelection(snapshot.students, snapshot.teachers);
+      }
     }
 
     void bootstrap();
@@ -96,13 +89,12 @@ export default function StudentMainSessionDetailBase({ role }: { role: "a" | "t"
       setTeachers(localTeachers);
       applySelection(localStudents, localTeachers);
 
-      const [nextStudents, nextTeachers] = await Promise.all([
-        hydrateStudentsFromServer(),
-        hydrateTeachersFromServer(),
-      ]);
-      setStudents(nextStudents);
-      setTeachers(nextTeachers);
-      applySelection(nextStudents, nextTeachers);
+      const snapshot = await pullSharedSnapshotAndHydrateWithOptions({ forceRemote: true });
+      if (snapshot) {
+        setStudents(snapshot.students);
+        setTeachers(snapshot.teachers);
+        applySelection(snapshot.students, snapshot.teachers);
+      }
     };
 
     const requestGateRefresh = () => {

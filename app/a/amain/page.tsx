@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { syncRoleBindingEmails } from "@/lib/auth/roleBindings";
 import { ensureAuthSession, getSupabaseConfig } from "@/lib/auth/supabaseAuth";
 import {
-  pullSharedSnapshotAndHydrate,
+  pullSharedSnapshotAndHydrateWithOptions,
   pushSharedSnapshot,
   readLocalSharedStateKv,
 } from "@/lib/storage/sharedSnapshot";
@@ -109,7 +109,7 @@ export default function AdminMainPage() {
 
     async function bootstrap() {
       try {
-        await pullSharedSnapshotAndHydrate();
+        await pullSharedSnapshotAndHydrateWithOptions({ forceRemote: true });
       } catch (err) {
         console.error("공유 스냅샷 불러오기 실패(admin):", err);
       }

@@ -4,7 +4,6 @@
 import { TUTORWEB_EVENTS } from "@/lib/events/tutorwebEvents";
 import { browserStorage } from "@/lib/storage/browserStorage";
 import { pushSharedSnapshot } from "@/lib/storage/sharedSnapshot";
-import { fetchServerStudentConsultations } from "@/lib/storage/serverRead";
 import { safeParseJson } from "@/lib/storage/safeParse";
 import { SHARED_CONSULTATIONS_KEY } from "@/lib/storage/sharedStateKeys";
 import type { ConsultationRecord, Id } from "@/lib/types/index";
@@ -60,20 +59,6 @@ export function saveAllConsultationsStore(next: Store, options?: SaveConsultatio
   saveAll(next, options);
 }
 
-export async function hydrateConsultationsByStudentFromServer(studentId: Id): Promise<ConsultationRecord[]> {
-  const remote = await fetchServerStudentConsultations(studentId);
-  if (!remote) return loadConsultationsByStudent(studentId);
-  replaceByStudentLocal(studentId, remote);
-  return remote;
-}
-
-export async function hydrateConsultationsForStudentsFromServer(studentIds: Id[]): Promise<void> {
-  const uniqueIds = Array.from(
-    new Set((studentIds ?? []).map((id) => (typeof id === "string" ? id.trim() : "")).filter(Boolean))
-  );
-  if (uniqueIds.length === 0) return;
-  await Promise.all(uniqueIds.map((studentId) => hydrateConsultationsByStudentFromServer(studentId)));
-}
 
 export function saveConsultationsByStudent(studentId: Id, list: ConsultationRecord[]) {
   const all = loadAll();
