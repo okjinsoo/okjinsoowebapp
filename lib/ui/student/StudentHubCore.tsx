@@ -270,7 +270,10 @@ export default function StudentHubCore({
     void refreshTick;
     return token ? (findStudentByToken(token) ?? null) : null;
   }, [token, refreshTick]);
-  const sessions = useMemo(() => (student ? sessionsByStudent(student.id) : []), [student]);
+  const sessions = useMemo(() => {
+    void refreshTick;
+    return student ? sessionsByStudent(student.id) : [];
+  }, [student, refreshTick]);
   const metaMap = useMetaMap(token);
   const baseDatesISO = useMemo(() => (student ? buildBaseDatesISO(student, 60) : []), [student]);
   const currentCount = useMemo(() => {
@@ -1405,6 +1408,16 @@ export default function StudentHubCore({
         accessRole={accessRole}
         canEdit={canEdit}
       />
+
+      {isAdmin || accessRole === "t" ? (
+        <StudentPaymentPanel
+          isAdmin={isAdmin}
+          history={history}
+          applyHistory={applyHistory}
+          student={student}
+          baseCount={baseCount}
+        />
+      ) : null}
 
       {scheduleEditOpen ? (
         <div
