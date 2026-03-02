@@ -37,7 +37,6 @@ import {
   computeBaseCount,
   normalizePaymentHistoryRanges,
   computeRefundRatio,
-  refundRatioLabel,
 } from "@/lib/factories/lessonStatusFactory";
 import { buildConsultationRecord, normalizeConsultPurpose, validateConsultForm } from "@/lib/factories/consultationFactory";
 import {
@@ -62,6 +61,7 @@ import { getAchievementBadgeStyle } from "@/lib/ui/common/achievementBadge";
 import { getSessionStatusBadge } from "@/lib/ui/common/sessionStatusBadge";
 import { buildSessionContextBadges, getSessionExtraBadgeStyle } from "@/lib/ui/common/sessionExtraBadge";
 import ConsultModal, { ConsultFormState } from "@/lib/ui/common/ConsultModal";
+import { StudentPaymentPanel } from "./panels/StudentPaymentPanel";
 import {
   calculateSessionAchievementPercent,
   isSessionProgressEventKeyForToken,
@@ -233,24 +233,8 @@ export default function StudentHubCore({
   const accessRole: Role = role;
   const isAdmin = accessRole === "a";
   const [mounted, setMounted] = useState(false);
-  const [showPaymentPanel, setShowPaymentPanel] = useState(false);
-  const [editingRecordId, setEditingRecordId] = useState<string | null>(null);
   const [refreshTick, setRefreshTick] = useState(0);
   const [teachers, setTeachers] = useState(() => loadTeachers());
-  const [paymentDate, setPaymentDate] = useState(() => todayYmdKST());
-  const [addedCount, setAddedCount] = useState<number>(12);
-  const [paymentMemo, setPaymentMemo] = useState("");
-  const [paymentConfirmed, setPaymentConfirmed] = useState(false);
-  const [paymentError, setPaymentError] = useState("");
-  const [refundOpen, setRefundOpen] = useState(false);
-  const [refundMode, setRefundMode] = useState<"request" | "process">("request");
-  const [refundRecordId, setRefundRecordId] = useState<string | null>(null);
-  const [refundSessionInput, setRefundSessionInput] = useState<number>(0);
-  const [refundReasonInput, setRefundReasonInput] = useState("");
-  const [refundConsultInput, setRefundConsultInput] = useState("");
-  const [refundProcessedDate, setRefundProcessedDate] = useState(() => todayYmdKST());
-  const [refundConfirmed, setRefundConfirmed] = useState(false);
-  const [refundError, setRefundError] = useState("");
   const [consultOpen, setConsultOpen] = useState(false);
   const [consultEditingId, setConsultEditingId] = useState<string | null>(null);
   const [consultForm, setConsultForm] = useState<ConsultFormState>({
@@ -606,32 +590,6 @@ export default function StudentHubCore({
     if (indices.length === 0) return null;
     return Math.min(...indices);
   }, [displayRecords]);
-  const refundRecord = useMemo(
-    () => (refundRecordId ? displayRecords.find((h) => h.id === refundRecordId) ?? null : null),
-    [refundRecordId, displayRecords]
-  );
-  const editingRange = useMemo(() => {
-    if (!editingRecordId) {
-      const start = currentCount + 1;
-      const end = start + Math.max(0, addedCount) - 1;
-      return { start, end };
-    }
-
-    const idx = history.findIndex((h) => h.id === editingRecordId);
-    if (idx < 0) {
-      const start = currentCount + 1;
-      const end = start + Math.max(0, addedCount) - 1;
-      return { start, end };
-    }
-
-    const prevSum = history
-      .slice(0, idx)
-      .reduce((sum, h) => sum + Math.max(0, Math.floor(Number(h.addedCount) || 0)), 0);
-    const start = baseCount + prevSum + 1;
-    const end = start + Math.max(0, addedCount) - 1;
-    return { start, end };
-  }, [editingRecordId, currentCount, baseCount, history, addedCount]);
-
   const progressPercent = useMemo(() => {
     void progressTick;
     return (index: number) => {
@@ -792,11 +750,6 @@ export default function StudentHubCore({
     );
   }
 
-  function closePaymentPanel() {
-    setShowPaymentPanel(false);
-    setEditingRecordId(null);
-    setPaymentError("");
-  }
 
   function openScheduleEdit() {
     if (!student) return;
@@ -1010,25 +963,7 @@ export default function StudentHubCore({
     }
     closeScheduleEdit();
   }
-  function openEditPayment(record: PaymentRecord) {
-    setEditingRecordId(record.id);
-    setPaymentConfirmed(true);
-    setPaymentMemo(record.memo ?? "");
-    setAddedCount(record.addedCount);
-    setPaymentDate(record.paymentDate);
-    setShowPaymentPanel(true);
-  }
 
-  function closeRefundPanel() {
-    setRefundOpen(false);
-    setRefundRecordId(null);
-    setRefundError("");
-    setRefundConfirmed(false);
-    setRefundConsultInput("");
-    setRefundReasonInput("");
-    setRefundSessionInput(0);
-    setRefundMode("request");
-  }
 
   function openConsultNew(purpose: "general" | "pause_request" | "extension" = "general") {
     setConsultEditingId(null);
@@ -1267,165 +1202,6 @@ export default function StudentHubCore({
     setConsultOpen(false);
   }
 
-  async function onSubmitRefundRequest() {
-    if (!refundRecordId) return;
-    setRefundError("");
-
-    const record = refundRecord;
-    if (!record) return;
-
-    const req = Math.floor(Number(refundSessionInput));
-    if (!Number.isFinite(req)) return setRefundError("환불 요청 회차를 입력해주세요.");
-    if (req < record.startIndex || req > record.endIndex) {
-      return setRefundError("환불 요청 회차는 해당 연장 구간 안이어야 합니다.");
-    }
-    if (!refundReasonInput.trim()) return setRefundError("환불 예상 사유를 입력해주세요.");
-
-    const ratio = computeRefundRatio(record, req, Boolean(record.isBase));
-    if (record.isBase) {
-      const ok = await applyHistory(
-        history,
-        {
-          baseRefundStatus: "requested",
-          baseRefundSessionIndex: req,
-          baseRefundRatio: ratio,
-          baseRefundReason: refundReasonInput.trim(),
-          baseRefundRequestedAt: nowIso(),
-        },
-        true
-      );
-      if (!ok) {
-        setRefundError("서버 저장에 실패했어요. 잠시 뒤 다시 시도해주세요.");
-        return;
-      }
-    } else {
-      const nextHistory = history.map((h) =>
-        h.id === record.id
-          ? {
-            ...h,
-            refundStatus: "requested" as const,
-            refundSessionIndex: req,
-            refundRatio: ratio,
-            refundReason: refundReasonInput.trim(),
-            refundRequestedAt: nowIso(),
-          }
-          : h
-      );
-      const ok = await applyHistory(nextHistory, undefined, true);
-      if (!ok) {
-        setRefundError("서버 저장에 실패했어요. 잠시 뒤 다시 시도해주세요.");
-        return;
-      }
-    }
-    closeRefundPanel();
-  }
-
-  async function onSubmitRefundProcess() {
-    if (!refundRecordId) return;
-    setRefundError("");
-
-    const record = refundRecord;
-    if (!record) return;
-    const req = Math.floor(Number(refundSessionInput));
-    if (!Number.isFinite(req)) return setRefundError("환불 요청 회차를 입력해주세요.");
-    if (req < record.startIndex || req > record.endIndex) {
-      return setRefundError("환불 요청 회차는 해당 연장 구간 안이어야 합니다.");
-    }
-    if (!refundReasonInput.trim()) return setRefundError("환불 예상 사유를 입력해주세요.");
-    if (!refundConsultInput.trim()) return setRefundError("상담 내용을 입력해주세요.");
-    if (!refundProcessedDate) return setRefundError("환불 처리 날짜를 입력해주세요.");
-    if (!refundConfirmed) return setRefundError("환불 처리 완료를 체크해주세요.");
-
-    if (record.isBase) {
-      const ratio = computeRefundRatio(record, req, Boolean(record.isBase));
-      const ok = await applyHistory(
-        history,
-        {
-          baseRefundStatus: "completed",
-          baseRefundSessionIndex: req,
-          baseRefundRatio: ratio,
-          baseRefundReason: refundReasonInput.trim(),
-          baseRefundRequestedAt: record.refundRequestedAt ?? nowIso(),
-          baseRefundConsultNote: refundConsultInput.trim(),
-          baseRefundProcessedDate: refundProcessedDate,
-          baseRefundProcessedAt: nowIso(),
-        },
-        true
-      );
-      if (!ok) {
-        setRefundError("서버 저장에 실패했어요. 잠시 뒤 다시 시도해주세요.");
-        return;
-      }
-    } else {
-      const ratio = computeRefundRatio(record, req, Boolean(record.isBase));
-      const nextHistory = history.map((h) =>
-        h.id === record.id
-          ? {
-            ...h,
-            refundStatus: "completed" as const,
-            refundSessionIndex: req,
-            refundRatio: ratio,
-            refundReason: refundReasonInput.trim(),
-            refundRequestedAt: h.refundRequestedAt ?? nowIso(),
-            refundConsultNote: refundConsultInput.trim(),
-            refundProcessedDate,
-            refundProcessedAt: nowIso(),
-          }
-          : h
-      );
-      const ok = await applyHistory(nextHistory, undefined, true);
-      if (!ok) {
-        setRefundError("서버 저장에 실패했어요. 잠시 뒤 다시 시도해주세요.");
-        return;
-      }
-    }
-    closeRefundPanel();
-  }
-
-  async function onCancelRefundRequest() {
-    if (!refundRecordId) return;
-    const record = refundRecord;
-    if (!record) return;
-    if (record.isBase) {
-      const ok = await applyHistory(
-        history,
-        {
-          baseRefundStatus: undefined,
-          baseRefundSessionIndex: undefined,
-          baseRefundRatio: undefined,
-          baseRefundReason: undefined,
-          baseRefundRequestedAt: undefined,
-          baseRefundProcessedAt: undefined,
-          baseRefundProcessedDate: undefined,
-          baseRefundConsultNote: undefined,
-        },
-        true
-      );
-      if (!ok) {
-        setRefundError("서버 저장에 실패했어요. 잠시 뒤 다시 시도해주세요.");
-        return;
-      }
-    } else {
-      const nextHistory = history.map((h) =>
-        h.id === record.id
-          ? {
-            ...h,
-            refundStatus: undefined,
-            refundSessionIndex: undefined,
-            refundRatio: undefined,
-            refundReason: undefined,
-            refundRequestedAt: undefined,
-            refundProcessedAt: undefined,
-            refundProcessedDate: undefined,
-            refundConsultNote: undefined,
-          }
-          : h
-      );
-      const ok = await applyHistory(nextHistory, undefined, true);
-      if (!ok) return;
-    }
-    closeRefundPanel();
-  }
 
   async function applyHistory(
     records: PaymentRecord[],
@@ -1638,59 +1414,11 @@ export default function StudentHubCore({
       return true;
     } catch (err) {
       console.error("결제/환불 서버 저장 실패:", err);
-      setPaymentError("서버 저장에 실패했어요. 잠시 뒤 다시 시도해주세요.");
+      alert("서버 저장에 실패했어요. 잠시 뒤 다시 시도해주세요.");
       return false;
     }
   }
 
-  async function onApplyPayment() {
-    if (!isAdmin) return;
-    setPaymentError("");
-
-    const cnt = Math.floor(Number(addedCount));
-    if (!paymentConfirmed) return setPaymentError("결제 확인을 먼저 체크해주세요.");
-    if (!paymentDate) return setPaymentError("결제일을 입력해주세요.");
-    if (!Number.isFinite(cnt) || cnt <= 0) return setPaymentError("추가 회차는 1 이상 숫자여야 합니다.");
-
-    const record: PaymentRecord = {
-      id: editingRecordId ?? makeId(),
-      paymentDate,
-      addedCount: cnt,
-      startIndex: 0,
-      endIndex: 0,
-      memo: paymentMemo.trim() ? paymentMemo.trim() : undefined,
-      createdAt: editingRecordId
-        ? history.find((h) => h.id === editingRecordId)?.createdAt ?? nowIso()
-        : nowIso(),
-    };
-
-    const nextHistory = editingRecordId
-      ? history.map((h) => (h.id === editingRecordId ? record : h))
-      : [...history, record];
-
-    const ok = await applyHistory(nextHistory);
-    if (!ok) return;
-
-    setPaymentConfirmed(false);
-    setPaymentMemo("");
-    setAddedCount(12);
-    setPaymentDate(todayYmdKST());
-    setShowPaymentPanel(false);
-    setEditingRecordId(null);
-  }
-
-  async function onDeletePaymentRecord() {
-    if (!editingRecordId) return;
-    const nextHistory = history.filter((h) => h.id !== editingRecordId);
-    const ok = await applyHistory(nextHistory);
-    if (!ok) return;
-    setPaymentConfirmed(false);
-    setPaymentMemo("");
-    setAddedCount(12);
-    setPaymentDate(todayYmdKST());
-    setShowPaymentPanel(false);
-    setEditingRecordId(null);
-  }
 
   return (
     <main style={{ padding: 20, maxWidth: 980, margin: "0 auto" }}>
@@ -2117,364 +1845,13 @@ export default function StudentHubCore({
       ) : null}
 
       {isAdmin || accessRole === "t" ? (
-        <section style={{ marginTop: 14, border: "1px solid var(--surface-border)", borderRadius: 12, padding: 14, background: "var(--surface-bg)" }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-            <div className="card-title">결제 기록</div>
-            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              {isAdmin ? (
-                <button
-                  className="btn btn-bold"
-                  title="수정 모드"
-                  onClick={() => setActionMode((prev) => (prev === "edit" ? null : "edit"))}
-                >
-                  수정
-                </button>
-              ) : null}
-            </div>
-          </div>
-          {displayRecords.length === 0 ? (
-            <div style={{ color: "var(--text-muted)", marginTop: 6 }}>기록이 없습니다.</div>
-          ) : (
-            <div style={{ display: "grid", gap: 6, marginTop: 6 }}>
-              {displayRecords.map((h) => (
-                <div
-                  key={h.id}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    gap: 10,
-                    padding: "8px 10px",
-                    border: "1px solid var(--surface-border)",
-                    borderRadius: 8,
-                    background: "var(--surface-bg)",
-                  }}
-                >
-                  <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "110px 90px 1fr",
-                      gap: 30,
-                      flex: "1 1 auto",
-                      alignItems: "center",
-                    }}
-                  >
-                    <div style={{ fontWeight: 700, whiteSpace: "nowrap" }}>{formatYmdDot(h.paymentDate)}</div>
-                    <div style={{ whiteSpace: "nowrap" }}>+{h.addedCount}회</div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", color: "#374151" }}>
-                      <span>
-                        {h.startIndex}회차 ~ {h.endIndex}회차
-                      </span>
-                      {h.refundStatus ? (
-                        <Badge
-                          style={{
-                            background: h.refundStatus === "completed" ? "#fecaca" : "#fed7aa",
-                            color: "#9a3412",
-                          }}
-                        >
-                          {h.refundStatus === "completed" ? "환불완료" : "환불요청"} · {h.refundSessionIndex ?? "-"}회차
-                          {` · ${refundRatioLabel(h.refundRatio)}`}
-                        </Badge>
-                      ) : null}
-                    </div>
-                  </div>
-                  <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, flex: "0 0 auto" }}>
-                    {actionMode === "edit" && isAdmin && !h.isBase ? (
-                      <button onClick={() => openEditPayment(h)} className="btn btn-bold" title="수정">
-                        수정
-                      </button>
-                    ) : null}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </section>
-      ) : null}
-
-      {isAdmin && showPaymentPanel ? (
-        <div
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(0,0,0,0.35)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            padding: 16,
-            zIndex: 50,
-          }}
-        >
-          <div
-            style={{
-              width: "100%",
-              maxWidth: 350,
-              background: "var(--surface-bg)",
-              border: "1px solid var(--surface-border)",
-              color: "var(--foreground)",
-              borderRadius: 12,
-              padding: 12,
-            }}
-          >
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <div style={{ fontWeight: 900 }}>
-                {editingRecordId ? "수업 현황 수정" : "추가 결제 등록"}
-              </div>
-            </div>
-
-            <div style={{ display: "grid", gap: 10, marginTop: 10 }}>
-              <div style={{ display: "grid", gridTemplateColumns: "90px 1fr", gap: 10, alignItems: "center" }}>
-                <div style={{ fontWeight: 800 }}>결제일</div>
-                <input
-                  type="date"
-                  value={paymentDate}
-                  onChange={(e) => setPaymentDate(e.target.value)}
-                  style={inputStyle}
-                />
-              </div>
-
-              <div style={{ display: "grid", gridTemplateColumns: "90px 1fr", gap: 10, alignItems: "center" }}>
-                <div style={{ fontWeight: 800 }}>추가회차</div>
-                <input
-                  type="number"
-                  min={1}
-                  value={addedCount}
-                  onChange={(e) => setAddedCount(Number(e.target.value))}
-                  style={inputStyle}
-                />
-              </div>
-
-              <div style={{ color: "var(--text-muted)" }}>
-                적용 회차 :{" "}
-                {Number.isFinite(editingRange.end) && editingRange.end >= editingRange.start
-                  ? `${editingRange.start}회차 ~ ${editingRange.end}회차`
-                  : "-"}
-              </div>
-
-              <div style={{ display: "grid", gap: 6 }}>
-                <div style={{ fontWeight: 800 }}>메모</div>
-                <AutoResizeTextarea
-                  rows={2}
-                  value={paymentMemo}
-                  placeholder="환불/결제 메모"
-                  onChange={(e) => setPaymentMemo(e.target.value)}
-                  style={inputStyle}
-                />
-              </div>
-
-              <div style={{ height: 6 }} />
-
-              <label style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                <span>결제를 확인하셨습니까?</span>
-                <input
-                  type="checkbox"
-                  checked={paymentConfirmed}
-                  onChange={(e) => setPaymentConfirmed(e.target.checked)}
-                />
-              </label>
-
-              {paymentError ? <div style={{ color: "#dc2626" }}>{paymentError}</div> : null}
-
-              <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 4 }}>
-                {editingRecordId ? (
-                  <button
-                    onMouseEnter={(e) => (e.currentTarget.style.background = "#b91c1c")}
-                    onMouseLeave={(e) => (e.currentTarget.style.background = "#dc2626")}
-                    onClick={onDeletePaymentRecord}
-                    style={{ ...boxButton, padding: "10px 14px", fontWeight: 800, color: "#fff", background: "#dc2626" }}
-                  >
-                    삭제
-                  </button>
-                ) : null}
-                <button
-                  onMouseEnter={(e) => (e.currentTarget.style.background = "var(--surface-hover)")}
-                  onMouseLeave={(e) => (e.currentTarget.style.background = "var(--surface-bg)")}
-                  onClick={closePaymentPanel}
-                  style={{ ...boxButton, padding: "10px 14px" }}
-                >
-                  취소
-                </button>
-                <button
-                  onMouseEnter={(e) => (e.currentTarget.style.background = "var(--surface-hover)")}
-                  onMouseLeave={(e) => (e.currentTarget.style.background = "var(--surface-bg)")}
-                  onClick={onApplyPayment}
-                  style={{ ...boxButton, padding: "10px 14px", fontWeight: 800 }}
-                >
-                  {editingRecordId ? "저장" : "추가"}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      ) : null}
-
-      {refundOpen ? (
-        <div
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(0,0,0,0.35)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            padding: 16,
-            zIndex: 60,
-          }}
-        >
-          <div
-            style={{
-              width: "100%",
-              maxWidth: 380,
-              background: "var(--surface-bg)",
-              border: "1px solid var(--surface-border)",
-              color: "var(--foreground)",
-              borderRadius: 12,
-              padding: 12,
-            }}
-          >
-            <div style={{ fontWeight: 900 }}>
-              {refundMode === "process" ? "환불 처리" : "환불 요청"}
-            </div>
-
-            {refundMode === "process" ? (
-              <div style={{ display: "grid", gap: 10, marginTop: 10 }}>
-                <div style={{ display: "grid", gridTemplateColumns: "120px 1fr", gap: 10, alignItems: "center" }}>
-                  <div style={{ fontWeight: 800 }}>환불 회차</div>
-                  <input
-                    type="number"
-                    value={refundSessionInput}
-                    onChange={(e) => setRefundSessionInput(Number(e.target.value))}
-                    style={inputStyle}
-                  />
-                </div>
-
-                <div style={{ display: "grid", gap: 6 }}>
-                  <div style={{ fontWeight: 800 }}>환불 예상 사유</div>
-                  <AutoResizeTextarea
-                    rows={2}
-                    value={refundReasonInput}
-                    onChange={(e) => setRefundReasonInput(e.target.value)}
-                    style={inputStyle}
-                  />
-                </div>
-
-                <div style={{ display: "grid", gap: 6 }}>
-                  <div style={{ fontWeight: 800 }}>상담 내용</div>
-                  <AutoResizeTextarea
-                    rows={2}
-                    value={refundConsultInput}
-                    onChange={(e) => setRefundConsultInput(e.target.value)}
-                    style={inputStyle}
-                  />
-                </div>
-
-                <div style={{ display: "grid", gridTemplateColumns: "120px 1fr", gap: 10, alignItems: "center" }}>
-                  <div style={{ fontWeight: 800 }}>처리 날짜</div>
-                  <input
-                    type="date"
-                    value={refundProcessedDate}
-                    onChange={(e) => setRefundProcessedDate(e.target.value)}
-                    style={inputStyle}
-                  />
-                </div>
-
-                <label style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                  <span>환불 처리 완료</span>
-                  <input
-                    type="checkbox"
-                    checked={refundConfirmed}
-                    onChange={(e) => setRefundConfirmed(e.target.checked)}
-                  />
-                </label>
-
-                {refundError ? <div style={{ color: "#dc2626" }}>{refundError}</div> : null}
-
-                <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-                  <button
-                    onMouseEnter={(e) => (e.currentTarget.style.background = "var(--surface-hover)")}
-                    onMouseLeave={(e) => (e.currentTarget.style.background = "var(--surface-bg)")}
-                    onClick={closeRefundPanel}
-                    style={{ ...boxButton, padding: "8px 12px" }}
-                  >
-                    취소
-                  </button>
-                  <button
-                    onMouseEnter={(e) => (e.currentTarget.style.background = "var(--surface-hover)")}
-                    onMouseLeave={(e) => (e.currentTarget.style.background = "var(--surface-bg)")}
-                    onClick={onCancelRefundRequest}
-                    style={{ ...boxButton, padding: "8px 12px" }}
-                  >
-                    환불 취소
-                  </button>
-                  <button
-                    onMouseEnter={(e) => (e.currentTarget.style.background = "#dc2626")}
-                    onMouseLeave={(e) => (e.currentTarget.style.background = "#ef4444")}
-                    onClick={onSubmitRefundProcess}
-                    style={{
-                      ...boxButton,
-                      padding: "8px 12px",
-                      fontWeight: 700,
-                      border: "1px solid #dc2626",
-                      background: "#ef4444",
-                      color: "#fff",
-                    }}
-                  >
-                    환불 처리 완료
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <div style={{ display: "grid", gap: 10, marginTop: 10 }}>
-                <div style={{ display: "grid", gridTemplateColumns: "120px 1fr", gap: 10, alignItems: "center" }}>
-                  <div style={{ fontWeight: 800 }}>환불 회차</div>
-                  <input
-                    type="number"
-                    value={refundSessionInput}
-                    onChange={(e) => setRefundSessionInput(Number(e.target.value))}
-                    style={inputStyle}
-                  />
-                </div>
-
-                <div style={{ display: "grid", gap: 6 }}>
-                  <div style={{ fontWeight: 800 }}>환불 예상 사유</div>
-                  <AutoResizeTextarea
-                    rows={2}
-                    value={refundReasonInput}
-                    onChange={(e) => setRefundReasonInput(e.target.value)}
-                    style={inputStyle}
-                  />
-                </div>
-
-                {refundError ? <div style={{ color: "#dc2626" }}>{refundError}</div> : null}
-
-                <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-                  <button
-                    onMouseEnter={(e) => (e.currentTarget.style.background = "var(--surface-hover)")}
-                    onMouseLeave={(e) => (e.currentTarget.style.background = "var(--surface-bg)")}
-                    onClick={closeRefundPanel}
-                    style={{ ...boxButton, padding: "8px 12px" }}
-                  >
-                    취소
-                  </button>
-                  <button
-                    onMouseEnter={(e) => (e.currentTarget.style.background = "#e67e00")}
-                    onMouseLeave={(e) => (e.currentTarget.style.background = "#ff8a00")}
-                    onClick={onSubmitRefundRequest}
-                    style={{
-                      ...boxButton,
-                      padding: "8px 12px",
-                      fontWeight: 600,
-                      color: "#fff",
-                      background: "#ff8a00",
-                    }}
-                  >
-                    환불 요청
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
+        <StudentPaymentPanel
+          isAdmin={isAdmin}
+          history={history}
+          applyHistory={applyHistory}
+          student={student}
+          baseCount={baseCount}
+        />
       ) : null}
 
       <ConsultModal
