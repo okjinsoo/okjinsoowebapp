@@ -20,6 +20,9 @@ export function validateConsultForm(form: ConsultFormState, isAdmin: boolean): s
       if (!Number.isFinite(form.extensionAddedCount) || form.extensionAddedCount <= 0) {
         return "추가 회차를 1 이상으로 입력해주세요.";
       }
+      if (!form.extensionPaymentConfirmed) {
+        return "연장 결과를 '연장'으로 확정하려면 '결제 완료'를 체크해주세요.";
+      }
     }
   }
 
