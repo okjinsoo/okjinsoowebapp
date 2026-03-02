@@ -60,8 +60,9 @@ import { ConsultBadge, ConsultButton } from "@/lib/ui/common/ConsultParts";
 import { getAchievementBadgeStyle } from "@/lib/ui/common/achievementBadge";
 import { getSessionStatusBadge } from "@/lib/ui/common/sessionStatusBadge";
 import { buildSessionContextBadges, getSessionExtraBadgeStyle } from "@/lib/ui/common/sessionExtraBadge";
-import ConsultModal, { ConsultFormState } from "@/lib/ui/common/ConsultModal";
 import { StudentPaymentPanel } from "./panels/StudentPaymentPanel";
+import { StudentConsultPanel } from "./panels/StudentConsultPanel";
+import { useStudentConsult } from "./hooks/useStudentConsult";
 import {
   calculateSessionAchievementPercent,
   isSessionProgressEventKeyForToken,
@@ -187,34 +188,7 @@ function nextIsoFromRules(args: {
   return null;
 }
 
-function applyPauseStateFromConsultations(student: Student, records: ConsultationRecord[]): Student {
-  const latestPause = [...records]
-    .filter((r) => r.purpose === "pause_request" && (r.finalResult === "pause_confirm" || r.finalResult === "pause_cancel"))
-    .sort((a, b) => {
-      const ad = `${a.date ?? ""}|${a.createdAt ?? ""}`;
-      const bd = `${b.date ?? ""}|${b.createdAt ?? ""}`;
-      return ad.localeCompare(bd);
-    })
-    .at(-1);
 
-  if (latestPause?.finalResult === "pause_confirm" && latestPause.pauseEffectiveDate) {
-    const today = todayYmdKST();
-    const pauseStatus = computePauseLifecycle(today, latestPause.pauseEffectiveDate) === "paused" ? "paused" : "confirmed";
-    return {
-      ...student,
-      status: "paused",
-      pauseEffectiveDate: latestPause.pauseEffectiveDate,
-      pauseStatus,
-    };
-  }
-
-  return {
-    ...student,
-    status: "active",
-    pauseEffectiveDate: undefined,
-    pauseStatus: "none",
-  };
-}
 
 export default function StudentHubCore({
   role,
@@ -235,25 +209,7 @@ export default function StudentHubCore({
   const [mounted, setMounted] = useState(false);
   const [refreshTick, setRefreshTick] = useState(0);
   const [teachers, setTeachers] = useState(() => loadTeachers());
-  const [consultOpen, setConsultOpen] = useState(false);
-  const [consultEditingId, setConsultEditingId] = useState<string | null>(null);
-  const [consultForm, setConsultForm] = useState<ConsultFormState>({
-    date: todayYmdKST(),
-    purpose: "general",
-    target: "student",
-    content: "",
-    adminConsultDate: "",
-    extensionResult: "",
-    extensionPaymentDate: todayYmdKST(),
-    extensionAddedCount: 12,
-    extensionPaymentConfirmed: false,
-    finalNote: "",
-    finalResult: "",
-    pauseEffectiveDate: "",
-    pauseRefundRatio: "",
-    pauseRefundCompleted: false,
-  });
-  const [consultError, setConsultError] = useState("");
+
   const [scheduleEditOpen, setScheduleEditOpen] = useState(false);
   const [scheduleStartIndex, setScheduleStartIndex] = useState(1);
   const [scheduleStartDate, setScheduleStartDate] = useState("");
@@ -677,56 +633,7 @@ export default function StudentHubCore({
     });
   }, [student, token, sessions, consultRecords, baseDatesISO, metaMap]);
 
-  useEffect(() => {
-    if (!student) return;
-    if (consultForm.purpose !== "pause_request" || consultForm.finalResult !== "pause_confirm") {
-      if (consultForm.pauseRefundRatio !== "") {
-        setConsultForm((prev) => ({ ...prev, pauseRefundRatio: "" }));
-      }
-      return;
-    }
-    if (!consultForm.pauseEffectiveDate) {
-      if (consultForm.pauseRefundRatio !== "") {
-        setConsultForm((prev) => ({ ...prev, pauseRefundRatio: "" }));
-      }
-      return;
-    }
 
-    const lastIdx = findClassIndexByDatePreferFuture({
-      token,
-      sessions,
-      baseDatesISO,
-      metaMap,
-      targetDate: consultForm.pauseEffectiveDate,
-    });
-    if (!lastIdx) {
-      if (consultForm.pauseRefundRatio !== "") {
-        setConsultForm((prev) => ({ ...prev, pauseRefundRatio: "" }));
-      }
-      return;
-    }
-
-    const requestIndex = lastIdx + 1;
-    const refundTarget = displayRecords.find((r) => requestIndex >= r.startIndex && requestIndex <= r.endIndex);
-    const nextRatio = refundTarget
-      ? computeRefundRatio(refundTarget, requestIndex, Boolean(refundTarget.isBase))
-      : "";
-
-    if (consultForm.pauseRefundRatio !== nextRatio) {
-      setConsultForm((prev) => ({ ...prev, pauseRefundRatio: nextRatio }));
-    }
-  }, [
-    student,
-    consultForm.purpose,
-    consultForm.finalResult,
-    consultForm.pauseEffectiveDate,
-    consultForm.pauseRefundRatio,
-    token,
-    sessions,
-    baseDatesISO,
-    metaMap,
-    displayRecords,
-  ]);
 
   if (!mounted) return null;
 
@@ -895,7 +802,6 @@ export default function StudentHubCore({
       return true;
     } catch (err) {
       console.error("상담 서버 저장 실패:", err);
-      setConsultError("서버 저장에 실패했어요. 잠시 뒤 다시 시도해주세요.");
       return false;
     }
   }
@@ -965,242 +871,7 @@ export default function StudentHubCore({
   }
 
 
-  function openConsultNew(purpose: "general" | "pause_request" | "extension" = "general") {
-    setConsultEditingId(null);
-    setConsultForm({
-      date: todayYmdKST(),
-      purpose,
-      target: "student",
-      content: "",
-      adminConsultDate: "",
-      extensionResult: "",
-      extensionPaymentDate: todayYmdKST(),
-      extensionAddedCount: 12,
-      extensionPaymentConfirmed: false,
-      finalNote: "",
-      finalResult: "",
-      pauseEffectiveDate: "",
-      pauseRefundRatio: "",
-      pauseRefundCompleted: false,
-    });
-    setConsultError("");
-    setConsultOpen(true);
-  }
 
-  function openConsultEdit(record: ConsultationRecord) {
-    setConsultEditingId(record.id);
-    setConsultForm({
-      date: record.date || todayYmdKST(),
-      purpose: normalizeConsultPurpose((record as { purpose?: unknown }).purpose),
-      target: record.target ?? "student",
-      content: record.content ?? "",
-      adminConsultDate: record.adminConsultDate ?? "",
-      extensionResult: record.extensionResult ?? "",
-      extensionPaymentDate: record.extensionPaymentDate ?? todayYmdKST(),
-      extensionAddedCount: Math.max(1, Math.floor(Number(record.extensionAddedCount) || 12)),
-      extensionPaymentConfirmed: Boolean(record.extensionPaymentConfirmed),
-      finalNote: record.finalNote ?? "",
-      finalResult: record.finalResult ?? "",
-      pauseEffectiveDate: record.pauseEffectiveDate ?? "",
-      pauseRefundRatio: record.pauseRefundRatio ?? "",
-      pauseRefundCompleted: Boolean(record.pauseRefundCompleted),
-    });
-    setConsultError("");
-    setConsultOpen(true);
-  }
-
-  function openConsultForSession(tag: { recordId: string } | null) {
-    if (tag?.recordId) {
-      const record = consultRecords.find((r) => r.id === tag.recordId);
-      if (record) {
-        openConsultEdit(record);
-        return;
-      }
-    }
-    openConsultNew();
-  }
-
-  async function saveConsultRecord() {
-    if (!student) return;
-    const err = validateConsultForm(consultForm, isAdmin);
-    if (err) return setConsultError(err);
-    const list = consultRecords ?? [];
-    const { previous: existing, next, updated } = buildConsultationRecord({
-      records: list,
-      editingId: consultEditingId,
-      form: consultForm,
-      nowIso: nowIso(),
-      makeId,
-    });
-
-    const wantsExtended = consultForm.purpose === "extension" && consultForm.extensionResult === "extended";
-    const paymentConfirmed = Boolean(consultForm.extensionPaymentConfirmed);
-    const prevApplied = Boolean(existing?.extensionAppliedAt && existing?.extensionPaymentRecordId);
-    let nextStudentOverride: Student | undefined;
-
-    let nextConsultRecords = updated;
-    if (!wantsExtended || !paymentConfirmed) {
-      nextConsultRecords = updated.map((r) =>
-        r.id === next.id ? { ...r, extensionAppliedAt: undefined, extensionPaymentRecordId: undefined } : r
-      );
-    }
-
-    if (isAdmin && consultForm.purpose === "pause_request") {
-      if (consultForm.finalResult === "pause_confirm" && consultForm.pauseEffectiveDate) {
-        const lastYmd = consultForm.pauseEffectiveDate;
-        const lastIdx = findClassIndexByDatePreferFuture({
-          token,
-          sessions,
-          baseDatesISO,
-          metaMap,
-          targetDate: lastYmd,
-        });
-        const requestIndex = lastIdx ? lastIdx + 1 : null;
-        const refundTarget =
-          requestIndex !== null
-            ? displayRecords.find((r) => requestIndex >= r.startIndex && requestIndex <= r.endIndex)
-            : undefined;
-        const pauseRefundRatio = refundTarget
-          ? computeRefundRatio(refundTarget, requestIndex as number, Boolean(refundTarget.isBase))
-          : undefined;
-
-        nextConsultRecords = nextConsultRecords.map((r) =>
-          r.id === next.id
-            ? {
-              ...r,
-              pauseEffectiveDate: lastYmd,
-              pauseRefundRatio,
-              pauseRefundCompleted: Boolean(consultForm.pauseRefundCompleted),
-            }
-            : r
-        );
-      }
-
-      nextStudentOverride = applyPauseStateFromConsultations(student, nextConsultRecords);
-    }
-    const nextStudentPatch = nextStudentOverride
-      ? {
-        status: nextStudentOverride.status,
-        pauseEffectiveDate: nextStudentOverride.pauseEffectiveDate,
-        pauseStatus: nextStudentOverride.pauseStatus,
-      }
-      : undefined;
-
-    if (isAdmin && prevApplied && (!wantsExtended || !paymentConfirmed) && existing?.extensionPaymentRecordId) {
-      const nextHistory = history.filter((h) => h.id !== existing.extensionPaymentRecordId);
-      const ok = await applyHistory(nextHistory, nextStudentPatch, false, {
-        consultationRecords: nextConsultRecords,
-      });
-      if (!ok) return;
-      setConsultOpen(false);
-      return;
-    }
-
-    if (isAdmin && wantsExtended && paymentConfirmed) {
-      const cnt = Math.max(1, Math.floor(Number(consultForm.extensionAddedCount) || 0));
-      const nextPaymentDate = consultForm.extensionPaymentDate;
-      const nextMemo = consultForm.content.trim() || "연장 상담";
-      let nextHistory: PaymentRecord[] | null = null;
-      let refreshed = nextConsultRecords;
-
-      if (prevApplied && existing?.extensionPaymentRecordId) {
-        const recId = existing.extensionPaymentRecordId;
-        const recIdx = history.findIndex((h) => h.id === recId);
-
-        if (recIdx >= 0) {
-          const prev = history[recIdx];
-          const patched: PaymentRecord = {
-            ...prev,
-            paymentDate: nextPaymentDate,
-            addedCount: cnt,
-            memo: nextMemo,
-          };
-          nextHistory = history.map((h, i) => (i === recIdx ? patched : h));
-          refreshed = nextConsultRecords.map((r) =>
-            r.id === next.id
-              ? {
-                ...r,
-                extensionAppliedAt: r.extensionAppliedAt ?? existing.extensionAppliedAt ?? nowIso(),
-                extensionPaymentRecordId: recId,
-              }
-              : r
-          );
-        } else {
-          const paymentRecord: PaymentRecord = {
-            id: makeId(),
-            paymentDate: nextPaymentDate,
-            addedCount: cnt,
-            startIndex: 0,
-            endIndex: 0,
-            memo: nextMemo,
-            createdAt: nowIso(),
-          };
-          nextHistory = [...history, paymentRecord];
-          refreshed = nextConsultRecords.map((r) =>
-            r.id === next.id ? { ...r, extensionAppliedAt: nowIso(), extensionPaymentRecordId: paymentRecord.id } : r
-          );
-        }
-      } else {
-        const paymentRecord: PaymentRecord = {
-          id: makeId(),
-          paymentDate: nextPaymentDate,
-          addedCount: cnt,
-          startIndex: 0,
-          endIndex: 0,
-          memo: nextMemo,
-          createdAt: nowIso(),
-        };
-        nextHistory = [...history, paymentRecord];
-        refreshed = nextConsultRecords.map((r) =>
-          r.id === next.id ? { ...r, extensionAppliedAt: nowIso(), extensionPaymentRecordId: paymentRecord.id } : r
-        );
-      }
-
-      if (!nextHistory) {
-        setConsultError("연장 결제 기록을 준비하지 못했어요. 다시 시도해주세요.");
-        return;
-      }
-      const ok = await applyHistory(nextHistory, nextStudentPatch, false, {
-        consultationRecords: refreshed,
-      });
-      if (!ok) return;
-      setConsultOpen(false);
-      return;
-    }
-
-    const ok = await persistConsultationState(nextConsultRecords, nextStudentOverride);
-    if (!ok) return;
-    setConsultOpen(false);
-  }
-
-  async function deleteConsultRecord() {
-    if (!student || !consultEditingId) return;
-    const list = consultRecords ?? [];
-    const deleting = list.find((r) => r.id === consultEditingId);
-    const updated = list.filter((r) => r.id !== consultEditingId);
-    const nextStudentOverride =
-      isAdmin && deleting?.purpose === "pause_request" ? applyPauseStateFromConsultations(student, updated) : undefined;
-    const nextStudentPatch = nextStudentOverride
-      ? {
-        status: nextStudentOverride.status,
-        pauseEffectiveDate: nextStudentOverride.pauseEffectiveDate,
-        pauseStatus: nextStudentOverride.pauseStatus,
-      }
-      : undefined;
-
-    if (deleting?.purpose === "extension" && deleting.extensionPaymentRecordId) {
-      const nextHistory = history.filter((h) => h.id !== deleting.extensionPaymentRecordId);
-      const ok = await applyHistory(nextHistory, nextStudentPatch, false, {
-        consultationRecords: updated,
-      });
-      if (!ok) return;
-    } else {
-      const ok = await persistConsultationState(updated, nextStudentOverride);
-      if (!ok) return;
-    }
-
-    setConsultOpen(false);
-  }
 
 
   async function applyHistory(
@@ -1419,7 +1090,19 @@ export default function StudentHubCore({
     }
   }
 
-
+  const consultHooks = useStudentConsult({
+    isAdmin,
+    student,
+    history,
+    consultRecords,
+    token,
+    sessions,
+    baseDatesISO,
+    metaMap,
+    displayRecords,
+    applyHistory,
+    persistConsultationState,
+  });
   return (
     <main style={{ padding: 20, maxWidth: 980, margin: "0 auto" }}>
       <section style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
@@ -1543,7 +1226,7 @@ export default function StudentHubCore({
         ) : null}
 
         {canEdit ? (
-          <button className="btn btn-bold" onClick={() => openConsultNew("general")}>
+          <button className="btn btn-bold" onClick={() => consultHooks.actions.openConsultNew("general")}>
             일반 상담
           </button>
         ) : null}
@@ -1564,7 +1247,7 @@ export default function StudentHubCore({
         </button>
 
         {isAdmin ? (
-          <button onClick={() => openConsultNew("extension")} className="btn btn-blue" title="연장 요청">
+          <button onClick={() => consultHooks.actions.openConsultNew("extension")} className="btn btn-blue" title="연장 요청">
             연장 요청
           </button>
         ) : null}
@@ -1573,7 +1256,7 @@ export default function StudentHubCore({
           <button
             className="btn btn-orange"
             title="휴회 요청"
-            onClick={() => openConsultNew("pause_request")}
+            onClick={() => consultHooks.actions.openConsultNew("pause_request")}
           >
             휴회 요청
           </button>
@@ -1653,7 +1336,7 @@ export default function StudentHubCore({
                   <div onClick={(e) => e.stopPropagation()} style={{ display: "flex", gap: 6 }}>
                     <SessionQuickActions role={accessRole} token={token} index={item.index} />
                     {canUseConsultFeatures(accessRole) ? (
-                      <ConsultButton tag={consultTag} onClick={() => openConsultForSession(consultTag)} />
+                      <ConsultButton tag={consultTag} onClick={() => consultHooks.actions.openConsultForSession(consultTag)} />
                     ) : null}
                   </div>
                 </div>
@@ -1718,151 +1401,11 @@ export default function StudentHubCore({
         </section>
       ) : null}
 
-      {canEdit ? (
-        <section style={{ marginTop: 12, border: "1px solid var(--surface-border)", borderRadius: 12, padding: 14, background: "var(--surface-bg)" }}>
-          <div className="card-title">상담 기록</div>
-          {consultRecords.length === 0 ? (
-            <div className="text-muted" style={{ marginTop: 8 }}>
-              상담 기록이 없습니다.
-            </div>
-          ) : (
-            <div style={{ marginTop: 8, display: "grid", gap: 8 }}>
-              {consultRecords.map((r) => (
-                <div
-                  key={r.id}
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "110px 140px 120px 140px 120px auto",
-                    gap: 12,
-                    alignItems: "center",
-                    padding: "8px 10px",
-                    border: "1px solid var(--surface-border)",
-                    borderRadius: 8,
-                    background: "var(--surface-bg)",
-                  }}
-                >
-                  <div style={{ fontWeight: 700 }}>{formatYmdDot(r.date)}</div>
-                  <div>
-                    <Badge
-                      className={
-                        r.purpose === "pause_request"
-                          ? "bg-orange-200 text-orange-900"
-                          : r.purpose === "extension" && r.extensionResult === "extended"
-                            ? "bg-blue-600 text-white"
-                            : r.purpose === "extension" && r.extensionResult === "not_extended"
-                              ? "bg-red-500 text-white"
-                              : "bg-slate-200 text-slate-700"
-                      }
-                    >
-                      {r.purpose === "pause_request"
-                        ? "휴회 요청"
-                        : r.purpose === "extension"
-                          ? r.extensionResult === "extended"
-                            ? "연장 요청"
-                            : r.extensionResult === "not_extended"
-                              ? "미연장"
-                              : "연장 상담"
-                          : "일반 상담"}
-                    </Badge>
-                  </div>
-                  <div style={{ fontWeight: 700 }}>
-                    {r.purpose === "extension" && r.extensionResult === "extended"
-                      ? formatYmdDot(r.extensionPaymentDate)
-                      : r.purpose === "pause_request"
-                        ? formatYmdDot(r.adminConsultDate ?? r.pauseEffectiveDate)
-                        : ""}
-                  </div>
-                  <div>
-                    {r.purpose === "extension" && r.extensionResult === "extended" ? (
-                      <Badge tone={r.extensionPaymentConfirmed ? "blue" : "orange"}>
-                        {r.extensionPaymentConfirmed ? "결제 완료" : "결제 예정"}
-                      </Badge>
-                    ) : r.purpose === "pause_request" && r.finalResult ? (
-                      <Badge
-                        className={
-                          r.finalResult === "pause_cancel"
-                            ? "bg-orange-200 text-orange-900"
-                            : "bg-red-500 text-white"
-                        }
-                      >
-                        {r.finalResult === "pause_cancel" ? "휴회 취소" : "휴회 확정"}
-                      </Badge>
-                    ) : (
-                      ""
-                    )}
-                  </div>
-                  <div>
-                    {r.purpose === "pause_request" && r.finalResult === "pause_confirm" ? (
-                      <Badge tone={r.pauseRefundCompleted ? "red" : "orange"}>
-                        {r.pauseRefundCompleted ? "환불 완료" : "환불 예정"}
-                      </Badge>
-                    ) : (
-                      ""
-                    )}
-                  </div>
-                  <div style={{ display: "flex", justifyContent: "flex-end" }}>
-                    {(() => {
-                      const tag: ConsultTag =
-                        r.purpose === "general"
-                          ? {
-                            purpose: "general",
-                            target: "student",
-                            label: "",
-                            badgeClassName: "",
-                            buttonClassName: "btn btn-gray",
-                            recordId: r.id,
-                          }
-                          : r.purpose === "extension"
-                            ? {
-                              purpose: "extension",
-                              target: "student",
-                              label: "",
-                              badgeClassName: "",
-                              buttonClassName:
-                                r.extensionResult === "extended"
-                                  ? "btn btn-blue"
-                                  : r.extensionResult === "not_extended"
-                                    ? "btn btn-red"
-                                    : "btn btn-gray",
-                              recordId: r.id,
-                            }
-                            : {
-                              purpose: "pause_request",
-                              target: "student",
-                              label: "",
-                              badgeClassName: "",
-                              buttonClassName: r.finalResult === "pause_confirm" ? "btn btn-red" : "btn btn-orange",
-                              recordId: r.id,
-                            };
-                      return <ConsultButton tag={tag} onClick={() => openConsultEdit(r)} />;
-                    })()}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </section>
-      ) : null}
-
-      {isAdmin || accessRole === "t" ? (
-        <StudentPaymentPanel
-          isAdmin={isAdmin}
-          history={history}
-          applyHistory={applyHistory}
-          student={student}
-          baseCount={baseCount}
-        />
-      ) : null}
-
-      <ConsultModal
-        open={consultOpen}
-        role={accessRole}
-        state={consultForm}
-        error={consultError}
-        onChange={setConsultForm}
-        onClose={() => setConsultOpen(false)}
-        onSave={saveConsultRecord}
-        onDelete={consultEditingId ? deleteConsultRecord : undefined}
+      <StudentConsultPanel
+        consultHooks={consultHooks}
+        consultRecords={consultRecords}
+        accessRole={accessRole}
+        canEdit={canEdit}
       />
 
       {scheduleEditOpen ? (
