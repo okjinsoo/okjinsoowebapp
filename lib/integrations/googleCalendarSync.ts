@@ -51,7 +51,7 @@ type SyncArgs = {
 };
 
 const GOOGLE_CALENDAR_BASE_URL = "https://www.googleapis.com/calendar/v3";
-const DEFAULT_DURATION_MIN = 90;
+const DEFAULT_DURATION_MIN = 60;
 const SYNC_DEBOUNCE_MS = 900;
 const CREATE_PAST_GRACE_MS = 6 * 60 * 60 * 1000; // 6h
 const DUPLICATE_TIME_WINDOW_MS = 5 * 60 * 1000;
