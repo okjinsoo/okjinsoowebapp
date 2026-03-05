@@ -181,14 +181,19 @@ export default function StudentEditClient(props: {
     for (let idx = 1; idx <= nextPlanCount; idx++) {
       const prev = ownByIndex.get(idx);
       nextOwn.push(
-        prev ?? {
-          id: makeId(),
-          studentId: student.id,
-          index: idx,
-          displayAt: baseDatesISO[idx - 1] ?? nowIso(),
-          state: "normal" as const,
-          createdAt: nowIso(),
-        }
+        prev
+          ? {
+            ...prev,
+            displayAt: baseDatesISO[idx - 1] ?? prev.displayAt,
+          }
+          : {
+            id: makeId(),
+            studentId: student.id,
+            index: idx,
+            displayAt: baseDatesISO[idx - 1] ?? nowIso(),
+            state: "normal" as const,
+            createdAt: nowIso(),
+          }
       );
     }
     const nextSessions = [...others, ...nextOwn];
@@ -253,20 +258,20 @@ export default function StudentEditClient(props: {
 
   if (!student) {
     return (
-      <main style={{ padding: 20, maxWidth: 860, margin: "0 auto"}}>
+      <main style={{ padding: 20, maxWidth: 860, margin: "0 auto" }}>
         <button onClick={() => router.push(onDoneGoTo)} className="btn btn-bold">
           돌아가기
         </button>
         <div style={{ marginTop: 8, textAlign: "center" }} className="page-title">
           학생 정보 수정
         </div>
-        <div style={{ marginTop: 10, color: "var(--text-muted)"}}>학생을 찾지 못했습니다.</div>
+        <div style={{ marginTop: 10, color: "var(--text-muted)" }}>학생을 찾지 못했습니다.</div>
       </main>
     );
   }
 
   return (
-    <main style={{ padding: 20, maxWidth: 860, margin: "0 auto"}}>
+    <main style={{ padding: 20, maxWidth: 860, margin: "0 auto" }}>
       <div>
         <button onClick={() => router.push(onDoneGoTo)} className="btn btn-bold" title="돌아가기">
           돌아가기
@@ -346,7 +351,7 @@ export default function StudentEditClient(props: {
                 background: "var(--surface-bg)",
               }}
             >
-              <div style={{ }}>
+              <div style={{}}>
                 <b>{teacherLabel}</b>
               </div>
               <div style={{ color: "var(--text-muted)", marginTop: 4 }}>
@@ -362,7 +367,7 @@ export default function StudentEditClient(props: {
           <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
               <div>
-                <div style={{ fontWeight: 700}}>학생 이름 *</div>
+                <div style={{ fontWeight: 700 }}>학생 이름 *</div>
                 <input
                   value={name}
                   onChange={(e) => setName(e.target.value)}
@@ -378,7 +383,7 @@ export default function StudentEditClient(props: {
                 />
               </div>
               <div>
-                <div style={{ fontWeight: 700}}>학생 전화번호 *</div>
+                <div style={{ fontWeight: 700 }}>학생 전화번호 *</div>
                 <input
                   value={studentPhone}
                   onChange={(e) => setStudentPhone(e.target.value)}
@@ -427,7 +432,7 @@ export default function StudentEditClient(props: {
 
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
               <div>
-                <div style={{ fontWeight: 700}}>학교 *</div>
+                <div style={{ fontWeight: 700 }}>학교 *</div>
                 <input
                   value={school}
                   onChange={(e) => setSchool(e.target.value)}
@@ -443,7 +448,7 @@ export default function StudentEditClient(props: {
                 />
               </div>
               <div>
-                <div style={{ fontWeight: 700}}>학년 *</div>
+                <div style={{ fontWeight: 700 }}>학년 *</div>
                 <select
                   value={grade}
                   onChange={(e) => setGrade(e.target.value)}
@@ -467,7 +472,7 @@ export default function StudentEditClient(props: {
             </div>
 
             <div>
-              <div style={{ fontWeight: 700}}>학생 Google e-mail *</div>
+              <div style={{ fontWeight: 700 }}>학생 Google e-mail *</div>
               <input
                 value={googleEmail}
                 onChange={(e) => setGoogleEmail(e.target.value)}
@@ -490,7 +495,7 @@ export default function StudentEditClient(props: {
               <div className="card-title">학부모 연락처</div>
 
               <div style={{ marginTop: 8 }}>
-                <div style={{ fontWeight: 700}}>학부모 전화번호 *</div>
+                <div style={{ fontWeight: 700 }}>학부모 전화번호 *</div>
                 <input
                   value={parentPhone}
                   onChange={(e) => setParentPhone(e.target.value)}
@@ -557,7 +562,7 @@ export default function StudentEditClient(props: {
           />
         </div>
 
-        {error ? <div style={{ color: "#dc2626"}}>{error}</div> : null}
+        {error ? <div style={{ color: "#dc2626" }}>{error}</div> : null}
 
         <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
           <div>
@@ -568,12 +573,12 @@ export default function StudentEditClient(props: {
             ) : null}
           </div>
           <div style={{ display: "flex", gap: 8 }}>
-          <button onClick={() => router.push(onDoneGoTo)} style={{ padding: "8px 12px" }} disabled={saving || deleting}>
-            취소
-          </button>
-          <button onClick={() => void onSubmit()} style={{ padding: "8px 12px", fontWeight: 800 }} disabled={saving || deleting}>
-            {saving ? "저장 중..." : "저장"}
-          </button>
+            <button onClick={() => router.push(onDoneGoTo)} style={{ padding: "8px 12px" }} disabled={saving || deleting}>
+              취소
+            </button>
+            <button onClick={() => void onSubmit()} style={{ padding: "8px 12px", fontWeight: 800 }} disabled={saving || deleting}>
+              {saving ? "저장 중..." : "저장"}
+            </button>
           </div>
         </div>
       </section>
