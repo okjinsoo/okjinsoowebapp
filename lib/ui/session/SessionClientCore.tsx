@@ -364,7 +364,7 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
               {isReordering ? "순서 완료" : "순서 변경"}
             </button>
             <button
-              onClick={() => setNoticeModal((prev) => prev ? { content: "" } : null)}
+              onClick={() => setNoticeModal({ content: "" })}
               className="btn btn-black"
               style={{ padding: "6px 12px", background: "var(--color-bg)", border: "1px solid var(--control-border)", color: "var(--text-main)" }}
             >
