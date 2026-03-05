@@ -48,11 +48,28 @@ export function calculateSessionProgressSummary(args: {
   const ids = readSessionLeafIds(token, sessionIndex);
   const progress = readSessionProgressByLeafId(token, sessionIndex);
 
-  const total = ids.length * 2;
-  const done = ids.reduce((acc, id) => {
+  let total = 0;
+  let done = 0;
+
+  for (const id of ids) {
     const row = progress[id];
-    return acc + (row?.noteDone ? 1 : 0) + (row?.solveDone ? 1 : 0);
-  }, 0);
+
+    // 1. 공지사항 카드는 진도율 계산에서 완전히 배제
+    if (id.startsWith("notice_")) {
+      continue;
+    }
+
+    // 2. 임의 문제 카드는 '풀이 제출' 체크박스만 있으므로 만점이 1점
+    if (id.startsWith("custom_")) {
+      total += 1;
+      done += row?.solveDone ? 1 : 0;
+      continue;
+    }
+
+    // 3. 일반 강의 카드는 필기/풀이 두 개가 모두 있으므로 만점이 2점
+    total += 2;
+    done += (row?.noteDone ? 1 : 0) + (row?.solveDone ? 1 : 0);
+  }
 
   return {
     done,

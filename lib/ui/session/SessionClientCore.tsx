@@ -44,6 +44,11 @@ type LeafProgress = {
   noteLink: string;
   solveLink: string;
   lectureClicks: number;
+  // --- 임의 문제(Ad-hoc) 전용 정보 ---
+  customTitle?: string;
+  customProblemUrl?: string;
+  // --- 공지(Notice) 전용 정보 ---
+  noticeContent?: string;
 };
 type ProgressByLeafId = Record<string, LeafProgress>;
 function keyLeafIds(token: string, sessionIndex: number) {
@@ -123,6 +128,10 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
   const [lastAddedLeafId, setLastAddedLeafId] = useState<string>("");
   const [noteModal, setNoteModal] = useState<{ leafId: string; value: string } | null>(null);
   const [solveModal, setSolveModal] = useState<{ leafId: string; value: string } | null>(null);
+
+  // 신규 모달 상태
+  const [customModal, setCustomModal] = useState<{ title: string; url: string } | null>(null);
+  const [noticeModal, setNoticeModal] = useState<{ content: string } | null>(null);
 
   // tree
   const [tree, setTree] = useState<LectureTree>(() => loadLectureTree());
@@ -324,9 +333,25 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginTop: 8 }}>
         <div />
         {canAssignLectures ? (
-          <button onClick={() => void openPicker()} className="btn btn-black" disabled={pickerSyncing}>
-            {pickerSyncing ? "강의 동기화 중..." : "+ 강의 추가"}
-          </button>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button
+              onClick={() => setNoticeModal({ content: "" })}
+              className="btn btn-black"
+              style={{ padding: "6px 12px", background: "var(--color-bg)", border: "1px solid var(--control-border)", color: "var(--text-main)" }}
+            >
+              + 공지
+            </button>
+            <button
+              onClick={() => setCustomModal({ title: "", url: "" })}
+              className="btn btn-black"
+              style={{ padding: "6px 12px", background: "var(--color-bg)", border: "1px solid var(--control-border)", color: "var(--text-main)" }}
+            >
+              + 문제 추가
+            </button>
+            <button onClick={() => void openPicker()} className="btn btn-black" disabled={pickerSyncing}>
+              {pickerSyncing ? "강의 동기화 중..." : "+ 강의 추가"}
+            </button>
+          </div>
         ) : (
           <div style={{ fontWeight: 400, color: "var(--text-muted)" }}>
             ※ 필기 초기화는 담당 선생님께 부탁드리면 도와드릴게요!
@@ -361,10 +386,19 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
               <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
                 <div>
                   <div style={{ fontWeight: 600 }}>
-                    {idx + 1}. {leaf?.title ?? "(삭제되었거나 찾을 수 없는 강의)"}{" "}
-                    <span style={{ fontWeight: 600, opacity: 0.75 }}>
-                      [ 학습 횟수 : {p.lectureClicks ?? 0}회 ]
-                    </span>
+                    {leafId.startsWith("notice_") ? (
+                      `[공지] ${p.noticeContent || "내용 없음"}`
+                    ) : leafId.startsWith("custom_") ? (
+                      `${idx + 1}. ${p.customTitle || "제목 없는 문제"}`
+                    ) : (
+                      `${idx + 1}. ${leaf?.title ?? "(삭제되었거나 찾을 수 없는 강의)"}`
+                    )}
+
+                    {!leafId.startsWith("notice_") && (
+                      <span style={{ fontWeight: 600, opacity: 0.75, marginLeft: 8 }}>
+                        [ 학습 횟수 : {p.lectureClicks ?? 0}회 ]
+                      </span>
+                    )}
                   </div>
                   {canSeeInternalFields ? (
                     <div style={{ opacity: 0.7, marginTop: 4 }}>
@@ -411,132 +445,148 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
                 ) : null}
               </div>
 
-              <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
-                {(() => {
-                  const primaryBorder = noteLocked ? "var(--action-secondary-border)" : "var(--action-primary-border)";
-                  const primaryBg = noteLocked ? "var(--action-secondary-bg)" : "var(--action-primary-bg)";
-                  const secondaryBorder = noteLocked ? "var(--action-primary-border)" : "var(--action-secondary-border)";
-                  const secondaryBg = noteLocked ? "var(--action-primary-bg)" : "var(--action-secondary-bg)";
+              {!leafId.startsWith("notice_") && (
+                <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
+                  {(() => {
+                    const primaryBorder = noteLocked ? "var(--action-secondary-border)" : "var(--action-primary-border)";
+                    const primaryBg = noteLocked ? "var(--action-secondary-bg)" : "var(--action-primary-bg)";
+                    const secondaryBorder = noteLocked ? "var(--action-primary-border)" : "var(--action-secondary-border)";
+                    const secondaryBg = noteLocked ? "var(--action-primary-bg)" : "var(--action-secondary-bg)";
 
-                  const lectureStyle = {
-                    padding: "8px 10px",
-                    borderRadius: 10,
-                    border: `1px solid ${primaryBorder}`,
-                    background: primaryBg,
-                    color: "var(--action-contrast-text)",
-                    cursor: canOpenLecture ? "pointer" : "not-allowed",
-                  } as const;
+                    const isCustom = leafId.startsWith("custom_");
+                    // 임의 문제인 경우 문제 URL은 customProblemUrl 사용
+                    const targetProblemUrl = isCustom ? (p.customProblemUrl || "") : problemUrl;
 
-                  const noteStyle = {
-                    padding: "8px 10px",
-                    borderRadius: 10,
-                    border: `1px solid ${primaryBorder}`,
-                    background: primaryBg,
-                    color: "var(--action-contrast-text)",
-                    cursor: canSubmitNote ? "pointer" : "not-allowed",
-                  } as const;
+                    const lectureStyle = {
+                      padding: "8px 10px",
+                      borderRadius: 10,
+                      border: `1px solid ${primaryBorder}`,
+                      background: primaryBg,
+                      color: "var(--action-contrast-text)",
+                      cursor: canOpenLecture ? "pointer" : "not-allowed",
+                    } as const;
 
-                  const problemStyle = {
-                    padding: "8px 10px",
-                    borderRadius: 10,
-                    border: `1px solid ${secondaryBorder}`,
-                    background: secondaryBg,
-                    color: "var(--action-contrast-text)",
-                    cursor: canOpenProblem ? "pointer" : "not-allowed",
-                  } as const;
+                    const noteStyle = {
+                      padding: "8px 10px",
+                      borderRadius: 10,
+                      border: `1px solid ${primaryBorder}`,
+                      background: primaryBg,
+                      color: "var(--action-contrast-text)",
+                      cursor: canSubmitNote ? "pointer" : "not-allowed",
+                    } as const;
 
-                  const solveStyle = {
-                    padding: "8px 10px",
-                    borderRadius: 10,
-                    border: `1px solid ${secondaryBorder}`,
-                    background: secondaryBg,
-                    color: "var(--action-contrast-text)",
-                    cursor: canSubmitSolve ? "pointer" : "not-allowed",
-                  } as const;
+                    const problemStyle = {
+                      padding: "8px 10px",
+                      borderRadius: 10,
+                      // 임의 문제일 땐 필기 제출(잠금) 단계가 없으므로 primary 색상으로 표시
+                      border: `1px solid ${isCustom ? "var(--action-primary-border)" : secondaryBorder}`,
+                      background: isCustom ? "var(--action-primary-bg)" : secondaryBg,
+                      color: "var(--action-contrast-text)",
+                      cursor: isCustom ? (targetProblemUrl ? "pointer" : "not-allowed") : (canOpenProblem ? "pointer" : "not-allowed"),
+                    } as const;
 
-                  return (
-                    <div style={{ display: "grid", gap: 8 }}>
-                      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(90px, 1fr))", gap: 8, alignItems: "center" }}>
-                        <button
-                          onClick={() => {
-                            if (!lectureUrl) return;
-                            if (noteLocked) return;
-                            updateProgress(leafId, { lectureClicks: (p.lectureClicks ?? 0) + 1 });
-                            window.open(lectureUrl, "_blank", "noopener,noreferrer");
-                          }}
-                          disabled={!canOpenLecture}
-                          style={lectureStyle}
-                        >
-                          강의
-                        </button>
+                    const solveStyle = {
+                      padding: "8px 10px",
+                      borderRadius: 10,
+                      border: `1px solid ${isCustom ? "var(--action-primary-border)" : secondaryBorder}`,
+                      background: isCustom ? "var(--action-primary-bg)" : secondaryBg,
+                      color: "var(--action-contrast-text)",
+                      // 임의 문제 풀이 제출 상태도 별도로 따짐 (noteLocked 의존 제거)
+                      cursor: isCustom ? (!solveLocked ? "pointer" : "not-allowed") : (canSubmitSolve ? "pointer" : "not-allowed"),
+                    } as const;
 
-                        <button
-                          onClick={() => {
-                            if (!canSubmitNote) return;
-                            setNoteModal({ leafId, value: (p.noteLink ?? "").trim() });
-                          }}
-                          disabled={!canSubmitNote}
-                          style={noteStyle}
-                        >
-                          필기 제출
-                        </button>
+                    return (
+                      <div style={{ display: "grid", gap: 8 }}>
+                        <div style={{ display: "grid", gridTemplateColumns: isCustom ? "repeat(2, minmax(90px, 1fr))" : "repeat(4, minmax(90px, 1fr))", gap: 8, alignItems: "center" }}>
+                          {!isCustom && (
+                            <button
+                              onClick={() => {
+                                if (!lectureUrl) return;
+                                if (noteLocked) return;
+                                updateProgress(leafId, { lectureClicks: (p.lectureClicks ?? 0) + 1 });
+                                window.open(lectureUrl, "_blank", "noopener,noreferrer");
+                              }}
+                              disabled={!canOpenLecture}
+                              style={lectureStyle}
+                            >
+                              강의
+                            </button>
+                          )}
 
-                        <button
-                          onClick={() => {
-                            if (!problemUrl) return;
-                            if (!noteLocked) return;
-                            window.open(problemUrl, "_blank", "noopener,noreferrer");
-                          }}
-                          disabled={!canOpenProblem}
-                          style={problemStyle}
-                        >
-                          문제
-                        </button>
+                          {!isCustom && (
+                            <button
+                              onClick={() => {
+                                if (!canSubmitNote) return;
+                                setNoteModal({ leafId, value: (p.noteLink ?? "").trim() });
+                              }}
+                              disabled={!canSubmitNote}
+                              style={noteStyle}
+                            >
+                              필기 제출
+                            </button>
+                          )}
 
-                        <button
-                          onClick={() => {
-                            if (!canSubmitSolve) return;
-                            setSolveModal({ leafId, value: (p.solveLink ?? "").trim() });
-                          }}
-                          disabled={!canSubmitSolve}
-                          style={solveStyle}
-                        >
-                          풀이 제출
-                        </button>
+                          <button
+                            onClick={() => {
+                              if (!targetProblemUrl) return;
+                              if (!isCustom && !noteLocked) return;
+                              updateProgress(leafId, { lectureClicks: (p.lectureClicks ?? 0) + 1 }); // 문제 클릭 시에도 횟수 가산
+                              window.open(targetProblemUrl, "_blank", "noopener,noreferrer");
+                            }}
+                            disabled={isCustom ? !targetProblemUrl : !canOpenProblem}
+                            style={problemStyle}
+                          >
+                            문제
+                          </button>
+
+                          <button
+                            onClick={() => {
+                              if (!isCustom && !canSubmitSolve) return;
+                              if (isCustom && solveLocked) return;
+                              setSolveModal({ leafId, value: (p.solveLink ?? "").trim() });
+                            }}
+                            disabled={isCustom ? solveLocked : !canSubmitSolve}
+                            style={solveStyle}
+                          >
+                            풀이 제출
+                          </button>
+                        </div>
+
+                        <div style={{ display: "flex", gap: 16, alignItems: "center", color: "var(--text-muted)", fontSize: 13 }}>
+                          {!isCustom && (
+                            <label style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
+                              <input type="checkbox" checked={Boolean(p.noteDone)} readOnly />
+                              필기 제출
+                            </label>
+                          )}
+                          <label style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
+                            <input type="checkbox" checked={Boolean(p.solveDone)} readOnly />
+                            풀이 제출
+                          </label>
+                        </div>
                       </div>
+                    );
+                  })()}
 
-                      <div style={{ display: "flex", gap: 16, alignItems: "center", color: "var(--text-muted)", fontSize: 13 }}>
-                        <label style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
-                          <input type="checkbox" checked={Boolean(p.noteDone)} readOnly />
-                          필기 제출
-                        </label>
-                        <label style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
-                          <input type="checkbox" checked={Boolean(p.solveDone)} readOnly />
-                          풀이 제출
-                        </label>
-                      </div>
+                  {canSeeInternalFields && !leafId.startsWith("custom_") && (
+                    <div style={{ color: "var(--text-muted)" }}>
+                      필기 URL:{" "}
+                      <span style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" }}>
+                        {p.noteLink ? p.noteLink : "-"}
+                      </span>
                     </div>
-                  );
-                })()}
+                  )}
 
-                {canSeeInternalFields ? (
-                  <div style={{ color: "var(--text-muted)" }}>
-                    필기 URL:{" "}
-                    <span style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" }}>
-                      {p.noteLink ? p.noteLink : "-"}
-                    </span>
-                  </div>
-                ) : null}
-
-                {canSeeInternalFields ? (
-                  <div style={{ color: "var(--text-muted)" }}>
-                    풀이 URL:{" "}
-                    <span style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" }}>
-                      {p.solveLink ? p.solveLink : "-"}
-                    </span>
-                  </div>
-                ) : null}
-              </div>
+                  {canSeeInternalFields ? (
+                    <div style={{ color: "var(--text-muted)" }}>
+                      풀이 URL:{" "}
+                      <span style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" }}>
+                        {p.solveLink ? p.solveLink : "-"}
+                      </span>
+                    </div>
+                  ) : null}
+                </div>
+              )}
             </div>
           );
         })}
@@ -704,6 +754,180 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
         </div>
       ) : null}
 
+      {/* 임의 문제 추가 모달 */}
+      {customModal && canAssignLectures ? (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.35)",
+            display: "flex",
+            justifyContent: "center",
+            alignItems: "center",
+            padding: 16,
+            zIndex: 1000,
+          }}
+          onClick={() => setCustomModal(null)}
+        >
+          <div
+            style={{
+              width: "min(520px, 100%)",
+              background: "var(--surface-bg)",
+              borderRadius: 14,
+              padding: 16,
+              border: "1px solid var(--surface-border)",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ fontWeight: 800, marginBottom: 8 }}>+ 문제 추가</div>
+            <div style={{ color: "var(--text-muted)", marginBottom: 12 }}>
+              회차에 일회성 문제(쪽지시험, 숙제 등)를 추가합니다.
+            </div>
+
+            <div style={{ display: "grid", gap: 12 }}>
+              <div>
+                <label style={{ display: "block", fontSize: 13, fontWeight: 500, marginBottom: 4 }}>문제 제목</label>
+                <input
+                  value={customModal.title}
+                  onChange={(e) => setCustomModal({ ...customModal, title: e.target.value })}
+                  placeholder="예: 3월 1주차 모의평가"
+                  style={{ width: "100%", padding: "8px 10px", borderRadius: 10, border: "1px solid var(--control-border)" }}
+                />
+              </div>
+              <div>
+                <label style={{ display: "block", fontSize: 13, fontWeight: 500, marginBottom: 4 }}>문제 URL (클릭 시 열릴 링크)</label>
+                <input
+                  value={customModal.url}
+                  onChange={(e) => setCustomModal({ ...customModal, url: e.target.value })}
+                  placeholder="https://..."
+                  style={{ width: "100%", padding: "8px 10px", borderRadius: 10, border: "1px solid var(--control-border)" }}
+                />
+              </div>
+            </div>
+
+            <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
+              <button
+                onClick={() => {
+                  const titleStr = customModal.title.trim() || "제목 없는 문제";
+                  const urlStr = customModal.url.trim();
+
+                  // custom_ 로 시작하는 고유 ID 발급
+                  const randId = typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID().slice(0, 8) : Math.random().toString(36).slice(2, 10);
+                  const leafId = `custom_${randId}`;
+
+                  // 배열 제일 끝에 삽입하고, progress에 메타데이터 저장
+                  setLectureLeafIds((prev) => [...prev, leafId]);
+                  setProgressByLeafId((prev) => ({
+                    ...prev,
+                    [leafId]: { ...defaultProgress(), customTitle: titleStr, customProblemUrl: urlStr },
+                  }));
+                  setLastAddedLeafId(leafId);
+
+                  setCustomModal(null);
+                }}
+                style={{
+                  padding: "8px 12px",
+                  borderRadius: 10,
+                  border: "1px solid var(--action-primary-border)",
+                  background: "var(--action-primary-bg)",
+                  color: "var(--action-contrast-text)",
+                  fontWeight: 600,
+                }}
+              >
+                문제 추가
+              </button>
+              <button
+                onClick={() => setCustomModal(null)}
+                style={{ padding: "8px 12px", borderRadius: 10, border: "1px solid var(--control-border)", background: "var(--surface-bg)" }}
+              >
+                취소
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {/* 공지 추가 모달 */}
+      {noticeModal && canAssignLectures ? (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.35)",
+            display: "flex",
+            justifyContent: "center",
+            alignItems: "center",
+            padding: 16,
+            zIndex: 1000,
+          }}
+          onClick={() => setNoticeModal(null)}
+        >
+          <div
+            style={{
+              width: "min(520px, 100%)",
+              background: "var(--surface-bg)",
+              borderRadius: 14,
+              padding: 16,
+              border: "1px solid var(--surface-border)",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ fontWeight: 800, marginBottom: 8 }}>+ 공지사항 등록</div>
+            <div style={{ color: "var(--text-muted)", marginBottom: 12 }}>
+              진도율에 포함되지 않는 텍스트 알림을 회차에 추가합니다.
+            </div>
+
+            <textarea
+              value={noticeModal.content}
+              onChange={(e) => setNoticeModal({ content: e.target.value })}
+              placeholder="전달할 내용을 입력하세요."
+              rows={4}
+              style={{ width: "100%", padding: "8px 10px", borderRadius: 10, border: "1px solid var(--control-border)", resize: "vertical" }}
+            />
+
+            <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
+              <button
+                onClick={() => {
+                  const contentStr = noticeModal.content.trim();
+                  if (!contentStr) {
+                    window.alert("내용을 입력해주세요.");
+                    return;
+                  }
+
+                  const randId = typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID().slice(0, 8) : Math.random().toString(36).slice(2, 10);
+                  const leafId = `notice_${randId}`;
+
+                  setLectureLeafIds((prev) => [...prev, leafId]);
+                  setProgressByLeafId((prev) => ({
+                    ...prev,
+                    [leafId]: { ...defaultProgress(), noticeContent: contentStr },
+                  }));
+                  setLastAddedLeafId(leafId);
+
+                  setNoticeModal(null);
+                }}
+                style={{
+                  padding: "8px 12px",
+                  borderRadius: 10,
+                  border: "1px solid var(--action-primary-border)",
+                  background: "var(--action-primary-bg)",
+                  color: "var(--action-contrast-text)",
+                  fontWeight: 600,
+                }}
+              >
+                공지 등록
+              </button>
+              <button
+                onClick={() => setNoticeModal(null)}
+                style={{ padding: "8px 12px", borderRadius: 10, border: "1px solid var(--control-border)", background: "var(--surface-bg)" }}
+              >
+                취소
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       {/* ===== picker modal (t/a only) ===== */}
       {canAssignLectures && pickerOpen ? (
         <div
@@ -732,7 +956,7 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
             onClick={(e) => e.stopPropagation()}
           >
             <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
-            <div className="card-title">강의 선택</div>
+              <div className="card-title">강의 선택</div>
               <button
                 onClick={closePicker}
                 style={{
