@@ -15,7 +15,7 @@ import {
   saveAllConsultationsStore,
 } from "@/lib/storage/consultations";
 import { clearCurrentStudentToken } from "@/lib/ui/common/roleGateStorage";
-import { buildBaseDatesISO, metaMapKey } from "@/lib/ui/session/sessionEffective";
+import { buildBaseDatesISO, metaMapKey, readMetaMap, computeEffectiveISO } from "@/lib/ui/session/sessionEffective";
 import { SHARED_CONSULTATIONS_KEY } from "@/lib/storage/sharedStateKeys";
 import { makeId } from "@/lib/utils/id";
 import { nowIso } from "@/lib/utils/date";
@@ -176,21 +176,31 @@ export default function StudentEditClient(props: {
     const others = all.filter((s) => s.studentId !== student.id);
     const own = all.filter((s) => s.studentId === student.id);
     const ownByIndex = new Map(own.map((s) => [s.index, s]));
-    const baseDatesISO = buildBaseDatesISO(updated, 0);
+    const baseDatesISO = buildBaseDatesISO(updated, 120); // carry 딜레이를 고려해 여유롭게 생성
+    const metaMap = readMetaMap(updated.token ?? "");
     const nextOwn = [];
     for (let idx = 1; idx <= nextPlanCount; idx++) {
       const prev = ownByIndex.get(idx);
+      const { effectiveISO } = computeEffectiveISO({
+        token: updated.token ?? "",
+        index: idx,
+        baseDatesISO,
+        metaMap,
+      });
+
+      const nextDisplayAt = effectiveISO || baseDatesISO[idx - 1] || prev?.displayAt || nowIso();
+
       nextOwn.push(
         prev
           ? {
             ...prev,
-            displayAt: baseDatesISO[idx - 1] ?? prev.displayAt,
+            displayAt: nextDisplayAt,
           }
           : {
             id: makeId(),
             studentId: student.id,
             index: idx,
-            displayAt: baseDatesISO[idx - 1] ?? nowIso(),
+            displayAt: nextDisplayAt,
             state: "normal" as const,
             createdAt: nowIso(),
           }
