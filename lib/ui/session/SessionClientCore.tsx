@@ -431,7 +431,9 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
                       fontSize: 14,
                     }}
                   >
-                    🔼
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.7 }}>
+                      <polyline points="18 15 12 9 6 15" />
+                    </svg>
                   </button>
                   <button
                     onClick={() => moveLeaf(idx, "down")}
@@ -450,7 +452,9 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
                       fontSize: 14,
                     }}
                   >
-                    🔽
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.7 }}>
+                      <polyline points="6 9 12 15 18 9" />
+                    </svg>
                   </button>
                 </div>
               )}
@@ -675,12 +679,14 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
           );
         })}
 
-        {lectureLeafIds.length === 0 ? (
-          <div style={{ padding: 12, border: "1px dashed var(--control-border)", borderRadius: 12, opacity: 0.75 }}>
-            아직 이 회차에 배치된 강의가 없습니다.
-          </div>
-        ) : null}
-      </div>
+        {
+          lectureLeafIds.length === 0 ? (
+            <div style={{ padding: 12, border: "1px dashed var(--control-border)", borderRadius: 12, opacity: 0.75 }}>
+              아직 이 회차에 배치된 강의가 없습니다.
+            </div>
+          ) : null
+        }
+      </div >
 
       {
         noteModal ? (
@@ -760,7 +766,7 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
                 </button>
               </div>
             </div>
-          </div>
+          </div >
         ) : null
       }
 
@@ -1126,6 +1132,6 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
           </div>
         ) : null
       }
-    </section>
+    </section >
   );
 }
