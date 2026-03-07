@@ -1412,8 +1412,8 @@ async function runSync(args: SyncArgs): Promise<void> {
       }
 
       // 시간표 변경 등으로 회차 시간이 바뀐 경우:
-      // 1) 이전 시간대에 남아있을 수 있는 기존 이벤트 정리
-      // 2) 추적된 eventId도 재생성 흐름으로 강제 전환
+      // 1) 이전 시간대에 남아있을 수 있는 '중복/가비지' 기존 이벤트만 정리 (단, 메인 eventId는 보존)
+      // 2) 보존된 메인 eventId는 뒤이은 로직에서 PATCH(updateEvent)를 통해 새 시간으로 자연스럽게 이동됨
       if (prev && hasDisplayAtChanged(prev, next)) {
         const previousCalendarId = calendarIdOf(prev);
         if (!isPrimaryCalendarId(previousCalendarId)) {
@@ -1421,10 +1421,13 @@ async function runSync(args: SyncArgs): Promise<void> {
             const oldSlotEvents = await findSignatureEvents({
               token: providerToken,
               calendarId: previousCalendarId,
-              session: prev,
+              session: prev, // 이전 시간대 기준 검색
               student,
             });
             for (const oldEvent of oldSlotEvents) {
+              // 메인으로 승격되어 이동할 이벤트는 삭제하지 않고 살려둠
+              if (oldEvent.eventId === sessionForOwner.googleCalendarEventId) continue;
+
               try {
                 await deleteEvent({
                   token: providerToken,
@@ -1433,33 +1436,15 @@ async function runSync(args: SyncArgs): Promise<void> {
                   sendUpdates: "none",
                 });
               } catch (err) {
-                console.error("Google Calendar 이전 시간대 이벤트 정리 실패:", err);
+                console.error("Google Calendar 이전 시간대 가비지 이벤트 정리 실패:", err);
               }
             }
           } catch (err) {
             console.error("Google Calendar 이전 시간대 이벤트 조회 실패:", err);
           }
         }
-
-        if (sessionForOwner.googleCalendarEventId) {
-          try {
-            await deleteEvent({
-              token: providerToken,
-              calendarId: sessionCalendarId,
-              eventId: sessionForOwner.googleCalendarEventId,
-              sendUpdates: "none",
-            });
-          } catch (err) {
-            console.error("Google Calendar 기존 이벤트 재생성 전 삭제 실패:", err);
-          }
-        }
-
-        sessionForOwner = {
-          ...sessionForOwner,
-          googleCalendarId: sessionCalendarId,
-          googleCalendarEventId: undefined,
-          googleMeetUrl: undefined,
-        };
+        // 과거에는 여기서 강제로 deleteEvent() 호출 및 eventId를 undefined로 리셋했으나,
+        // 이를 제거함으로써 뒤쪽의 updateEvent가 해당 eventId를 그대로 활용해 PATCH하도록 유도함.
       }
 
       if (!sessionForOwner.googleCalendarEventId) {

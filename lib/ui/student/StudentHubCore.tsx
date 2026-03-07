@@ -293,6 +293,12 @@ export default function StudentHubCore({
     return teachers.find((t) => t.id === tid)?.email ?? "-";
   }, [student, teachers]);
 
+  const teacherPhone = useMemo(() => {
+    const tid = student?.teacherId ?? null;
+    if (!tid) return "-";
+    return teachers.find((t) => t.id === tid)?.phone ?? "-";
+  }, [student, teachers]);
+
   const scheduleText = useMemo(() => {
     const rules = student?.scheduleRules ?? [];
     if (!rules.length) return "-";
@@ -1174,9 +1180,18 @@ export default function StudentHubCore({
             <div>{teacherName}</div>
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "140px 1fr", gap: 10, alignItems: "center" }}>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "140px 1fr 140px 1fr",
+              gap: 10,
+              alignItems: "center",
+            }}
+          >
             <div style={{ fontWeight: 900 }}>선생님 이메일</div>
-            <div>{teacherEmail}</div>
+            <div style={{ wordBreak: "break-all" }}>{teacherEmail}</div>
+            <div style={{ fontWeight: 900 }}>선생님 전화번호</div>
+            <div>{teacherPhone !== "-" ? formatPhone(teacherPhone) : "-"}</div>
           </div>
 
           <div
