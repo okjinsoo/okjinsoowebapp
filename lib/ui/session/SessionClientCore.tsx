@@ -476,9 +476,9 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
                       {leafId.startsWith("notice_") ? (
                         `[공지] ${p.noticeContent || "내용 없음"}`
                       ) : leafId.startsWith("custom_") ? (
-                        `${idx + 1}. ${p.customTitle || "제목 없는 문제"}`
+                        p.customTitle || "제목 없는 문제"
                       ) : (
-                        `${idx + 1}. ${leaf?.title ?? "(삭제되었거나 찾을 수 없는 강의)"}`
+                        leaf?.title ?? "(삭제되었거나 찾을 수 없는 강의)"
                       )}
 
                       {!leafId.startsWith("notice_") && (
