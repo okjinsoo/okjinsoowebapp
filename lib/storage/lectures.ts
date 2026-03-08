@@ -56,16 +56,16 @@ export function isLeaf(node: LectureNode): node is LectureLeafNode {
 
 function normalizeProblemUrls(problemUrls: unknown): string[] {
   if (!Array.isArray(problemUrls)) return [""];
-  const first = problemUrls.map((v) => (typeof v === "string" ? v.trim() : "")).find((v) => v.length > 0) ?? "";
-  return [first];
+  const first = problemUrls.find((v) => typeof v === "string") as string | undefined;
+  return [first ?? ""];
 }
 
 function normalizeLeaf(raw: unknown, index: number): LectureLeafNode {
   const rec = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
   const leafId = typeof rec.leafId === "string" && rec.leafId.trim() ? rec.leafId.trim() : makeId();
   const id = typeof rec.id === "string" && rec.id.trim() ? rec.id.trim() : `leaf_${leafId}`;
-  const title = typeof rec.title === "string" && rec.title.trim() ? rec.title.trim() : "제목 없는 강의";
-  const lectureUrl = typeof rec.lectureUrl === "string" ? rec.lectureUrl.trim() : "";
+  const title = typeof rec.title === "string" ? rec.title : "제목 없는 강의";
+  const lectureUrl = typeof rec.lectureUrl === "string" ? rec.lectureUrl : "";
   const createdAt = typeof rec.createdAt === "string" && rec.createdAt.trim() ? rec.createdAt.trim() : nowIso();
 
   return {
