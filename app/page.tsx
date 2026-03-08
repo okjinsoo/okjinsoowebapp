@@ -316,29 +316,20 @@ export default function HomePage() {
 
         {/* 정책 연결 푸터 (Google 심사 필수 요건) */}
         <div style={{ marginTop: 24, textAlign: "center", borderTop: "1px solid var(--surface-border)", paddingTop: 16 }}>
-          <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 16 }}>
-            <button
-              type="button"
+          <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 12, fontSize: 12, color: "var(--text-muted)" }}>
+            <span
+              role="button"
               onClick={onClickTesterLogin}
-              disabled={busy}
-              style={{
-                fontSize: 12,
-                color: "var(--text-muted)",
-                background: "transparent",
-                border: "none",
-                cursor: "pointer",
-                padding: "4px 8px",
-                textDecoration: "underline",
-              }}
+              style={{ cursor: "pointer" }}
             >
-              테스터용 로그인
-            </button>
-            <span style={{ color: "#d1d5db", fontSize: 12 }}>|</span>
+              테스터 로그인
+            </span>
+            <span style={{ color: "var(--surface-border)" }}>|</span>
             <Link
               href="/policy"
               target="_blank"
               rel="noopener noreferrer"
-              style={{ fontSize: 12, color: "var(--text-muted)", textDecoration: "none", padding: "4px 8px" }}
+              style={{ color: "var(--text-muted)", textDecoration: "none" }}
             >
               이용약관 및 개인정보처리방침
             </Link>
