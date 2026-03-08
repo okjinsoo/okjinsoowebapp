@@ -327,6 +327,18 @@ export default function HomePage() {
             </div>
           ) : null}
         </div>
+
+        {/* 정책 연결 푸터 (Google 심사 필수 요건) */}
+        <div style={{ marginTop: 24, textAlign: "center", borderTop: "1px solid var(--surface-border)", paddingTop: 16 }}>
+          <Link
+            href="/policy"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ fontSize: 12, color: "var(--text-muted)", textDecoration: "none", display: "inline-block", padding: "4px 8px" }}
+          >
+            이용약관 및 개인정보처리방침
+          </Link>
+        </div>
       </section>
     </main>
   );
