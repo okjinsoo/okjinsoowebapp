@@ -70,7 +70,7 @@ export default function HomePage() {
 
   const loginReady = useMemo(() => Boolean(getSupabaseConfig()), []);
 
-  function onClickStudentLogin() {
+  function onClickGoogleLogin() {
     setError("");
     if (!loginReady) {
       setError("환경변수가 비어 있어요. .env 설정을 먼저 해주세요.");
@@ -79,7 +79,6 @@ export default function HomePage() {
 
     setBusy(true);
     const redirectTo = `${window.location.origin}/auth/callback`;
-    // 학생 로그인: 캘린더 권한(requestCalendar) FALSE
     const url = buildGoogleAuthUrl(redirectTo, false);
     if (!url) {
       setBusy(false);
@@ -89,7 +88,7 @@ export default function HomePage() {
     window.location.href = url;
   }
 
-  function onClickAdminLogin() {
+  function onClickTesterLogin() {
     setError("");
     if (!loginReady) {
       setError("환경변수가 비어 있어요. .env 설정을 먼저 해주세요.");
@@ -98,7 +97,7 @@ export default function HomePage() {
 
     setBusy(true);
     const redirectTo = `${window.location.origin}/auth/callback`;
-    // 관리자/선생님 로그인: 캘린더 권한(requestCalendar) TRUE
+    // 관리자/테스터 로그인: 캘린더 권한(requestCalendar) TRUE
     const url = buildGoogleAuthUrl(redirectTo, true);
     if (!url) {
       setBusy(false);
@@ -178,30 +177,17 @@ export default function HomePage() {
         <div style={{ marginTop: 20 }}>
           {!loggedIn ? (
             <>
-              <div className="google-signin-row" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              <div className="google-signin-row">
                 <button
                   type="button"
                   className="google-signin-btn"
-                  onClick={onClickStudentLogin}
+                  onClick={onClickGoogleLogin}
                   disabled={busy}
-                  style={{ background: "#ffffff", color: "#3c4043", border: "1px solid #dadce0" }}
                 >
                   <span className="google-signin-icon" aria-hidden="true">
                     <GoogleMark />
                   </span>
-                  <span style={{ fontWeight: 600 }}>{busy ? "이동 중..." : "학생 시작하기 (권한 확인 없음)"}</span>
-                </button>
-                <button
-                  type="button"
-                  className="google-signin-btn"
-                  onClick={onClickAdminLogin}
-                  disabled={busy}
-                  style={{ background: "#f8f9fa", color: "#5f6368", border: "1px solid #dadce0" }}
-                >
-                  <span className="google-signin-icon" aria-hidden="true">
-                    <GoogleMark />
-                  </span>
-                  <span style={{ fontWeight: 500 }}>{busy ? "이동 중..." : "선생님/관리자 접속 (캘린더 연동)"}</span>
+                  <span>{busy ? "Google 로그인으로 이동 중..." : "Sign in with Google"}</span>
                 </button>
               </div>
             </>
@@ -330,14 +316,33 @@ export default function HomePage() {
 
         {/* 정책 연결 푸터 (Google 심사 필수 요건) */}
         <div style={{ marginTop: 24, textAlign: "center", borderTop: "1px solid var(--surface-border)", paddingTop: 16 }}>
-          <Link
-            href="/policy"
-            target="_blank"
-            rel="noopener noreferrer"
-            style={{ fontSize: 12, color: "var(--text-muted)", textDecoration: "none", display: "inline-block", padding: "4px 8px" }}
-          >
-            이용약관 및 개인정보처리방침
-          </Link>
+          <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 16 }}>
+            <button
+              type="button"
+              onClick={onClickTesterLogin}
+              disabled={busy}
+              style={{
+                fontSize: 12,
+                color: "var(--text-muted)",
+                background: "transparent",
+                border: "none",
+                cursor: "pointer",
+                padding: "4px 8px",
+                textDecoration: "underline",
+              }}
+            >
+              테스터용 로그인
+            </button>
+            <span style={{ color: "#d1d5db", fontSize: 12 }}>|</span>
+            <Link
+              href="/policy"
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{ fontSize: 12, color: "var(--text-muted)", textDecoration: "none", padding: "4px 8px" }}
+            >
+              이용약관 및 개인정보처리방침
+            </Link>
+          </div>
         </div>
       </section>
     </main>
