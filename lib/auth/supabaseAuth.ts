@@ -116,18 +116,25 @@ export function getSupabaseConfig(): SupabaseConfig | null {
   return { url, anonKey };
 }
 
-export function buildGoogleAuthUrl(redirectTo: string): string | null {
+export function buildGoogleAuthUrl(redirectTo: string, requestCalendar: boolean = false): string | null {
   const cfg = getSupabaseConfig();
   if (!cfg) return null;
 
   const url = new URL("/auth/v1/authorize", cfg.url);
   url.searchParams.set("provider", "google");
   url.searchParams.set("redirect_to", redirectTo);
-  // 전용 캘린더(생성/조회) + 이벤트 생성/수정을 위해 calendar 전체 scope가 필요합니다.
-  url.searchParams.set(
-    "scopes",
-    "email profile https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/calendar.events"
-  );
+
+  if (requestCalendar) {
+    // 관리자/선생님: 캘린더 관리를 위해 전체 scope 요청
+    url.searchParams.set(
+      "scopes",
+      "email profile openid https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/calendar.events"
+    );
+  } else {
+    // 학생: 캘린더 권한 불필요 (경고창 회피)
+    url.searchParams.set("scopes", "email profile openid");
+  }
+
   url.searchParams.set("prompt", "select_account consent");
   url.searchParams.set("access_type", "offline");
   url.searchParams.set("include_granted_scopes", "true");

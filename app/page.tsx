@@ -70,7 +70,7 @@ export default function HomePage() {
 
   const loginReady = useMemo(() => Boolean(getSupabaseConfig()), []);
 
-  function onClickGoogleLogin() {
+  function onClickStudentLogin() {
     setError("");
     if (!loginReady) {
       setError("환경변수가 비어 있어요. .env 설정을 먼저 해주세요.");
@@ -79,7 +79,27 @@ export default function HomePage() {
 
     setBusy(true);
     const redirectTo = `${window.location.origin}/auth/callback`;
-    const url = buildGoogleAuthUrl(redirectTo);
+    // 학생 로그인: 캘린더 권한(requestCalendar) FALSE
+    const url = buildGoogleAuthUrl(redirectTo, false);
+    if (!url) {
+      setBusy(false);
+      setError("로그인 URL을 만들지 못했어요.");
+      return;
+    }
+    window.location.href = url;
+  }
+
+  function onClickAdminLogin() {
+    setError("");
+    if (!loginReady) {
+      setError("환경변수가 비어 있어요. .env 설정을 먼저 해주세요.");
+      return;
+    }
+
+    setBusy(true);
+    const redirectTo = `${window.location.origin}/auth/callback`;
+    // 관리자/선생님 로그인: 캘린더 권한(requestCalendar) TRUE
+    const url = buildGoogleAuthUrl(redirectTo, true);
     if (!url) {
       setBusy(false);
       setError("로그인 URL을 만들지 못했어요.");
@@ -158,17 +178,30 @@ export default function HomePage() {
         <div style={{ marginTop: 20 }}>
           {!loggedIn ? (
             <>
-              <div className="google-signin-row">
+              <div className="google-signin-row" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
                 <button
                   type="button"
                   className="google-signin-btn"
-                  onClick={onClickGoogleLogin}
+                  onClick={onClickStudentLogin}
                   disabled={busy}
+                  style={{ background: "#ffffff", color: "#3c4043", border: "1px solid #dadce0" }}
                 >
                   <span className="google-signin-icon" aria-hidden="true">
                     <GoogleMark />
                   </span>
-                  <span>{busy ? "Google 로그인으로 이동 중..." : "Sign in with Google"}</span>
+                  <span style={{ fontWeight: 600 }}>{busy ? "이동 중..." : "학생 시작하기 (권한 확인 없음)"}</span>
+                </button>
+                <button
+                  type="button"
+                  className="google-signin-btn"
+                  onClick={onClickAdminLogin}
+                  disabled={busy}
+                  style={{ background: "#f8f9fa", color: "#5f6368", border: "1px solid #dadce0" }}
+                >
+                  <span className="google-signin-icon" aria-hidden="true">
+                    <GoogleMark />
+                  </span>
+                  <span style={{ fontWeight: 500 }}>{busy ? "이동 중..." : "선생님/관리자 접속 (캘린더 연동)"}</span>
                 </button>
               </div>
             </>
