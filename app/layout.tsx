@@ -7,6 +7,9 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "옥진수학",
   description: "옥진수학 수업/학생 관리 웹앱",
+  verification: {
+    google: "Kr0SHMua76S5Ano47gd_jwZJwx2pBPlxMLSXgi0phvc",
+  },
 };
 
 export default function RootLayout({
