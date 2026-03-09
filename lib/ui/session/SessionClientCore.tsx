@@ -474,7 +474,7 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
                   <div>
                     <div style={{ fontWeight: 600 }}>
                       {leafId.startsWith("notice_") ? (
-                        `[공지] ${p.noticeContent || "내용 없음"}`
+                        p.noticeContent || "내용 없음"
                       ) : leafId.startsWith("custom_") ? (
                         p.customTitle || "제목 없는 문제"
                       ) : (
