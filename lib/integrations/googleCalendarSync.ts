@@ -691,6 +691,7 @@ function buildEventPayload(args: {
   const payload: Record<string, unknown> = {
     summary,
     description: descriptionLines.join("\n"),
+    status: "confirmed",
     start: {
       dateTime: startIso,
       timeZone: "Asia/Seoul",
@@ -926,67 +927,9 @@ async function runStudentMirrorSync(args: {
   studentIds: string[];
   sessions: Session[];
 }): Promise<void> {
-  const auth = loadAuthSession();
-  const providerToken = text(auth?.providerAccessToken);
-  const currentEmail = normalizeEmail(auth?.email);
-  if (!providerToken || !currentEmail) return;
-
-  const targetStudentIds = new Set(
-    (args.studentIds ?? []).map((id) => text(id)).filter((id) => Boolean(id))
-  );
-  if (targetStudentIds.size === 0) return;
-
-  const students = loadStudents();
-  const teachers = loadTeachers();
-  const studentById = new Map(students.map((student) => [student.id, student] as const));
-  const teacherById = new Map(teachers.map((teacher) => [teacher.id, teacher] as const));
-  const sessionsByStudent = new Map<string, Session[]>();
-  for (const session of args.sessions ?? []) {
-    if (!targetStudentIds.has(session.studentId)) continue;
-    const bucket = sessionsByStudent.get(session.studentId) ?? [];
-    bucket.push(session);
-    sessionsByStudent.set(session.studentId, bucket);
-  }
-
-  for (const [studentId, rows] of sessionsByStudent.entries()) {
-    const student = studentById.get(studentId);
-    if (!student) continue;
-    if (normalizeEmail(student.googleEmail) !== currentEmail) continue;
-
-    try {
-      const calendarId = await ensureAppCalendarIdWithRecovery({
-        token: providerToken,
-        ownerEmail: currentEmail,
-      });
-      const teacher = student.teacherId ? teacherById.get(student.teacherId) ?? null : null;
-      await purgeManagedEventsForStudent({
-        token: providerToken,
-        calendarIds: [calendarId],
-        student,
-        teacherEmail: teacher?.email,
-      });
-
-      const visibleRows = filterVisibleSessions(student, rows);
-      const orderedSessions = [...visibleRows].sort((a, b) => {
-        const ta = new Date(a.displayAt).getTime();
-        const tb = new Date(b.displayAt).getTime();
-        if (Number.isFinite(ta) && Number.isFinite(tb) && ta !== tb) return ta - tb;
-        return a.index - b.index;
-      });
-
-      for (const session of orderedSessions) {
-        await upsertStudentMirrorEvent({
-          token: providerToken,
-          calendarId,
-          session: { ...session, googleCalendarEventId: undefined, googleMeetUrl: undefined },
-          student,
-          teacher,
-        });
-      }
-    } catch (err) {
-      console.error("학생 캘린더 동기화 실패:", err);
-    }
-  }
+  // [26.03.10] 선생님의 메인 코어 이벤트가 자동 참석자 초대를 통해 단일 Event(Singluar Truth)로 기능하므로,
+  // 강제로 학생 측 캘린더에 별도의 'Mirror(보조 일정)'을 생성하여 Google Meet 채널이 두 개로 갈라지는 증상을 방지하기 위해 로직을 무력화합니다.
+  return;
 }
 
 export function syncStudentGoogleCalendarMirror(args: {
@@ -1412,39 +1355,11 @@ async function runSync(args: SyncArgs): Promise<void> {
       }
 
       // 시간표 변경 등으로 회차 시간이 바뀐 경우:
-      // 1) 이전 시간대에 남아있을 수 있는 '중복/가비지' 기존 이벤트만 정리 (단, 메인 eventId는 보존)
-      // 2) 보존된 메인 eventId는 뒤이은 로직에서 PATCH(updateEvent)를 통해 새 시간으로 자연스럽게 이동됨
+      // 과거에는 여기서 강제로 deleteEvent() 호출 및 eventId를 undefined로 리셋했으나,
+      // 이제는 삭제하지 않고 뒤쪽의 updateEvent가 해당 eventId를 그대로 호출해 새 시간대로 PATCH 이동시키도록 유도함.
       if (prev && hasDisplayAtChanged(prev, next)) {
-        const previousCalendarId = calendarIdOf(prev);
-        if (!isPrimaryCalendarId(previousCalendarId)) {
-          try {
-            const oldSlotEvents = await findSignatureEvents({
-              token: providerToken,
-              calendarId: previousCalendarId,
-              session: prev, // 이전 시간대 기준 검색
-              student,
-            });
-            for (const oldEvent of oldSlotEvents) {
-              // 메인으로 승격되어 이동할 이벤트는 삭제하지 않고 살려둠
-              if (oldEvent.eventId === sessionForOwner.googleCalendarEventId) continue;
-
-              try {
-                await deleteEvent({
-                  token: providerToken,
-                  calendarId: previousCalendarId,
-                  eventId: oldEvent.eventId,
-                  sendUpdates: "none",
-                });
-              } catch (err) {
-                console.error("Google Calendar 이전 시간대 가비지 이벤트 정리 실패:", err);
-              }
-            }
-          } catch (err) {
-            console.error("Google Calendar 이전 시간대 이벤트 조회 실패:", err);
-          }
-        }
-        // 과거에는 여기서 강제로 deleteEvent() 호출 및 eventId를 undefined로 리셋했으나,
-        // 이를 제거함으로써 뒤쪽의 updateEvent가 해당 eventId를 그대로 활용해 PATCH하도록 유도함.
+        // 단지 로깅만 남기고 진행 (기존 eventId 보존)
+        console.log(`[Google Calendar] 일정 변경 감지됨: ${student.name} ${next.index}회차. PATCH 이동 처리 예정.`);
       }
 
       if (!sessionForOwner.googleCalendarEventId) {
