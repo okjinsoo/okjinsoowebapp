@@ -278,8 +278,9 @@ function itemsKey(token: string, sessionIndex: number) {
 }
 
 /**
- * 학생 성취도 items 전체 로드 (1..planCount)
- * - 읽기 전용
+ * 학생 성취도 items 전체 로드
+ * [최적화] planCount번 순차 조회 → 전체 키 1회 스캔으로 개선
+ * - 수업이 아무리 많아도 순회 횟수는 Storage 전체 키 수로 고정
  * - JSON 파싱 실패/손상 데이터는 해당 회차를 건너뜀
  */
 export function loadSessionItemsMap(
@@ -288,13 +289,25 @@ export function loadSessionItemsMap(
 ): Record<number, SessionItem[]> {
   if (typeof window === "undefined") return {};
 
+  const prefix = `mk3:${token}:session:`;
+  const suffix = ":items";
   const map: Record<number, SessionItem[]> = {};
-  for (let i = 1; i <= planCount; i++) {
+
+  // Storage 전체 키를 1번만 순회 (N번 getItem 호출 대신)
+  for (let i = 0; i < browserStorage.length; i++) {
+    const key = browserStorage.key(i);
+    if (!key || !key.startsWith(prefix) || !key.endsWith(suffix)) continue;
+
+    // prefix와 suffix 사이에서 index 추출
+    const mid = key.slice(prefix.length, key.length - suffix.length);
+    const index = parseInt(mid, 10);
+    if (!Number.isFinite(index) || index < 1 || index > planCount) continue;
+
     try {
-      const raw = browserStorage.getItem(itemsKey(token, i));
+      const raw = browserStorage.getItem(key);
       if (!raw) continue;
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) map[i] = parsed as SessionItem[];
+      if (Array.isArray(parsed)) map[index] = parsed as SessionItem[];
     } catch {
       // ignore
     }

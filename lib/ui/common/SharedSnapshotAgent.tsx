@@ -16,10 +16,13 @@ const PUSH_RETRY_MS = 1500;
 const REMOTE_PULL_INTERVAL_MS = 5000; // 30초에서 5초로 단축하여 실시간성 강화항목 수정 Corporate
 const AUTH_KEY = "tutorweb_auth_session_v1";
 
+const PENDING_LOCK_TIMEOUT_MS = 5000; // [최적화] pending 잠금 최대 유지 시간: 5초 초과 시 강제 해제
+
 export default function SharedSnapshotAgent() {
   const hydratingRef = useRef(false);
   const pushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingStateKvRef = useRef<Record<string, string>>({});
+  const pendingLockedAtRef = useRef<number | null>(null); // [최적화] pending 잠금 시작 시각
   const calendarSyncKeyRef = useRef("");
 
   useEffect(() => {
@@ -36,8 +39,16 @@ export default function SharedSnapshotAgent() {
     const hydrate = async (forceRemote = false) => {
       if (hydratingRef.current) return;
       if (Object.keys(pendingStateKvRef.current).length > 0) {
-        // 로컬 변경이 아직 서버로 올라가는 중이면, 더 오래된 원격값으로 덮어쓰지 않음
-        return;
+        // [최적화] pending 잠금이 5초를 초과하면 강제 해제하여 무한 차단 방지
+        const lockedAt = pendingLockedAtRef.current;
+        if (lockedAt !== null && Date.now() - lockedAt > PENDING_LOCK_TIMEOUT_MS) {
+          console.warn("[SharedSnapshotAgent] pending 잠금 타임아웃 → 강제 해제 후 hydrate 재시도");
+          pendingLockedAtRef.current = null;
+          // 타임아웃된 pending은 다시 예약하여 재전송 시도
+          schedulePush(PUSH_RETRY_MS);
+        } else {
+          return;
+        }
       }
       hydratingRef.current = true;
       try {
@@ -52,11 +63,16 @@ export default function SharedSnapshotAgent() {
     const flushPending = () => {
       const pending = { ...pendingStateKvRef.current };
       pendingStateKvRef.current = {};
+      pendingLockedAtRef.current = null; // 잠금 해제
       if (Object.keys(pending).length === 0) return;
 
       void pushSharedSnapshot({ stateKv: pending })
         .then((result) => {
           if (result.stateKvSynced) return;
+          // 재전송 필요 시 잠금 시작 시각 기록
+          if (Object.keys(pendingStateKvRef.current).length === 0) {
+            pendingLockedAtRef.current = Date.now();
+          }
           pendingStateKvRef.current = {
             ...pending,
             ...pendingStateKvRef.current,
@@ -64,6 +80,9 @@ export default function SharedSnapshotAgent() {
           schedulePush(PUSH_RETRY_MS);
         })
         .catch((err) => {
+          if (Object.keys(pendingStateKvRef.current).length === 0) {
+            pendingLockedAtRef.current = Date.now();
+          }
           pendingStateKvRef.current = {
             ...pending,
             ...pendingStateKvRef.current,
@@ -92,12 +111,11 @@ export default function SharedSnapshotAgent() {
 
       const newValue = ce.detail?.newValue;
       if (typeof newValue !== "string") return;
-      pendingStateKvRef.current[key] = newValue;
-      // 강의 트리/회차 강의 배치/진도는 화면 체감이 커서 지연 없이 업로드 -> 배치 전송으로 전환 (서버 부하 경감)
-      if (key === SHARED_LECTURE_TREE_KEY || isSessionProgressStateKey(key)) {
-        schedulePush();
-        return;
+      // 새 데이터 추가 시 잠금 시작 시각 기록 (없을 때만)
+      if (Object.keys(pendingStateKvRef.current).length === 0) {
+        pendingLockedAtRef.current = Date.now();
       }
+      pendingStateKvRef.current[key] = newValue;
       schedulePush();
     };
 
