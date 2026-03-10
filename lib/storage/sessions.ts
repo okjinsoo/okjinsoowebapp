@@ -2,14 +2,14 @@
 "use client";
 
 import { browserStorage } from "@/lib/storage/browserStorage";
-import { pushSharedSnapshot, readLocalStudents, readLocalTeachers } from "@/lib/storage/sharedSnapshot";
+import { pushSharedSnapshot, readLocalSessions, readLocalStudents, readLocalTeachers } from "@/lib/storage/sharedSnapshot";
 import {
   rebuildTeacherGoogleCalendar,
   scheduleGoogleCalendarSync,
   syncStudentGoogleCalendarMirror,
 } from "@/lib/integrations/googleCalendarSync";
 import { safeParseJson } from "@/lib/storage/safeParse";
-import { loadLatestCoreSnapshotBaseline, mergeById } from "@/lib/storage/safeSnapshotMerge";
+import { mergeById } from "@/lib/storage/safeSnapshotMerge";
 import type { Session } from "@/lib/types/index";
 
 const KEY = "tutorweb_sessions_v1";
@@ -34,17 +34,18 @@ function replaceSessionsLocal(list: Session[]): boolean {
   return true;
 }
 
-
+// [최적화] 서버에서 다시 pull하지 않고, 이미 로컬에 있는 데이터를 바로 사용하여 push 1회만 수행
 function syncSharedSnapshot(nextSessions: Session[], mode: "merge" | "replace"): void {
   void (async () => {
-    const baseline = await loadLatestCoreSnapshotBaseline();
+    // 로컬 데이터를 직접 사용 (서버 왕복 1번 절약)
+    const localSessions = readLocalSessions();
     const mergedSessions = mode === "replace"
       ? nextSessions
-      : mergeById(baseline.sessions, nextSessions);
+      : mergeById(localSessions, nextSessions);
 
     await pushSharedSnapshot({
-      teachers: baseline.teachers.length > 0 ? baseline.teachers : readLocalTeachers(),
-      students: baseline.students.length > 0 ? baseline.students : readLocalStudents(),
+      teachers: readLocalTeachers(),
+      students: readLocalStudents(),
       sessions: mergedSessions,
     });
   })().catch((err) => {

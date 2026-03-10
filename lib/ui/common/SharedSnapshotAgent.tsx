@@ -123,9 +123,20 @@ export default function SharedSnapshotAgent() {
     const intervalId = window.setInterval(() => {
       void hydrate(true);
     }, REMOTE_PULL_INTERVAL_MS);
+
+    // [안전망] 탭/앱이 닫히거나 백그라운드로 전환될 때 pending 데이터를 즉시 전송
+    const onPageHide = () => {
+      if (pushTimerRef.current) {
+        clearTimeout(pushTimerRef.current);
+        pushTimerRef.current = null;
+      }
+      flushPending();
+    };
+
     window.addEventListener(BROWSER_STORAGE_EVENT, onStorageChanged);
     window.addEventListener(AUTH_EVENT, onAuthChanged);
     window.addEventListener("focus", onFocus);
+    window.addEventListener("pagehide", onPageHide);
     document.addEventListener("visibilitychange", onVisible);
 
     return () => {
@@ -137,6 +148,7 @@ export default function SharedSnapshotAgent() {
       window.removeEventListener(BROWSER_STORAGE_EVENT, onStorageChanged);
       window.removeEventListener(AUTH_EVENT, onAuthChanged);
       window.removeEventListener("focus", onFocus);
+      window.removeEventListener("pagehide", onPageHide);
       document.removeEventListener("visibilitychange", onVisible);
     };
   }, []);
