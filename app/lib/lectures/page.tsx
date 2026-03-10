@@ -1,14 +1,25 @@
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import type { LectureLeafNode } from "@/lib/types/index";
+import type { LectureLeafNode, LectureFolderNode } from "@/lib/types/index";
 import {
+  addFolderToTree,
+  addLeafToFolder,
   createLectureLeaf,
-  flattenLeaves,
-  loadLectureCatalog,
+  flattenLeavesWithContext,
+  getFoldersFromTree,
+  importLeafByCode,
+  isLeaf,
   loadLectureTree,
+  moveLeafInFolder,
+  moveFolderInTree,
+  patchLeafInTree,
   parseLectureTreeRaw,
-  saveLectureCatalog,
+  removeLeafFromFolder,
+  removeFolderFromTree,
+  renameFolderInTree,
+  saveLectureTree,
+  flattenLeaves,
 } from "@/lib/storage/lectures";
 import {
   pullSharedSnapshotAndHydrateWithOptions,
@@ -16,6 +27,7 @@ import {
   readRemoteSharedStateKvValue,
 } from "@/lib/storage/sharedSnapshot";
 import { SHARED_LECTURE_TREE_KEY } from "@/lib/storage/sharedStateKeys";
+import type { LectureTree } from "@/lib/types/index";
 
 const DB_SYNC_DEBOUNCE_MS = 500;
 
@@ -24,82 +36,72 @@ function firstProblemUrl(leaf: LectureLeafNode): string {
 }
 
 export default function LecturesPage() {
-  const [lectures, setLectures] = useState<LectureLeafNode[]>(() => loadLectureCatalog());
+  const [tree, setTree] = useState<LectureTree>(() => loadLectureTree());
+  const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
   const [selectedLeafId, setSelectedLeafId] = useState<string | null>(null);
-  const [query, setQuery] = useState("");
-  const [newTitle, setNewTitle] = useState("");
+
+  const [newFolderTitle, setNewFolderTitle] = useState("");
+  const [newLeafTitle, setNewLeafTitle] = useState("");
+  const [importCode, setImportCode] = useState("");
+  const [showImport, setShowImport] = useState(false);
+  const [copiedLeafId, setCopiedLeafId] = useState<string | null>(null);
+  const [editingFolderId, setEditingFolderId] = useState<string | null>(null);
+  const [editingFolderTitle, setEditingFolderTitle] = useState("");
+
   const [dbSyncing, setDbSyncing] = useState(false);
   const [dbSyncError, setDbSyncError] = useState<string | null>(null);
   const dbSyncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const activeLeafId = useMemo(() => {
-    if (selectedLeafId && lectures.some((leaf) => leaf.leafId === selectedLeafId)) return selectedLeafId;
-    return lectures[0]?.leafId ?? null;
-  }, [lectures, selectedLeafId]);
-
-  const selectedLecture = useMemo(
-    () => lectures.find((leaf) => leaf.leafId === activeLeafId) ?? null,
-    [activeLeafId, lectures]
+  // ===== 파생 상태 =====
+  const folders = useMemo(() => getFoldersFromTree(tree), [tree]);
+  const selectedFolder = useMemo(
+    () => folders.find((f) => f.id === selectedFolderId) ?? null,
+    [folders, selectedFolderId]
+  );
+  const leavesInFolder = useMemo(
+    () => (selectedFolder?.children ?? []).filter(isLeaf) as LectureLeafNode[],
+    [selectedFolder]
+  );
+  const selectedLeaf = useMemo(
+    () => leavesInFolder.find((l) => l.leafId === selectedLeafId) ?? null,
+    [leavesInFolder, selectedLeafId]
   );
 
-  const filteredLectures = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return lectures;
-    return lectures.filter((leaf) => {
-      const title = (leaf.title ?? "").toLowerCase();
-      const lectureUrl = (leaf.lectureUrl ?? "").toLowerCase();
-      const problemUrl = firstProblemUrl(leaf).toLowerCase();
-      return title.includes(q) || lectureUrl.includes(q) || problemUrl.includes(q);
-    });
-  }, [lectures, query]);
-
+  // ===== DB 동기화 =====
   async function loadFromRemoteSnapshot() {
     setDbSyncing(true);
     setDbSyncError(null);
     try {
       await pullSharedSnapshotAndHydrateWithOptions({ forceRemote: true });
       const localTree = loadLectureTree();
-      setLectures(loadLectureCatalog());
+      setTree(localTree);
 
-      // DB에 과거 "빈 강의 트리"가 남아 있으면, 현재 로컬의 실제 강의 목록으로 1회 자동 복구
       const remoteRaw = await readRemoteSharedStateKvValue(SHARED_LECTURE_TREE_KEY);
       const remoteTree = parseLectureTreeRaw(remoteRaw);
       const localCount = flattenLeaves(localTree, { sortByOrderKey: false }).length;
       const remoteCount = flattenLeaves(remoteTree, { sortByOrderKey: false }).length;
       if (localCount > 0 && remoteCount === 0) {
-        const result = await pushSharedSnapshot({
-          stateKv: {
-            [SHARED_LECTURE_TREE_KEY]: JSON.stringify(localTree),
-          },
-        });
-        if (!result.stateKvSynced) {
-          throw new Error("state_kv sync failed");
-        }
+        await pushSharedSnapshot({ stateKv: { [SHARED_LECTURE_TREE_KEY]: JSON.stringify(localTree) } });
       }
     } catch (err) {
       console.error("강의 저장소 원격 불러오기 실패:", err);
-      setDbSyncError("DB에서 강의 목록을 불러오지 못했어요. 잠시 후 다시 시도해주세요.");
+      setDbSyncError("DB에서 강의 목록을 불러오지 못했어요.");
     } finally {
       setDbSyncing(false);
     }
   }
 
-  async function pushLectureTreeToDbNow(treeOverride?: ReturnType<typeof loadLectureTree>) {
+  async function pushTreeToDbNow(treeOverride?: LectureTree) {
     setDbSyncing(true);
     setDbSyncError(null);
     try {
-      const rawTree = JSON.stringify(treeOverride ?? loadLectureTree());
       const result = await pushSharedSnapshot({
-        stateKv: {
-          [SHARED_LECTURE_TREE_KEY]: rawTree,
-        },
+        stateKv: { [SHARED_LECTURE_TREE_KEY]: JSON.stringify(treeOverride ?? loadLectureTree()) },
       });
-      if (!result.stateKvSynced) {
-        throw new Error("state_kv sync failed");
-      }
+      if (!result.stateKvSynced) throw new Error("state_kv sync failed");
     } catch (err) {
       console.error("강의 저장소 원격 저장 실패:", err);
-      setDbSyncError("DB 저장에 실패했어요. 인터넷 상태를 확인하고 다시 시도해주세요.");
+      setDbSyncError("DB 저장에 실패했어요.");
     } finally {
       setDbSyncing(false);
     }
@@ -107,252 +109,394 @@ export default function LecturesPage() {
 
   function scheduleDbSync() {
     if (dbSyncTimerRef.current) clearTimeout(dbSyncTimerRef.current);
-    dbSyncTimerRef.current = setTimeout(() => {
-      void pushLectureTreeToDbNow();
-    }, DB_SYNC_DEBOUNCE_MS);
+    dbSyncTimerRef.current = setTimeout(() => void pushTreeToDbNow(), DB_SYNC_DEBOUNCE_MS);
   }
 
-  useEffect(() => {
-    const id = setTimeout(() => {
-      void loadFromRemoteSnapshot();
-    }, 0);
-    return () => {
-      clearTimeout(id);
-      if (dbSyncTimerRef.current) {
-        clearTimeout(dbSyncTimerRef.current);
-        // 페이지를 바로 이동해도 마지막 변경을 DB에 남기기 위해 즉시 1회 동기화
-        void pushLectureTreeToDbNow();
-        dbSyncTimerRef.current = null;
-      }
-    };
-  }, []);
-
-  function persist(next: LectureLeafNode[], options?: { immediateRemote?: boolean }) {
-    const saved = saveLectureCatalog(next);
-    setLectures(saved);
-    if (options?.immediateRemote) {
-      if (dbSyncTimerRef.current) {
-        clearTimeout(dbSyncTimerRef.current);
-        dbSyncTimerRef.current = null;
-      }
-      void pushLectureTreeToDbNow();
+  function persistTree(next: LectureTree, options?: { immediate?: boolean }) {
+    const saved = saveLectureTree(next);
+    setTree(saved);
+    if (options?.immediate) {
+      if (dbSyncTimerRef.current) { clearTimeout(dbSyncTimerRef.current); dbSyncTimerRef.current = null; }
+      void pushTreeToDbNow(saved);
     } else {
       scheduleDbSync();
     }
     return saved;
   }
 
-  function addLecture() {
-    const title = newTitle.trim();
-    if (!title) {
-      window.alert("강의 제목을 입력해주세요.");
-      return;
-    }
+  useEffect(() => {
+    const id = setTimeout(() => void loadFromRemoteSnapshot(), 0);
+    return () => {
+      clearTimeout(id);
+      if (dbSyncTimerRef.current) {
+        clearTimeout(dbSyncTimerRef.current);
+        void pushTreeToDbNow();
+        dbSyncTimerRef.current = null;
+      }
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-    const created = createLectureLeaf({ title });
-    const base = loadLectureCatalog();
-    const next = [...base, created];
-    persist(next, { immediateRemote: true });
-    setSelectedLeafId(created.leafId);
-    setNewTitle("");
+  // ===== 폴더 핸들러 =====
+  function handleAddFolder() {
+    const title = newFolderTitle.trim();
+    if (!title) { window.alert("폴더 제목을 입력해주세요."); return; }
+    const next = addFolderToTree(tree, title);
+    const saved = persistTree(next, { immediate: true });
+    const newFolder = getFoldersFromTree(saved).at(-1);
+    if (newFolder) setSelectedFolderId(newFolder.id);
+    setNewFolderTitle("");
   }
 
-  function patchSelected(args: { title?: string; lectureUrl?: string; problemUrl?: string }) {
-    if (!activeLeafId) return;
-    const base = loadLectureCatalog();
-    const next = base.map((leaf) => {
-      if (leaf.leafId !== activeLeafId) return leaf;
-      return {
-        ...leaf,
-        title: typeof args.title === "string" ? args.title : leaf.title,
-        lectureUrl: typeof args.lectureUrl === "string" ? args.lectureUrl : leaf.lectureUrl,
-        problemUrls:
-          typeof args.problemUrl === "string" ? [args.problemUrl] : [firstProblemUrl(leaf)],
-      };
+  function handleRemoveFolder() {
+    if (!selectedFolder) return;
+    const leafCount = (selectedFolder.children ?? []).filter(isLeaf).length;
+    const msg = leafCount > 0
+      ? `"${selectedFolder.title}" 폴더와 안에 있는 강의 ${leafCount}개를 모두 삭제할까요?`
+      : `"${selectedFolder.title}" 폴더를 삭제할까요?`;
+    if (!window.confirm(msg)) return;
+    persistTree(removeFolderFromTree(tree, selectedFolder.id), { immediate: true });
+    setSelectedFolderId(null);
+    setSelectedLeafId(null);
+  }
+
+  function handleMoveFolder(offset: -1 | 1) {
+    if (!selectedFolderId) return;
+    persistTree(moveFolderInTree(tree, selectedFolderId, offset), { immediate: true });
+  }
+
+  function startEditFolder(folder: LectureFolderNode) {
+    setEditingFolderId(folder.id);
+    setEditingFolderTitle(folder.title);
+  }
+
+  function commitEditFolder() {
+    if (!editingFolderId || !editingFolderTitle.trim()) { setEditingFolderId(null); return; }
+    persistTree(renameFolderInTree(tree, editingFolderId, editingFolderTitle.trim()));
+    setEditingFolderId(null);
+  }
+
+  // ===== 강의 핸들러 =====
+  function handleAddLeaf() {
+    if (!selectedFolderId) return;
+    const title = newLeafTitle.trim();
+    if (!title) { window.alert("강의 제목을 입력해주세요."); return; }
+    const leaf = createLectureLeaf({ title });
+    const next = addLeafToFolder(tree, selectedFolderId, leaf);
+    persistTree(next, { immediate: true });
+    setSelectedLeafId(leaf.leafId);
+    setNewLeafTitle("");
+  }
+
+  function handleImportLeaf() {
+    if (!selectedFolderId) return;
+    const code = importCode.trim();
+    if (!code) { window.alert("강의 고유 코드를 입력해주세요."); return; }
+    const result = importLeafByCode(tree, selectedFolderId, code);
+    if (!result) { window.alert("해당 코드의 강의를 찾지 못했습니다.\n강의 상세에서 '고유코드 복사' 버튼을 눌러 올바른 코드를 붙여넣어 주세요."); return; }
+    persistTree(result.tree, { immediate: true });
+    setSelectedLeafId(result.newLeaf.leafId);
+    setImportCode("");
+    setShowImport(false);
+  }
+
+  function handlePatchLeaf(patch: { title?: string; lectureUrl?: string; problemUrl?: string }) {
+    if (!selectedLeafId) return;
+    const patchObj = {
+      ...(patch.title !== undefined ? { title: patch.title } : {}),
+      ...(patch.lectureUrl !== undefined ? { lectureUrl: patch.lectureUrl } : {}),
+      ...(patch.problemUrl !== undefined ? { problemUrls: [patch.problemUrl] } : {}),
+    };
+    persistTree(patchLeafInTree(tree, selectedLeafId, patchObj));
+  }
+
+  function handleRemoveLeaf() {
+    if (!selectedFolderId || !selectedLeaf) return;
+    if (!window.confirm(`"${selectedLeaf.title || "제목 없는 강의"}" 강의를 삭제할까요?`)) return;
+    const next = removeLeafFromFolder(tree, selectedFolderId, selectedLeaf.leafId);
+    persistTree(next, { immediate: true });
+    const remaining = (getFoldersFromTree(next).find(f => f.id === selectedFolderId)?.children ?? []).filter(isLeaf);
+    setSelectedLeafId((remaining[0] as LectureLeafNode | undefined)?.leafId ?? null);
+  }
+
+  function handleMoveLeaf(offset: -1 | 1) {
+    if (!selectedFolderId || !selectedLeafId) return;
+    persistTree(moveLeafInFolder(tree, selectedFolderId, selectedLeafId, offset), { immediate: true });
+  }
+
+  function handleCopyLeafId(leafId: string) {
+    void navigator.clipboard.writeText(leafId).then(() => {
+      setCopiedLeafId(leafId);
+      setTimeout(() => setCopiedLeafId(null), 2000);
     });
-    persist(next);
   }
 
-  function removeSelected() {
-    const base = loadLectureCatalog();
-    const current = base.find((leaf) => leaf.leafId === activeLeafId) ?? selectedLecture;
-    if (!current) return;
-    const ok = window.confirm(`"${current.title || "제목 없는 강의"}" 강의를 삭제할까요?`);
-    if (!ok) return;
-
-    const next = base.filter((leaf) => leaf.leafId !== current.leafId);
-    const saved = persist(next, { immediateRemote: true });
-    if (activeLeafId === current.leafId) {
-      setSelectedLeafId(saved[0]?.leafId ?? null);
-    }
-  }
-
-  function moveSelected(offset: -1 | 1) {
-    const base = loadLectureCatalog();
-    const current = base.find((leaf) => leaf.leafId === activeLeafId) ?? selectedLecture;
-    if (!current) return;
-    const idx = base.findIndex((leaf) => leaf.leafId === current.leafId);
-    if (idx < 0) return;
-
-    const nextIdx = idx + offset;
-    if (nextIdx < 0 || nextIdx >= base.length) return;
-
-    const next = [...base];
-    const tmp = next[idx];
-    next[idx] = next[nextIdx];
-    next[nextIdx] = tmp;
-    persist(next, { immediateRemote: true });
-    setSelectedLeafId(tmp.leafId);
-  }
+  // ===== 스타일 상수 =====
+  const surface = { borderColor: "var(--surface-border)", background: "var(--surface-bg)" };
+  const headerStyle = { borderColor: "var(--surface-border)", background: "var(--surface-hover)" };
 
   return (
-    <div className="p-6 space-y-4">
-      <header className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="page-title">강의 저장소 (재개편)</h1>
-          <p className="text-sm" style={{ color: "var(--text-muted)" }}>
-            DB 우선으로 동작합니다. 복잡한 폴더 구조는 제거했습니다.
-          </p>
-          <p className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>
-            {dbSyncing ? "DB 동기화 중..." : dbSyncError ? dbSyncError : "DB 동기화 정상"}
-          </p>
-        </div>
+    <div className="p-6 space-y-6" style={{ maxWidth: 1100, margin: "0 auto" }}>
+      {/* 헤더 */}
+      <header>
+        <h1 className="page-title">강의 저장소</h1>
+        <p className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>
+          {dbSyncing ? "DB 동기화 중..." : dbSyncError ? dbSyncError : "DB 동기화 정상"}
+        </p>
       </header>
 
-      <div
-        className="rounded-2xl border p-3 flex flex-wrap items-center gap-2"
-        style={{ borderColor: "var(--surface-border)", background: "var(--surface-bg)" }}
-      >
-        <input
-          className="flex-1 min-w-[220px] rounded-lg border px-3 py-2 text-sm"
-          value={newTitle}
-          onChange={(e) => setNewTitle(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key !== "Enter" || e.nativeEvent.isComposing) return;
-            e.preventDefault();
-            addLecture();
-          }}
-          placeholder="새 강의 제목"
-        />
-        <button className="px-3 py-2 rounded-lg border text-sm btn-white" onClick={addLecture}>
-          강의 추가
-        </button>
-      </div>
-
-      <div className="grid gap-4 lg:grid-cols-[380px_minmax(0,1fr)]">
-        <section
-          className="rounded-2xl border overflow-hidden"
-          style={{ borderColor: "var(--surface-border)", background: "var(--surface-bg)" }}
+      {/* ===== 폴더 섹션 (항상 표시) ===== */}
+      <section className="space-y-3">
+        {/* 폴더 추가 */}
+        <div
+          className="rounded-2xl border p-3 flex flex-wrap items-center gap-2"
+          style={surface}
         >
-          <div
-            className="px-4 py-3 border-b text-sm font-semibold"
-            style={{ borderColor: "var(--surface-border)", background: "var(--surface-hover)" }}
-          >
-            강의 목록
-          </div>
-          <div className="p-3 border-b" style={{ borderColor: "var(--surface-border)" }}>
-            <input
-              className="w-full rounded-lg border px-3 py-2 text-sm"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="제목/링크 검색"
-            />
+          <input
+            className="flex-1 min-w-[200px] rounded-lg border px-3 py-2 text-sm"
+            value={newFolderTitle}
+            onChange={(e) => setNewFolderTitle(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing) { e.preventDefault(); handleAddFolder(); } }}
+            placeholder="새 폴더 제목"
+          />
+          <button className="px-3 py-2 rounded-lg border text-sm btn-white" onClick={handleAddFolder}>
+            폴더 추가
+          </button>
+        </div>
+
+        {/* 폴더 목록 + 폴더 상세 */}
+        <div className="grid gap-4 lg:grid-cols-[340px_minmax(0,1fr)]">
+          {/* 폴더 목록 */}
+          <section className="rounded-2xl border overflow-hidden" style={surface}>
+            <div className="px-4 py-3 border-b text-sm font-semibold" style={headerStyle}>
+              폴더 목록
+            </div>
+            <div className="max-h-[40vh] overflow-y-auto p-2 space-y-1">
+              {folders.length === 0 ? (
+                <div className="px-2 py-3 text-sm" style={{ color: "var(--text-muted)" }}>
+                  폴더가 없습니다. 위에서 추가해주세요.
+                </div>
+              ) : (
+                folders.map((folder) => {
+                  const selected = folder.id === selectedFolderId;
+                  const leafCount = (folder.children ?? []).filter(isLeaf).length;
+                  return (
+                    <button
+                      key={folder.id}
+                      className="w-full text-left rounded-lg px-3 py-2 border"
+                      style={{
+                        background: selected ? "var(--surface-selected-bg)" : "var(--surface-bg)",
+                        borderColor: selected ? "var(--surface-selected-border)" : "transparent",
+                      }}
+                      onMouseEnter={(e) => { if (!selected) e.currentTarget.style.background = "var(--surface-hover)"; }}
+                      onMouseLeave={(e) => { if (!selected) e.currentTarget.style.background = "var(--surface-bg)"; }}
+                      onClick={() => { setSelectedFolderId(folder.id); setSelectedLeafId(null); setShowImport(false); }}
+                    >
+                      <div className="font-medium truncate">📁 {folder.title}</div>
+                      <div className="text-xs" style={{ color: "var(--text-muted)" }}>강의 {leafCount}개</div>
+                    </button>
+                  );
+                })
+              )}
+            </div>
+          </section>
+
+          {/* 폴더 상세 */}
+          <section className="rounded-2xl border p-4 space-y-4" style={surface}>
+            <div className="text-sm font-semibold">폴더 상세</div>
+            {!selectedFolder ? (
+              <div className="text-sm" style={{ color: "var(--text-muted)" }}>왼쪽에서 폴더를 선택하세요.</div>
+            ) : (
+              <>
+                <div className="space-y-1">
+                  <label className="text-xs" style={{ color: "var(--text-muted)" }}>폴더 이름</label>
+                  {editingFolderId === selectedFolder.id ? (
+                    <div className="flex gap-2">
+                      <input
+                        className="flex-1 rounded-lg border px-3 py-2 text-sm"
+                        value={editingFolderTitle}
+                        onChange={(e) => setEditingFolderTitle(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === "Enter") commitEditFolder(); }}
+                        autoFocus
+                      />
+                      <button className="px-3 py-2 rounded-lg border text-sm btn-white" onClick={commitEditFolder}>저장</button>
+                      <button className="px-3 py-2 rounded-lg border text-sm btn-white" onClick={() => setEditingFolderId(null)}>취소</button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium">{selectedFolder.title}</span>
+                      <button
+                        className="px-2 py-1 rounded border text-xs btn-white"
+                        onClick={() => startEditFolder(selectedFolder)}
+                      >수정</button>
+                    </div>
+                  )}
+                </div>
+                <div className="flex flex-wrap gap-2 pt-1">
+                  <button className="px-3 py-2 rounded-lg border text-sm btn-white" onClick={() => handleMoveFolder(-1)}>위로</button>
+                  <button className="px-3 py-2 rounded-lg border text-sm btn-white" onClick={() => handleMoveFolder(1)}>아래로</button>
+                  <button className="px-3 py-2 rounded-lg border text-sm text-red-600 btn-white" onClick={handleRemoveFolder}>삭제</button>
+                </div>
+              </>
+            )}
+          </section>
+        </div>
+      </section>
+
+      {/* ===== 강의 섹션 (폴더 선택 시만 표시) ===== */}
+      {selectedFolder && (
+        <section className="space-y-3">
+          <div className="flex items-center gap-2">
+            <div className="h-px flex-1" style={{ background: "var(--surface-border)" }} />
+            <span className="text-xs px-2" style={{ color: "var(--text-muted)" }}>
+              📁 {selectedFolder.title} 안의 강의
+            </span>
+            <div className="h-px flex-1" style={{ background: "var(--surface-border)" }} />
           </div>
 
-          <div className="max-h-[64vh] overflow-y-auto p-2 space-y-1">
-            {filteredLectures.length === 0 ? (
-              <div className="px-2 py-2 text-sm" style={{ color: "var(--text-muted)" }}>
-                {lectures.length === 0 ? "저장된 강의가 없습니다." : "검색 결과가 없습니다."}
+          {/* 강의 추가 + 불러오기 */}
+          <div className="rounded-2xl border p-3 space-y-2" style={surface}>
+            <div className="flex flex-wrap items-center gap-2">
+              <input
+                className="flex-1 min-w-[200px] rounded-lg border px-3 py-2 text-sm"
+                value={newLeafTitle}
+                onChange={(e) => setNewLeafTitle(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing) { e.preventDefault(); handleAddLeaf(); } }}
+                placeholder="새 강의 제목"
+              />
+              <button className="px-3 py-2 rounded-lg border text-sm btn-white" onClick={handleAddLeaf}>
+                강의 추가
+              </button>
+              <button
+                className="px-3 py-2 rounded-lg border text-sm btn-white"
+                onClick={() => setShowImport((v) => !v)}
+              >
+                {showImport ? "취소" : "강의 불러오기"}
+              </button>
+            </div>
+
+            {showImport && (
+              <div className="flex flex-wrap items-center gap-2 pt-1 border-t" style={{ borderColor: "var(--surface-border)" }}>
+                <input
+                  className="flex-1 min-w-[240px] rounded-lg border px-3 py-2 text-sm font-mono"
+                  value={importCode}
+                  onChange={(e) => setImportCode(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") handleImportLeaf(); }}
+                  placeholder="강의 고유 코드 붙여넣기…"
+                  autoFocus
+                />
+                <button className="px-3 py-2 rounded-lg border text-sm btn-white" onClick={handleImportLeaf}>불러오기</button>
+                <span className="text-xs" style={{ color: "var(--text-muted)" }}>
+                  다른 폴더 강의 상세에서 '고유코드 복사' 버튼을 누른 후 붙여넣으세요.
+                </span>
               </div>
-            ) : (
-              filteredLectures.map((leaf, idx) => {
-                const selected = leaf.leafId === selectedLeafId;
-                return (
-                  <button
-                    key={leaf.leafId}
-                    className="w-full text-left rounded-lg px-3 py-2 border"
-                    style={{
-                      background: selected ? "var(--surface-selected-bg)" : "var(--surface-bg)",
-                      borderColor: selected ? "var(--surface-selected-border)" : "transparent",
-                    }}
-                    onMouseEnter={(e) => {
-                      if (selected) return;
-                      e.currentTarget.style.background = "var(--surface-hover)";
-                    }}
-                    onMouseLeave={(e) => {
-                      if (selected) return;
-                      e.currentTarget.style.background = "var(--surface-bg)";
-                    }}
-                    onClick={() => setSelectedLeafId(leaf.leafId)}
-                  >
-                    <div className="text-xs" style={{ color: "var(--text-muted)" }}>#{idx + 1}</div>
-                    <div className="font-medium truncate">{leaf.title || "제목 없는 강의"}</div>
-                    <div className="text-xs truncate" style={{ color: "var(--text-muted)" }}>{leaf.lectureUrl || "강의 링크 없음"}</div>
-                  </button>
-                );
-              })
             )}
           </div>
+
+          {/* 강의 목록 + 강의 상세 */}
+          <div className="grid gap-4 lg:grid-cols-[340px_minmax(0,1fr)]">
+            {/* 강의 목록 */}
+            <section className="rounded-2xl border overflow-hidden" style={surface}>
+              <div className="px-4 py-3 border-b text-sm font-semibold" style={headerStyle}>
+                강의 목록 ({leavesInFolder.length}개)
+              </div>
+              <div className="max-h-[50vh] overflow-y-auto p-2 space-y-1">
+                {leavesInFolder.length === 0 ? (
+                  <div className="px-2 py-3 text-sm" style={{ color: "var(--text-muted)" }}>
+                    이 폴더에 강의가 없습니다.
+                  </div>
+                ) : (
+                  leavesInFolder.map((leaf, idx) => {
+                    const selected = leaf.leafId === selectedLeafId;
+                    return (
+                      <button
+                        key={leaf.leafId}
+                        className="w-full text-left rounded-lg px-3 py-2 border"
+                        style={{
+                          background: selected ? "var(--surface-selected-bg)" : "var(--surface-bg)",
+                          borderColor: selected ? "var(--surface-selected-border)" : "transparent",
+                        }}
+                        onMouseEnter={(e) => { if (!selected) e.currentTarget.style.background = "var(--surface-hover)"; }}
+                        onMouseLeave={(e) => { if (!selected) e.currentTarget.style.background = "var(--surface-bg)"; }}
+                        onClick={() => setSelectedLeafId(leaf.leafId)}
+                      >
+                        <div className="text-xs" style={{ color: "var(--text-muted)" }}>#{idx + 1}</div>
+                        <div className="font-medium truncate">{leaf.title || "제목 없는 강의"}</div>
+                        <div className="text-xs truncate" style={{ color: "var(--text-muted)" }}>{leaf.lectureUrl || "강의 링크 없음"}</div>
+                      </button>
+                    );
+                  })
+                )}
+              </div>
+            </section>
+
+            {/* 강의 상세 */}
+            <section className="rounded-2xl border p-4 space-y-4" style={surface}>
+              <div className="text-sm font-semibold">강의 상세</div>
+              {!selectedLeaf ? (
+                <div className="text-sm" style={{ color: "var(--text-muted)" }}>왼쪽에서 강의를 선택해주세요.</div>
+              ) : (
+                <>
+                  <div className="space-y-1">
+                    <label className="text-xs" style={{ color: "var(--text-muted)" }}>강의 제목</label>
+                    <input
+                      className="w-full rounded-lg border px-3 py-2 text-sm"
+                      value={selectedLeaf.title}
+                      onChange={(e) => handlePatchLeaf({ title: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs" style={{ color: "var(--text-muted)" }}>강의 URL</label>
+                    <input
+                      className="w-full rounded-lg border px-3 py-2 text-sm"
+                      value={selectedLeaf.lectureUrl ?? ""}
+                      onChange={(e) => handlePatchLeaf({ lectureUrl: e.target.value })}
+                      placeholder="https://..."
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs" style={{ color: "var(--text-muted)" }}>문제 URL</label>
+                    <input
+                      className="w-full rounded-lg border px-3 py-2 text-sm"
+                      value={firstProblemUrl(selectedLeaf)}
+                      onChange={(e) => handlePatchLeaf({ problemUrl: e.target.value })}
+                      placeholder="https://..."
+                    />
+                  </div>
+
+                  {/* 고유코드 */}
+                  <div className="space-y-1">
+                    <label className="text-xs" style={{ color: "var(--text-muted)" }}>고유 코드 (다른 폴더에 불러오기용)</label>
+                    <div className="flex items-center gap-2">
+                      <code
+                        className="flex-1 text-xs px-3 py-2 rounded-lg border font-mono truncate"
+                        style={{ background: "var(--surface-hover)", borderColor: "var(--surface-border)" }}
+                      >
+                        {selectedLeaf.leafId}
+                      </code>
+                      <button
+                        className="px-3 py-2 rounded-lg border text-xs btn-white whitespace-nowrap"
+                        onClick={() => handleCopyLeafId(selectedLeaf.leafId)}
+                      >
+                        {copiedLeafId === selectedLeaf.leafId ? "복사됨 ✓" : "고유코드 복사"}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap gap-2 pt-1">
+                    <button className="px-3 py-2 rounded-lg border text-sm btn-white" onClick={() => handleMoveLeaf(-1)}>위로</button>
+                    <button className="px-3 py-2 rounded-lg border text-sm btn-white" onClick={() => handleMoveLeaf(1)}>아래로</button>
+                    <button className="px-3 py-2 rounded-lg border text-sm text-red-600 btn-white" onClick={handleRemoveLeaf}>삭제</button>
+                  </div>
+
+                  <div className="text-xs" style={{ color: "var(--text-muted)" }}>
+                    수정 내용은 자동 저장되며, 회차 상세의 &quot;강의 추가&quot; 목록에 바로 반영됩니다.
+                  </div>
+                </>
+              )}
+            </section>
+          </div>
         </section>
-
-        <section
-          className="rounded-2xl border p-4 space-y-4"
-          style={{ borderColor: "var(--surface-border)", background: "var(--surface-bg)" }}
-        >
-          <div className="text-sm font-semibold">강의 상세</div>
-
-          {!selectedLecture ? (
-            <div className="text-sm" style={{ color: "var(--text-muted)" }}>왼쪽에서 강의를 선택해주세요.</div>
-          ) : (
-            <>
-              <div className="space-y-1">
-                <label className="text-xs" style={{ color: "var(--text-muted)" }}>강의 제목</label>
-                <input
-                  className="w-full rounded-lg border px-3 py-2 text-sm"
-                  value={selectedLecture.title}
-                  onChange={(e) => patchSelected({ title: e.target.value })}
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-xs" style={{ color: "var(--text-muted)" }}>강의 URL</label>
-                <input
-                  className="w-full rounded-lg border px-3 py-2 text-sm"
-                  value={selectedLecture.lectureUrl ?? ""}
-                  onChange={(e) => patchSelected({ lectureUrl: e.target.value })}
-                  placeholder="https://..."
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-xs" style={{ color: "var(--text-muted)" }}>문제 URL</label>
-                <input
-                  className="w-full rounded-lg border px-3 py-2 text-sm"
-                  value={firstProblemUrl(selectedLecture)}
-                  onChange={(e) => patchSelected({ problemUrl: e.target.value })}
-                  placeholder="https://..."
-                />
-              </div>
-
-              <div className="flex flex-wrap gap-2 pt-1">
-                <button className="px-3 py-2 rounded-lg border text-sm btn-white" onClick={() => moveSelected(-1)}>
-                  위로
-                </button>
-                <button className="px-3 py-2 rounded-lg border text-sm btn-white" onClick={() => moveSelected(1)}>
-                  아래로
-                </button>
-                <button className="px-3 py-2 rounded-lg border text-sm text-red-600 btn-white" onClick={removeSelected}>
-                  삭제
-                </button>
-              </div>
-
-              <div className="text-xs" style={{ color: "var(--text-muted)" }}>
-                강의 수정 내용은 자동 저장되며, 회차 상세의 &quot;강의 추가&quot; 목록에 바로 반영됩니다.
-              </div>
-            </>
-          )}
-        </section>
-      </div>
+      )}
     </div>
   );
 }

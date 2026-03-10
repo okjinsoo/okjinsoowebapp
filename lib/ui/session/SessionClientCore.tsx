@@ -26,7 +26,7 @@ import type {
 import {
   loadLectureTree,
   findLeafById,
-  flattenLeaves,
+  flattenLeavesWithContext,
   parseLectureTreeRaw,
 } from "@/lib/storage/lectures";
 
@@ -71,7 +71,7 @@ function updatedAtMs(tree: LectureTree): number | null {
 }
 
 function leafCount(tree: LectureTree): number {
-  return flattenLeaves(tree, { sortByOrderKey: false }).length;
+  return flattenLeavesWithContext(tree).length;
 }
 
 function pickLectureTree(localTree: LectureTree, remoteTree: LectureTree | null): {
@@ -374,8 +374,7 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
   }
 
   const pickerLeafOptions = useMemo(() => {
-    const leavesSorted = flattenLeaves(tree, { sortByOrderKey: true });
-    return leavesSorted.map((leaf) => ({ leaf }));
+    return flattenLeavesWithContext(tree);
   }, [tree]);
 
   const filteredPickerLeafOptions = useMemo(() => {
@@ -383,7 +382,8 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
     if (!q) return pickerLeafOptions;
     return pickerLeafOptions.filter((item) => {
       const title = item.leaf.title.toLowerCase();
-      return title.includes(q);
+      const folder = (item.folderTitle ?? "").toLowerCase();
+      return title.includes(q) || folder.includes(q);
     });
   }, [pickerLeafOptions, pickerQuery]);
 
