@@ -133,8 +133,8 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
   const [customModal, setCustomModal] = useState<{ title: string; url: string } | null>(null);
   const [noticeModal, setNoticeModal] = useState<{ content: string } | null>(null);
 
-  // 순서 변경 모드
   const [isReordering, setIsReordering] = useState(false);
+  const [isHydrating, setIsHydrating] = useState(true); // [V3 추가] 서버 데이터 수신 대기 상태
 
   // tree
   const [tree, setTree] = useState<LectureTree>(() => loadLectureTree());
@@ -179,12 +179,13 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
         setLastAddedLeafId("");
       }
 
-      // [V2 추가] 초기 로드 시 원격 서버에서 최신 데이터를 강제로 한 번 더 가져옴 (Deep Hydration)
+      // [V2/V3 개선] 초기 로드 시 원격 서버에서 최신 데이터를 강제로 한 번 더 가져옴
       void (async () => {
         try {
-          const [remoteIdsRaw, remoteProgRaw] = await Promise.all([
+          const [remoteIdsRaw, remoteProgRaw, remoteLastRaw] = await Promise.all([
             readRemoteSharedStateKvValue(keyLeafIds(token, sessionIndex)),
             readRemoteSharedStateKvValue(keyProgress(token, sessionIndex)),
+            readRemoteSharedStateKvValue(keyLastAdded(token, sessionIndex)),
           ]);
 
           if (remoteIdsRaw) {
@@ -197,8 +198,14 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
             setProgressByLeafId(prog);
             browserStorage.setItem(keyProgress(token, sessionIndex), remoteProgRaw);
           }
+          if (remoteLastRaw) {
+            setLastAddedLeafId(remoteLastRaw);
+            browserStorage.setItem(keyLastAdded(token, sessionIndex), remoteLastRaw);
+          }
         } catch (err) {
           console.error("초기 원격 데이터 동기화 실패:", err);
+        } finally {
+          setIsHydrating(false); // 수신 완료 또는 실패 시 잠금 해제
         }
       })();
     }, 0);
@@ -238,7 +245,7 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
 
   // save (관련 상태 변경 시 한꺼번에 저장하여 BROWSER_STORAGE_EVENT 발생 최소화)
   useEffect(() => {
-    if (!mounted) return;
+    if (!mounted || isHydrating) return; // [V3] 서버 데이터 수신 중에는 저장 방지 (레이스 컨디션 방지)
 
     // 1. 배치(배열) 및 마지막 추가 ID 저장 (t/a 권한 필요)
     if (canAssignLectures) {

@@ -2,7 +2,7 @@ export const SHARED_CONSULTATIONS_KEY = "tutorweb_consultations_v1";
 export const SHARED_LECTURE_TREE_KEY = "mk3:lectureTree";
 export const SHARED_META_MAP_PREFIX = "tutorweb_metaMap_v1:";
 
-const SESSION_PROGRESS_KEY_PATTERN = /^mk3:[^:]+:session:\d+:(leafIds|progressByLeafId)$/;
+const SESSION_PROGRESS_KEY_PATTERN = /^mk3:[^:]+:session:\d+:(leafIds|progressByLeafId|lastAddedLeafId)$/;
 
 export function buildSessionStorageBaseKey(token: string, sessionIndex: number): string {
   return `mk3:${token}:session:${sessionIndex}`;

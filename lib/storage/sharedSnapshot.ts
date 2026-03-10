@@ -21,7 +21,7 @@ const SNAPSHOT_KEY = "main";
 const TEACHERS_KEY = "tutorweb_teachers_v1";
 const STUDENTS_KEY = "tutorweb_students_v1";
 const SESSIONS_KEY = "tutorweb_sessions_v1";
-const PULL_COOLDOWN_MS = 5000;
+const PULL_COOLDOWN_MS = 2000; // 5초에서 2초로 단축하여 실시간 동기화 반응성 향상항목 수정 Corporate
 
 type SnapshotRow = {
   teachers?: Teacher[];
