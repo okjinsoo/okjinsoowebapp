@@ -18,7 +18,7 @@ import {
   type SessionRole,
 } from "@/lib/policies/sessionRolePolicy";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type {
   LectureLeafNode,
   LectureTree,
@@ -27,6 +27,7 @@ import {
   loadLectureTree,
   findLeafById,
   flattenLeavesWithContext,
+  getFoldersFromTree,
   parseLectureTreeRaw,
 } from "@/lib/storage/lectures";
 
@@ -143,6 +144,11 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pickerQuery, setPickerQuery] = useState("");
   const [pickerSyncing, setPickerSyncing] = useState(false);
+  const [selectedPickerFolderId, setSelectedPickerFolderId] = useState<string | null>(null);
+
+  // [버그수정] 내가 직접 쓴 직후 onStorageChanged가 덮어쓰는 것을 방지하는 타임스탬프
+  const localWriteTimestampRef = useRef<number>(0);
+  const LOCAL_WRITE_GRACE_MS = 2000; // 2초간 외부 스토리지 이벤트 무시
 
   // load (final only)
   useEffect(() => {
@@ -221,6 +227,10 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
       const key = ce.detail?.key ?? "";
       const newValue = ce.detail?.newValue;
 
+      // [버그수정] 내가 직접 쓴 직후 2초간은 외부 스토리지 이벤트 무시 (레이스 컨디션 방지)
+      const isFreshLocalWrite = Date.now() - localWriteTimestampRef.current < LOCAL_WRITE_GRACE_MS;
+      if (isFreshLocalWrite) return;
+
       if (key === keyLeafIds(token, sessionIndex) && newValue) {
         try { setLectureLeafIds(JSON.parse(newValue)); } catch { /* ignore */ }
       } else if (key === keyProgress(token, sessionIndex) && newValue) {
@@ -246,6 +256,9 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
   // save (관련 상태 변경 시 한꺼번에 저장하여 BROWSER_STORAGE_EVENT 발생 최소화)
   useEffect(() => {
     if (!mounted || isHydrating) return; // [V3] 서버 데이터 수신 중에는 저장 방지 (레이스 컨디션 방지)
+
+    // [버그수정] 저장 직전 타임스탬프 기록 → onStorageChanged가 2초간 이 변경을 외부 이벤트로 오해하지 않도록
+    localWriteTimestampRef.current = Date.now();
 
     // 1. 배치(배열) 및 마지막 추가 ID 저장 (t/a 권한 필요)
     if (canAssignLectures) {
@@ -1093,89 +1106,132 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
           >
             <div
               style={{
-                width: "min(720px, 100%)",
-                maxHeight: "80vh",
+                width: "min(760px, 100%)",
+                maxHeight: "85vh",
                 overflow: "auto",
                 background: "var(--surface-bg)",
                 borderRadius: 14,
-                padding: 14,
+                padding: 16,
                 border: "1px solid var(--surface-border)",
               }}
               onClick={(e) => e.stopPropagation()}
             >
-              <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
+              {/* 헤더 */}
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, marginBottom: 14 }}>
                 <div className="card-title">강의 선택</div>
                 <button
                   onClick={closePicker}
-                  style={{
-                    border: "1px solid var(--control-border)",
-                    background: "var(--surface-bg)",
-                    borderRadius: 10,
-                    padding: "6px 10px",
-                  }}
+                  style={{ border: "1px solid var(--control-border)", background: "var(--surface-bg)", borderRadius: 10, padding: "6px 10px" }}
                 >
                   닫기
                 </button>
               </div>
 
-              <div style={{ marginTop: 12, border: "1px solid var(--surface-border)", borderRadius: 12, padding: 10, background: "var(--surface-bg)" }}>
-                <div className="card-title">강의 목록</div>
-                <input
-                  value={pickerQuery}
-                  onChange={(e) => setPickerQuery(e.target.value)}
-                  placeholder="강의명 검색"
-                  style={{
-                    width: "100%",
-                    marginTop: 8,
-                    padding: "8px 10px",
-                    borderRadius: 10,
-                    border: "1px solid var(--control-border)",
-                  }}
-                />
-                <div style={{ marginTop: 8, maxHeight: 220, overflow: "auto", display: "grid", gap: 8 }}>
-                  {filteredPickerLeafOptions.length === 0 ? (
-                    <div style={{ opacity: 0.7 }}>
-                      {pickerLeafOptions.length === 0
-                        ? "저장된 강의가 없습니다. /lib/lectures 에서 먼저 저장해주세요."
-                        : "검색 결과가 없습니다."}
-                    </div>
-                  ) : (
-                    filteredPickerLeafOptions.map((item) => {
-                      const leaf = item.leaf;
-                      const disabled = usedLeafIds.has(leaf.leafId);
-                      return (
-                        <button
-                          key={`quick:${leaf.id}`}
-                          onClick={() => {
-                            if (disabled) return;
-                            addLectureLeaf(leaf);
-                            closePicker();
-                          }}
-                          disabled={disabled}
-                          style={{
-                            textAlign: "left",
-                            border: "1px solid var(--surface-border)",
-                            borderRadius: 10,
-                            padding: "8px 10px",
-                            background: disabled ? "var(--surface-hover)" : "var(--surface-bg)",
-                            opacity: disabled ? 0.6 : 1,
-                            cursor: disabled ? "not-allowed" : "pointer",
-                          }}
-                          title={disabled ? "이미 회차에 포함된 강의입니다(중복 불가)" : "선택하면 회차에 즉시 추가됩니다"}
-                        >
-                          <div style={{ fontWeight: 700 }}>{leaf.title}</div>
-                          <div style={{ opacity: 0.7, marginTop: 2 }}>
-                            순서: {leaf.orderKey}
-                          </div>
-                        </button>
-                      );
-                    })
-                  )}
+              {/* 폴더 + 강의 2단계 레이아웃 */}
+              <div style={{ display: "grid", gridTemplateColumns: selectedPickerFolderId ? "180px minmax(0,1fr)" : "1fr", gap: 12 }}>
+                {/* 좌측: 폴더 목록 */}
+                <div style={{ border: "1px solid var(--surface-border)", borderRadius: 12, overflow: "hidden" }}>
+                  <div style={{ padding: "8px 12px", background: "var(--surface-hover)", fontSize: 13, fontWeight: 600, borderBottom: "1px solid var(--surface-border)" }}>
+                    폴더 선택
+                  </div>
+                  <div style={{ padding: 6, display: "grid", gap: 4, maxHeight: 300, overflow: "auto" }}>
+                    {getFoldersFromTree(tree).length === 0 ? (
+                      <div style={{ padding: 8, fontSize: 13, color: "var(--text-muted)" }}>
+                        폴더가 없습니다. 강의 저장소에서 먼저 추가해주세요.
+                      </div>
+                    ) : (
+                      getFoldersFromTree(tree).map((folder) => {
+                        const isSelected = folder.id === selectedPickerFolderId;
+                        const leafCount = (folder.children ?? []).filter((c) => c.type === "leaf").length;
+                        return (
+                          <button
+                            key={folder.id}
+                            onClick={() => {
+                              setSelectedPickerFolderId(isSelected ? null : folder.id);
+                              setPickerQuery("");
+                            }}
+                            style={{
+                              textAlign: "left",
+                              padding: "8px 10px",
+                              borderRadius: 8,
+                              border: isSelected ? "1px solid var(--surface-selected-border)" : "1px solid transparent",
+                              background: isSelected ? "var(--surface-selected-bg)" : "transparent",
+                              cursor: "pointer",
+                            }}
+                          >
+                            <div style={{ fontWeight: 500, fontSize: 13 }}>📁 {folder.title}</div>
+                            <div style={{ fontSize: 11, color: "var(--text-muted)" }}>강의 {leafCount}개</div>
+                          </button>
+                        );
+                      })
+                    )}
+                  </div>
                 </div>
+
+                {/* 우측: 강의 목록 (폴더 선택 시만) */}
+                {selectedPickerFolderId && (
+                  <div style={{ border: "1px solid var(--surface-border)", borderRadius: 12, overflow: "hidden" }}>
+                    <div style={{ padding: "8px 12px", background: "var(--surface-hover)", fontSize: 13, fontWeight: 600, borderBottom: "1px solid var(--surface-border)" }}>
+                      강의 선택
+                    </div>
+                    <div style={{ padding: 8 }}>
+                      <input
+                        value={pickerQuery}
+                        onChange={(e) => setPickerQuery(e.target.value)}
+                        placeholder="강의명 검색"
+                        style={{ width: "100%", padding: "7px 10px", borderRadius: 8, border: "1px solid var(--control-border)", fontSize: 13, marginBottom: 8 }}
+                        autoFocus
+                      />
+                      <div style={{ maxHeight: 240, overflow: "auto", display: "grid", gap: 6 }}>
+                        {filteredPickerLeafOptions.filter((item) => item.folderId === selectedPickerFolderId).length === 0 ? (
+                          <div style={{ padding: 8, fontSize: 13, color: "var(--text-muted)" }}>
+                            {pickerQuery ? "검색 결과가 없습니다." : "이 폴더에 강의가 없습니다."}
+                          </div>
+                        ) : (
+                          filteredPickerLeafOptions
+                            .filter((item) => item.folderId === selectedPickerFolderId)
+                            .map((item) => {
+                              const leaf = item.leaf;
+                              const disabled = usedLeafIds.has(leaf.leafId);
+                              return (
+                                <button
+                                  key={`quick:${leaf.id}`}
+                                  onClick={() => {
+                                    if (disabled) return;
+                                    addLectureLeaf(leaf);
+                                    closePicker();
+                                  }}
+                                  disabled={disabled}
+                                  style={{
+                                    textAlign: "left",
+                                    border: "1px solid var(--surface-border)",
+                                    borderRadius: 8,
+                                    padding: "8px 10px",
+                                    background: disabled ? "var(--surface-hover)" : "var(--surface-bg)",
+                                    opacity: disabled ? 0.6 : 1,
+                                    cursor: disabled ? "not-allowed" : "pointer",
+                                  }}
+                                  title={disabled ? "이미 회차에 포함된 강의입니다(중복 불가)" : "선택하면 즉시 추가됩니다"}
+                                >
+                                  <div style={{ fontWeight: 600, fontSize: 13 }}>{leaf.title}</div>
+                                  {leaf.lectureUrl && (
+                                    <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                      {leaf.lectureUrl}
+                                    </div>
+                                  )}
+                                  {disabled && <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>이미 추가됨</div>}
+                                </button>
+                              );
+                            })
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
 
-              <div style={{ marginTop: 10, opacity: 0.7 }}>
-                • 중복 강의는 추가할 수 없습니다. • 선택 즉시 저장됩니다.
+              <div style={{ marginTop: 10, fontSize: 12, opacity: 0.7 }}>
+                • 폴더를 먼저 선택하면 안의 강의가 나타납니다. • 중복 강의는 추가할 수 없습니다.
               </div>
             </div>
           </div>
