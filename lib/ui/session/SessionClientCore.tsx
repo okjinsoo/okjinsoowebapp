@@ -1,7 +1,7 @@
 // v1/lib/ui/session/SessionClientCore.tsx
 "use client";
 
-import { browserStorage } from "@/lib/storage/browserStorage";
+import { BROWSER_STORAGE_EVENT, browserStorage } from "@/lib/storage/browserStorage";
 import {
   pushSharedSnapshot,
   readRemoteSharedStateKvValue,
@@ -172,47 +172,89 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
         }
 
         setLastAddedLeafId(lastRaw ?? "");
-        return;
+      } else {
+        // final keys 없으면 비어있는 상태로 시작
+        setLectureLeafIds([]);
+        setProgressByLeafId({});
+        setLastAddedLeafId("");
       }
 
-      // final keys 없으면 비어있는 상태로 시작
-      setLectureLeafIds([]);
-      setProgressByLeafId({});
-      setLastAddedLeafId("");
+      // [V2 추가] 초기 로드 시 원격 서버에서 최신 데이터를 강제로 한 번 더 가져옴 (Deep Hydration)
+      void (async () => {
+        try {
+          const [remoteIdsRaw, remoteProgRaw] = await Promise.all([
+            readRemoteSharedStateKvValue(keyLeafIds(token, sessionIndex)),
+            readRemoteSharedStateKvValue(keyProgress(token, sessionIndex)),
+          ]);
+
+          if (remoteIdsRaw) {
+            const ids = JSON.parse(remoteIdsRaw) as string[];
+            setLectureLeafIds(ids);
+            browserStorage.setItem(keyLeafIds(token, sessionIndex), remoteIdsRaw);
+          }
+          if (remoteProgRaw) {
+            const prog = JSON.parse(remoteProgRaw) as ProgressByLeafId;
+            setProgressByLeafId(prog);
+            browserStorage.setItem(keyProgress(token, sessionIndex), remoteProgRaw);
+          }
+        } catch (err) {
+          console.error("초기 원격 데이터 동기화 실패:", err);
+        }
+      })();
     }, 0);
     return () => clearTimeout(id);
   }, [token, sessionIndex]);
 
   useEffect(() => {
     if (!mounted) return;
+
+    // 다른 기기에서 동기화되어 로컬 스토리지가 바뀌었을 때 UI 갱신
+    const onStorageChanged = (e: Event) => {
+      const ce = e as CustomEvent<{ key?: string | null; newValue?: string | null }>;
+      const key = ce.detail?.key ?? "";
+      const newValue = ce.detail?.newValue;
+
+      if (key === keyLeafIds(token, sessionIndex) && newValue) {
+        try { setLectureLeafIds(JSON.parse(newValue)); } catch { /* ignore */ }
+      } else if (key === keyProgress(token, sessionIndex) && newValue) {
+        try { setProgressByLeafId(JSON.parse(newValue)); } catch { /* ignore */ }
+      } else if (key === keyLastAdded(token, sessionIndex)) {
+        setLastAddedLeafId(newValue ?? "");
+      }
+    };
+
     const onLectureTreeUpdated = () => {
       setTree(loadLectureTree());
     };
+
+    window.addEventListener(BROWSER_STORAGE_EVENT, onStorageChanged);
     window.addEventListener("tutorweb:lectureTreeUpdated", onLectureTreeUpdated);
+
     return () => {
+      window.removeEventListener(BROWSER_STORAGE_EVENT, onStorageChanged);
       window.removeEventListener("tutorweb:lectureTreeUpdated", onLectureTreeUpdated);
     };
-  }, [mounted]);
+  }, [mounted, token, sessionIndex]);
 
-  // save (progress는 모두 저장 / 배치는 t/a만 저장)
+  // save (관련 상태 변경 시 한꺼번에 저장하여 BROWSER_STORAGE_EVENT 발생 최소화)
   useEffect(() => {
     if (!mounted) return;
-    if (!canAssignLectures) return;
-    browserStorage.setItem(keyLeafIds(token, sessionIndex), JSON.stringify(lectureLeafIds));
-  }, [mounted, canAssignLectures, token, sessionIndex, lectureLeafIds]);
 
-  useEffect(() => {
-    if (!mounted) return;
-    if (!canEditProgress) return;
-    browserStorage.setItem(keyProgress(token, sessionIndex), JSON.stringify(progressByLeafId));
-  }, [mounted, canEditProgress, token, sessionIndex, progressByLeafId]);
+    // 1. 배치(배열) 및 마지막 추가 ID 저장 (t/a 권한 필요)
+    if (canAssignLectures) {
+      browserStorage.setItem(keyLeafIds(token, sessionIndex), JSON.stringify(lectureLeafIds));
+      if (lastAddedLeafId) {
+        browserStorage.setItem(keyLastAdded(token, sessionIndex), lastAddedLeafId);
+      } else {
+        browserStorage.removeItem(keyLastAdded(token, sessionIndex));
+      }
+    }
 
-  useEffect(() => {
-    if (!mounted) return;
-    if (!canAssignLectures) return;
-    if (lastAddedLeafId) browserStorage.setItem(keyLastAdded(token, sessionIndex), lastAddedLeafId);
-    else browserStorage.removeItem(keyLastAdded(token, sessionIndex));
-  }, [mounted, canAssignLectures, token, sessionIndex, lastAddedLeafId]);
+    // 2. 진도 정보 저장 (학생 포함 모든 권한 가능)
+    if (canEditProgress) {
+      browserStorage.setItem(keyProgress(token, sessionIndex), JSON.stringify(progressByLeafId));
+    }
+  }, [mounted, token, sessionIndex, lectureLeafIds, progressByLeafId, lastAddedLeafId, canAssignLectures, canEditProgress]);
 
   const usedLeafIds = useMemo(() => new Set(lectureLeafIds), [lectureLeafIds]);
 

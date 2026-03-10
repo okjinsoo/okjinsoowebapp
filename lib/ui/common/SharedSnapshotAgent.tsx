@@ -13,7 +13,7 @@ import {
 
 const PUSH_DEBOUNCE_MS = 700;
 const PUSH_RETRY_MS = 1500;
-const REMOTE_PULL_INTERVAL_MS = 30000;
+const REMOTE_PULL_INTERVAL_MS = 5000; // 30초에서 5초로 단축하여 실시간성 강화항목 수정 Corporate
 const AUTH_KEY = "tutorweb_auth_session_v1";
 
 export default function SharedSnapshotAgent() {
@@ -93,9 +93,9 @@ export default function SharedSnapshotAgent() {
       const newValue = ce.detail?.newValue;
       if (typeof newValue !== "string") return;
       pendingStateKvRef.current[key] = newValue;
-      // 강의 트리/회차 강의 배치/진도는 화면 체감이 커서 지연 없이 업로드
+      // 강의 트리/회차 강의 배치/진도는 화면 체감이 커서 지연 없이 업로드 -> 배치 전송으로 전환 (서버 부하 경감)
       if (key === SHARED_LECTURE_TREE_KEY || isSessionProgressStateKey(key)) {
-        schedulePush(0);
+        schedulePush();
         return;
       }
       schedulePush();
