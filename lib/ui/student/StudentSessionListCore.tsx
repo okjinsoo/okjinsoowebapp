@@ -519,6 +519,15 @@ export default function StudentSessionListCore({ role, token, prefix, hideTokenI
                     </div>
                     <Badge style={getAchievementBadgeStyle(r.progress.percent)}>{r.progress.percent}%</Badge>
                     <Badge style={statusBadge.style}>{statusBadge.label}</Badge>
+                    {r.badges.filter(b => b !== "마지막 수업").length > 0 ? (
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {r.badges.filter(b => b !== "마지막 수업").map((b) => (
+                          <Badge key={`${r.index}:${b}`} style={getSessionExtraBadgeStyle(b)}>
+                            {b}
+                          </Badge>
+                        ))}
+                      </div>
+                    ) : null}
                     {!(
                       consultTag &&
                       consultTag.label === "휴회 예정" &&
@@ -526,14 +535,8 @@ export default function StudentSessionListCore({ role, token, prefix, hideTokenI
                     ) ? (
                       <ConsultBadge tag={consultTag} />
                     ) : null}
-                    {r.badges.length > 0 ? (
-                      <div className="flex items-center gap-2 flex-wrap">
-                        {r.badges.map((b) => (
-                          <Badge key={`${r.index}:${b}`} style={getSessionExtraBadgeStyle(b)}>
-                            {b}
-                          </Badge>
-                        ))}
-                      </div>
+                    {r.badges.includes("마지막 수업") ? (
+                      <Badge style={{ background: "#ef4444", color: "#fff" }}>마지막 수업</Badge>
                     ) : null}
                   </div>
                 </Link>

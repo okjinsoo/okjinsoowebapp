@@ -227,7 +227,7 @@ export default function TodaySessionsCard({
                 key={`today-${r.token}-${r.index}`}
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "110px 1fr auto",
+                  gridTemplateColumns: "60px 1fr auto",
                   gap: 30,
                   alignItems: "center",
                   padding: "8px 10px",
@@ -246,26 +246,33 @@ export default function TodaySessionsCard({
                 >
                   <div style={{ fontWeight: 700 }}>{r.studentName}</div>
                   <div className="flex items-center gap-2 flex-wrap text-dim">
+                    {/* 1. 날짜 및 시간 */}
                     <div>
                       {r.dateText} {r.timeText}
                     </div>
-                    {!(
-                      r.lastClass &&
-                      r.consultTag &&
-                      r.consultTag.label === "휴회 예정"
-                    ) ? (
-                      <ConsultBadge tag={r.consultTag} />
-                    ) : null}
-                    {r.lastClass ? (
-                      <Badge style={{ background: "#ef4444", color: "#fff" }}>마지막 수업</Badge>
-                    ) : null}
+
+                    {/* 2. 성취도(퍼센트) */}
                     <Badge style={getAchievementBadgeStyle(r.percent)}>{r.percent}%</Badge>
+
+                    {/* 3. 출결 상태 */}
                     <Badge style={statusBadge.style}>{statusBadge.label}</Badge>
+
+                    {/* 4. 변경/이월 등 추가 배지 */}
                     {(r.badges ?? []).map((badge) => (
                       <Badge key={`${r.token}:${r.index}:${badge}`} style={getSessionExtraBadgeStyle(badge)}>
                         {badge}
                       </Badge>
                     ))}
+
+                    {/* 5. 상담 내역 배지 */}
+                    {!(r.lastClass && r.consultTag && r.consultTag.label === "휴회 예정") ? (
+                      <ConsultBadge tag={r.consultTag} />
+                    ) : null}
+
+                    {/* 6. 마지막 수업 여부 */}
+                    {r.lastClass ? (
+                      <Badge style={{ background: "#ef4444", color: "#fff" }}>마지막 수업</Badge>
+                    ) : null}
                   </div>
                 </Link>
                 <div onClick={(e) => e.stopPropagation()} style={{ display: "flex", gap: 6 }}>
