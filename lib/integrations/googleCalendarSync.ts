@@ -5,9 +5,11 @@ import { loadStudents } from "@/lib/storage/students";
 import { loadTeachers } from "@/lib/storage/teachers";
 import type { Session, Student, Teacher } from "@/lib/types/index";
 import {
+  buildBaseDatesISO,
   buildBaseDatesISOByToken,
   readMetaMap,
   getSessionVisibility,
+  computeEffectiveISO,
 } from "@/lib/factories/sessionFactories";
 import { findLastClassIndex } from "@/lib/ui/session/pauseHelpers";
 
@@ -1015,7 +1017,20 @@ async function runTeacherCalendarRebuild(args: {
       });
 
       const visibleRows = filterVisibleSessions(student, rows);
-      const orderedSessions = [...visibleRows].sort((a, b) => {
+      const localMetaMap = readMetaMap(student.token);
+      const baseDatesISOForStudent = buildBaseDatesISO(student, 120);
+
+      const effectiveRows = visibleRows.map((s: Session) => {
+        const { effectiveISO } = computeEffectiveISO({
+          token: student.token,
+          index: s.index,
+          baseDatesISO: baseDatesISOForStudent,
+          metaMap: localMetaMap,
+        });
+        return { ...s, displayAt: effectiveISO || s.displayAt };
+      });
+
+      const orderedSessions = [...effectiveRows].sort((a, b) => {
         const ta = new Date(a.displayAt).getTime();
         const tb = new Date(b.displayAt).getTime();
         if (Number.isFinite(ta) && Number.isFinite(tb) && ta !== tb) return ta - tb;
@@ -1090,9 +1105,28 @@ export function rebuildTeacherGoogleCalendar(args: {
 }
 
 async function runSync(args: SyncArgs): Promise<void> {
+  const students = loadStudents();
+  const studentById = new Map(students.map((s) => [s.id, s] as const));
+
+  // 모든 세션에 대해 실시간 계산된 '진짜 날짜'를 먼저 입힙니다.
+  const correctedNext = args.next.map((s) => {
+    const student = studentById.get(s.studentId);
+    if (!student) return s;
+    // [성능] 각 세션마다 rebuild하는 대신 캐싱을 고려할 수 있으나, 일단 정확성을 위해 매번 계산
+    const baseDatesISO = buildBaseDatesISO(student, 120);
+    const localMetaMap = readMetaMap(student.token);
+    const { effectiveISO } = computeEffectiveISO({
+      token: student.token,
+      index: s.index,
+      baseDatesISO,
+      metaMap: localMetaMap,
+    });
+    return { ...s, displayAt: effectiveISO || s.displayAt };
+  });
+
   const previousById = new Map(args.previous.map((s) => [s.id, s] as const));
-  const nextById = new Map(args.next.map((s) => [s.id, s] as const));
-  const provisionalTargets = args.next.filter((next) => {
+  const nextById = new Map(correctedNext.map((s) => [s.id, s] as const));
+  const provisionalTargets = correctedNext.filter((next) => {
     const prev = previousById.get(next.id);
     const status = text(next.googleCalendarStatus);
     if (status === "pending" || status === "error") return true;
@@ -1126,9 +1160,7 @@ async function runSync(args: SyncArgs): Promise<void> {
     return;
   }
 
-  const students = loadStudents();
   const teachers = loadTeachers();
-  const studentById = new Map(students.map((s) => [s.id, s] as const));
   const teacherById = new Map(teachers.map((t) => [t.id, t] as const));
   const patches: SessionPatch[] = [];
 
@@ -1149,12 +1181,11 @@ async function runSync(args: SyncArgs): Promise<void> {
 
   const visibleNextSessions: Session[] = [];
   for (const student of students) {
-    const studentSessions = args.next.filter(s => s.studentId === student.id);
+    const studentSessions = correctedNext.filter((s) => s.studentId === student.id);
     visibleNextSessions.push(...filterVisibleSessions(student, studentSessions));
   }
-  const visibleSet = new Set(visibleNextSessions.map(s => s.id));
+  const visibleSet = new Set(visibleNextSessions.map((s) => s.id));
 
-  // 이메일 변경처럼 "세션 행 자체는 안 바뀌었지만 소유자가 달라진 경우"를 포함해서 동기화 대상 선정
   const targetSessions = visibleNextSessions.filter((next) => {
     const prev = previousById.get(next.id);
     const status = text(next.googleCalendarStatus);
