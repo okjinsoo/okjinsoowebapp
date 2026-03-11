@@ -240,7 +240,7 @@ function normalizeRules(rules: ScheduleRule[]): ScheduleRule[] {
   });
 }
 
-function ymdFromISO_KST(iso: string): string | null {
+export function ymdFromISO_KST(iso: string): string | null {
   try {
     const dt = new Date(iso);
     if (!Number.isFinite(dt.getTime())) return null;
@@ -358,79 +358,59 @@ function buildDatesSegment(args: {
 }
 
 function buildBaseDatesISOFromRules(student: Student, count: number): string[] {
-  const startYMD = student.startDate; // "YYYY-MM-DD"
-  if (!startYMD) return [];
-  const baseRules = normalizeRules(student.scheduleRules ?? []);
-  if (baseRules.length === 0) return [];
+  const startYMD = student.startDate;
+  if (!startYMD || count <= 0) return [];
 
   const rawChanges = Array.isArray(student.scheduleChangeEvents) ? student.scheduleChangeEvents : [];
   const localMetaMap = readMetaMap(student.token ?? "");
-  const changes = rawChanges
-    .filter((c) => Number.isFinite(c.startIndex) && c.startIndex >= 1 && Array.isArray(c.newRules))
-    .map((c) => {
-      const effectiveStartIndex = Math.max(1, Math.floor(Number(c.startIndex)));
-      const carryOffset = carrySumUntil(localMetaMap, effectiveStartIndex);
-      const baseStartIndex = Math.max(1, effectiveStartIndex + carryOffset);
-      const rules = normalizeRules(c.newRules ?? []);
-      const startDate = normalizeYmd((c as { startDate?: unknown }).startDate);
-      return {
-        effectiveStartIndex,
-        baseStartIndex,
-        rules,
-        startDate,
-      };
-    })
-    .filter((c) => c.rules.length > 0)
-    .sort((a, b) => {
-      if (a.baseStartIndex !== b.baseStartIndex) return a.baseStartIndex - b.baseStartIndex;
-      return a.effectiveStartIndex - b.effectiveStartIndex;
-    });
 
-  if (changes.length === 0) return buildDatesFromRules(startYMD, baseRules, count);
+  // 규칙 조회를 위한 도우미 함수 (특정 베이스 인덱스가 어떤 규칙을 따르는지 결정)
+  const getRulesForBaseIdx = (baseIdx: number) => {
+    // 1. 역순으로 변화 이벤트를 확인하여 해당 인덱스에 걸리는 최신 규칙을 찾음
+    // baseIdx는 0-based 포인트이므로, 실제 세션 index와 비교할 때는 index = baseIdx + 1 - carry 가 필요하지만,
+    // 여기서는 단순히 '법칙이 적용되는 시점'인 baseStartIndex와 비교합니다.
+    
+    // changes를 미리 가공
+    const changes = rawChanges
+      .filter((c) => Number.isFinite(c.startIndex) && c.startIndex >= 1)
+      .map((c) => {
+        const carryOffset = carrySumUntil(localMetaMap, c.startIndex);
+        return {
+          ...c,
+          baseStartIndex: c.startIndex + carryOffset,
+          rules: normalizeRules(c.newRules ?? []),
+        };
+      })
+      .sort((a, b) => b.baseStartIndex - a.baseStartIndex); // 큰 인덱스 우선
+
+    for (const ch of changes) {
+      if (baseIdx + 1 >= ch.baseStartIndex) {
+        return { rules: ch.rules, minStartYMD: normalizeYmd(ch.startDate) };
+      }
+    }
+    return { rules: normalizeRules(student.scheduleRules ?? []), minStartYMD: null };
+  };
 
   const out: string[] = [];
   let lastISO: string | null = null;
-  let currentRules = baseRules;
-  let currentBaseStart = 1;
-  let currentMinStartYMD: string | null = null;
 
-  for (const ch of changes) {
-    if (ch.baseStartIndex <= currentBaseStart) {
-      currentRules = ch.rules;
-      currentBaseStart = ch.baseStartIndex;
-      currentMinStartYMD = ch.startDate;
-      continue;
-    }
+  for (let i = 0; i < count; i++) {
+    const { rules, minStartYMD } = getRulesForBaseIdx(i);
+    if (rules.length === 0) break;
 
-    const segCount = Math.min(ch.baseStartIndex - currentBaseStart, count - out.length);
-    if (segCount > 0) {
-      const segment = buildDatesSegment({
-        studentStartYMD: startYMD,
-        lastISO,
-        rules: currentRules,
-        count: segCount,
-        minStartYMD: currentMinStartYMD,
-      });
-      out.push(...segment);
-      lastISO = segment[segment.length - 1] ?? lastISO;
-    }
-
-    currentRules = ch.rules;
-    currentBaseStart = ch.baseStartIndex;
-    currentMinStartYMD = ch.startDate;
-    if (out.length >= count) break;
-  }
-
-  if (out.length < count) {
-    const segCount = count - out.length;
+    // 현재 인덱스(i) 하나에 대한 날짜 생성
     const segment = buildDatesSegment({
       studentStartYMD: startYMD,
       lastISO,
-      rules: currentRules,
-      count: segCount,
-      minStartYMD: currentMinStartYMD,
+      rules,
+      count: 1,
+      minStartYMD,
     });
-    out.push(...segment);
+
+    if (segment.length === 0) break;
+    const iso = segment[0];
+    out.push(iso);
+    lastISO = iso;
   }
 
   return out;
@@ -520,15 +500,21 @@ export function computeEffectiveISO(args: {
 
   const baseISO = getBaseISOWithExtrapolation(baseDatesISO, baseIdx);
 
-  // ✅ override 최우선
+  // ✅ override 우선순위 결정
+  // 1. manual(조정으로 직접 설정): 이월/시간표 변경과 무관하게 항상 최우선 (기존 법을 어기는 예외)
+  // 2. extension(결제 자동 생성): 
+  //    - 이월(carry)이 적용되었거나, 시간표 변경으로 날짜(YMD)가 달라졌다면 가차 없이 무시 (법 우선)
   if (meta.overrideDate) {
-    const h = meta.overrideHour ?? 0;
-    const m = meta.overrideMinute ?? 0;
+    const isManual = meta.overrideSource === "manual";
+    const baseISO_YMD = ymdFromISO_KST(baseISO ?? "");
+    const dateMatch = baseISO_YMD === meta.overrideDate;
+    const carryApplied = skip > 0;
 
-    // KST(+09:00) 기준으로 ISO 생성 (브라우저/환경 timezone 영향 제거)
-    const iso = isoFromKST(meta.overrideDate, h, m);
-    if (iso) {
-      return { effectiveISO: iso, meta, baseISO };
+    if (isManual || (!carryApplied && dateMatch)) {
+      const h = meta.overrideHour ?? 0;
+      const m = meta.overrideMinute ?? 0;
+      const iso = isoFromKST(meta.overrideDate, h, m);
+      if (iso) return { effectiveISO: iso, meta, baseISO };
     }
   }
 
@@ -543,11 +529,9 @@ export function buildBadges(meta: SessionMeta): string[] {
   // ✅ 출결은 배지에서 제외 (UI에서 별도 칩으로 강하게 표시)
   const carry = safeInt(meta.carry ?? 0, 0);
   if (carry > 0) out.push(`이월+${carry}`);
-  if (meta.overrideDate) {
-    const source = normalizeOverrideSource(meta.overrideSource);
-    const hasManualNote = Boolean((meta.reason ?? "").trim() || (meta.record ?? "").trim());
-    const isExtensionAuto = source === "extension" || (source === "" && !hasManualNote);
-    if (!isExtensionAuto) out.push("변경");
+  // '변경' 배지는 선생님이 직접 손으로 바꾼(manual) 경우에만 노출합니다.
+  if (meta.overrideDate && meta.overrideSource === "manual") {
+    out.push("변경");
   }
 
   return out;

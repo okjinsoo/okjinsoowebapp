@@ -745,14 +745,19 @@ export default function StudentHubCore({
 
   function buildSyncedSessionsForStudent(
     updatedStudent: Student,
-    sourceSessions?: Session[]
+    sourceSessions?: Session[],
+    options?: { force?: boolean }
   ): { list: Session[]; changed: boolean } {
     const all = sourceSessions ?? loadSessions();
-    const own = all.filter((session) => session.studentId === updatedStudent.id);
-    if (own.length === 0) return { list: all, changed: false };
+    const own = all.filter((session) => String(session.studentId) === String(updatedStudent.id));
+    if (own.length === 0) {
+      console.warn("[Debug] No sessions found for student:", updatedStudent.id);
+      return { list: all, changed: false };
+    }
 
     const maxIndex = own.reduce((max, session) => Math.max(max, session.index), 0);
     const nextBaseDatesISO = buildBaseDatesISO(updatedStudent, Math.max(120, updatedStudent.planCount ?? 0, maxIndex));
+    console.log("[Debug] Calculated baseDatesISO for student:", updatedStudent.name, "Count:", nextBaseDatesISO.length);
     const localMetaMap = readMetaMap(token);
 
     let changed = false;
@@ -765,7 +770,10 @@ export default function StudentHubCore({
         baseDatesISO: nextBaseDatesISO,
         metaMap: localMetaMap,
       });
-      if (!effectiveISO || effectiveISO === session.displayAt) return session;
+      if (!effectiveISO) return session;
+      const isDifferent = effectiveISO !== session.displayAt;
+      if (!options?.force && !isDifferent) return session;
+
       changed = true;
       return {
         ...session,
@@ -776,18 +784,55 @@ export default function StudentHubCore({
     return { list: next, changed };
   }
 
-  async function persistScheduleState(updatedStudent: Student): Promise<boolean> {
+  async function persistScheduleState(
+    updatedStudent: Student,
+    clearExtensionFromIndex?: number
+  ): Promise<boolean> {
     const baseline = await loadLatestCoreSnapshotBaseline();
     const nextStudents = buildNextStudentsList(updatedStudent, baseline.students);
+
+    // ✅ 시간 변경 시작 회차 이후의 extension override(연장 결제 자동 설정 날짜)를 초기화
+    // → computeEffectiveISO가 override 대신 새 baseDatesISO(수/토)를 사용하도록 해제
+    // → manual override(선생님이 직접 변경한 날짜)는 건드리지 않음
+    let metaChanged = false;
+    const localMetaMap = readMetaMap(token);
+    const nextMetaMap: Record<number, ReturnType<typeof readMetaMap>[number]> = { ...localMetaMap };
+    if (clearExtensionFromIndex !== undefined && clearExtensionFromIndex >= 1) {
+      for (const key of Object.keys(nextMetaMap)) {
+        const idx = Number(key);
+        if (!Number.isFinite(idx) || idx < clearExtensionFromIndex) continue;
+        const meta = nextMetaMap[idx];
+        if (meta?.overrideSource === "extension" && meta?.overrideDate) {
+          nextMetaMap[idx] = {
+            ...meta,
+            overrideDate: "",
+            overrideHour: null,
+            overrideMinute: null,
+            overrideSource: "",
+          };
+          metaChanged = true;
+        }
+      }
+      if (metaChanged) {
+        browserStorage.setItem(metaMapKey(token), JSON.stringify(nextMetaMap));
+        window.dispatchEvent(new CustomEvent(TUTORWEB_EVENTS.metaMapUpdated, { detail: { token } }));
+      }
+    }
+
+    // metaMap이 초기화된 뒤 세션 날짜를 재계산
     const { list: nextSessions, changed: sessionsChanged } = buildSyncedSessionsForStudent(
       updatedStudent,
-      baseline.sessions
+      undefined,
+      { force: clearExtensionFromIndex !== undefined }
     );
 
     try {
       await pushSharedSnapshot({
         students: nextStudents,
         ...(sessionsChanged ? { sessions: nextSessions } : {}),
+        ...(metaChanged
+          ? { stateKv: { [metaMapKey(token)]: JSON.stringify(nextMetaMap) } }
+          : {}),
       });
 
       saveStudents(nextStudents, { skipSharedSnapshot: true });
@@ -848,11 +893,10 @@ export default function StudentHubCore({
   async function saveScheduleChange() {
     if (!student) return;
     setScheduleError("");
-    const computedStart = scheduleStartDate
-      ? resolveScheduleStartIndexByDate(scheduleStartDate)
-      : Number(scheduleStartIndex);
-    const startIndex = Math.max(1, Math.floor(Number(computedStart)));
+    const startIndex = Math.max(1, Math.floor(Number(scheduleStartIndex)));
     if (!Number.isFinite(startIndex)) return setScheduleError("시작 회차를 입력해주세요.");
+    // startDate가 없으면 오늘 날짜를 기본값으로 사용
+    const startDate = scheduleStartDate || todayYmdKST();
 
     const rules: ScheduleRule[] = [];
     for (const d of [0, 1, 2, 3, 4, 5, 6]) {
@@ -878,7 +922,7 @@ export default function StudentHubCore({
       metaMap: localMetaMap,
     });
     const fallbackStartDate = ymdFromISO_KST(effectiveISO ?? "");
-    const normalizedStartDate = (scheduleStartDate || fallbackStartDate || "").trim();
+    const normalizedStartDate = (startDate || fallbackStartDate || "").trim();
 
     nextEvents.push({
       id: makeId(),
@@ -889,7 +933,7 @@ export default function StudentHubCore({
     });
     nextEvents.sort((a, b) => a.startIndex - b.startIndex);
 
-    const ok = await persistScheduleState({ ...student, scheduleChangeEvents: nextEvents });
+    const ok = await persistScheduleState({ ...student, scheduleChangeEvents: nextEvents }, startIndex);
     if (!ok) {
       setScheduleError("서버 저장에 실패했어요. 잠시 뒤 다시 시도해주세요.");
       return;
@@ -922,8 +966,8 @@ export default function StudentHubCore({
 
     const baseline = await loadLatestCoreSnapshotBaseline();
     const currentStudents = baseline.students.length > 0 ? baseline.students : loadStudents();
-    const nextStudents = currentStudents.some((row) => row.id === updatedStudent.id)
-      ? currentStudents.map((row) => (row.id === updatedStudent.id ? updatedStudent : row))
+    const nextStudents = currentStudents.some((row) => String(row.id) === String(updatedStudent.id))
+      ? currentStudents.map((row) => (String(row.id) === String(updatedStudent.id) ? updatedStudent : row))
       : [...currentStudents, updatedStudent];
 
     let nextAllSessions = baseline.sessions.length > 0 ? baseline.sessions : loadSessions();
@@ -1022,47 +1066,9 @@ export default function StudentHubCore({
         }
       }
 
-      const sessionsNow = workingSessions
-        .filter((s) => s.studentId === updatedStudent.id)
-        .sort((a, b) => a.index - b.index);
-      const byIndex = new Map(sessionsNow.map((s) => [s.index, s] as const));
-      let cursorISO = byIndex.get(baseCount)?.displayAt ?? null;
-
-      for (const rec of normalized) {
-        if (!Number.isFinite(rec.startIndex) || !Number.isFinite(rec.endIndex) || rec.addedCount <= 0) continue;
-        const rules = rulesForIndex(updatedStudent, rec.startIndex);
-        let startISO: string | null = null;
-        if (cursorISO) {
-          const lastYmd = ymdFromISO_KST(cursorISO);
-          if (rec.paymentDate && lastYmd && rec.paymentDate > lastYmd) {
-            startISO = nextIsoFromRules({ rules, fromYmd: rec.paymentDate });
-          } else {
-            startISO = nextIsoFromRules({ rules, afterISO: cursorISO });
-          }
-        } else {
-          startISO = nextIsoFromRules({ rules, fromYmd: rec.paymentDate || updatedStudent.startDate });
-        }
-        if (!startISO) continue;
-
-        let iso = startISO;
-        for (let idx = rec.startIndex; idx <= rec.endIndex; idx++) {
-          const ymd = ymdFromISO_KST(iso);
-          const hm = hmFromISO_KST(iso);
-          if (ymd && hm) {
-            applyMetaPatch(idx, {
-              overrideDate: ymd,
-              overrideHour: hm.hour,
-              overrideMinute: hm.minute,
-              overrideSource: "extension",
-            });
-          }
-          const nextRules = rulesForIndex(updatedStudent, idx + 1);
-          const next = nextIsoFromRules({ rules: nextRules, afterISO: iso });
-          if (!next) break;
-          iso = next;
-        }
-        cursorISO = iso;
-      }
+      // [DELETED] 연장 결제 시 미래 회차 날짜를 강제로 고정하는 로직을 삭제했습니다.
+      // 이제 결제된 회차들은 metaMap에 박제되지 않고, 현재 시간표 규칙(Law)을 동적으로 따릅니다.
+      // -----------------------------------------------------------------
 
       for (let idx = nextTotal + 1; idx <= prevMaxIndex; idx++) {
         applyMetaPatch(idx, { overrideDate: "", overrideHour: null, overrideMinute: null, overrideSource: "" });
