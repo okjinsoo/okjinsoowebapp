@@ -303,10 +303,10 @@ async function requestGoogle(args: {
   }
 
   if (!res.ok) {
-    if (res.status === 401) {
-      throw new Error("401 구글 캘린더 권한이 만료되었거나 무효합니다. 홈에서 로그아웃 후 다시 로그인해주세요.");
-    }
     const msg = parseErrorText(body);
+    if (res.status === 401) {
+      throw new Error(`401 구글 캘린더 권한이 만료되었거나 무효합니다. (${msg}) 홈에서 로그아웃 후 다시 로그인해주세요.`);
+    }
     throw new Error(`${res.status} ${msg}`);
   }
 

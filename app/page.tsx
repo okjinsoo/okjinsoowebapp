@@ -79,7 +79,7 @@ export default function HomePage() {
 
     setBusy(true);
     const redirectTo = `${window.location.origin}/auth/callback`;
-    const url = buildGoogleAuthUrl(redirectTo, false);
+    const url = buildGoogleAuthUrl(redirectTo, true);
     if (!url) {
       setBusy(false);
       setError("로그인 URL을 만들지 못했어요.");
