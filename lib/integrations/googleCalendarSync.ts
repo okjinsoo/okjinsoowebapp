@@ -616,6 +616,42 @@ async function purgeManagedEventsForStudent(args: {
   }
 }
 
+async function findSessionEvents(args: {
+  token: string;
+  calendarId: string;
+  session: Session;
+  student: Student;
+  timeMin?: string;
+  timeMax?: string;
+}): Promise<CandidateEvent[]> {
+  const query: Record<string, string> = {
+    singleEvents: "true",
+    showDeleted: "false",
+    maxResults: "50",
+    q: `${APP_EVENT_MARKER} ${args.student.name} ${args.session.index}회차`,
+  };
+  if (args.timeMin) query.timeMin = args.timeMin;
+  if (args.timeMax) query.timeMax = args.timeMax;
+
+  const body = await requestGoogle({
+    token: args.token,
+    method: "GET",
+    path: `/calendars/${encodeURIComponent(args.calendarId)}/events`,
+    query,
+  });
+
+  const all = parseCandidateEvents(body);
+  return all.filter((event) => {
+    const summary = event.summary;
+    const description = event.description;
+    const hasSessionId = event.sessionId === args.session.id;
+    const hasAppMarker = description.includes(APP_EVENT_MARKER);
+    const matchesStudent = summary.includes(args.student.name) || description.includes(`학생: ${args.student.name}`);
+    const matchesIndex = summary.includes(`${args.session.index}회차`) || description.includes(`회차: ${args.session.index}`);
+    return hasSessionId || (hasAppMarker && matchesStudent && matchesIndex);
+  });
+}
+
 async function findSignatureEvents(args: {
   token: string;
   calendarId: string;
@@ -1406,27 +1442,41 @@ async function runSync(args: SyncArgs): Promise<void> {
         }
       }
 
-      const signatureEvents = await findSignatureEvents({
+      // 1. 강제 청소 및 입양 (Purge & Adopt): 
+      // 현재 세션 ID 또는 시그니처(이름+회차)를 가진 모든 일정을 찾습니다. (시간 창에 구애받지 않음)
+      const allSessionEvents = await findSessionEvents({
         token: providerToken,
         calendarId: sessionCalendarId,
         session: sessionForOwner,
         student,
       });
-      if (signatureEvents.length > 0) {
-        const canonical =
-          signatureEvents.find((ev) => ev.eventId === sessionForOwner.googleCalendarEventId) ??
-          signatureEvents[0];
-        const duplicates = signatureEvents.filter((ev) => ev.eventId !== canonical.eventId);
-        if (!sessionForOwner.googleCalendarEventId) {
+
+      if (allSessionEvents.length > 0) {
+        const currentStartMs = new Date(safeIso(sessionForOwner.displayAt) ?? 0).getTime();
+
+        // 1-1. 기준(Canonical) 일정 선정
+        // - 이미 세션에 기록된 eventId가 있다면 그것을 최우선으로 사용
+        // - 없다면, 현재 시간(new date)에 가장 근접한(±5분) 일정을 입양
+        // - 그것도 없다면, 그냥 발견된 첫 번째 일정을 입양 (나중에 PATCH로 새 시간에 옮길 것임)
+        let canonicalId = sessionForOwner.googleCalendarEventId;
+        const matchingCurrentTime = allSessionEvents.find(ev => {
+          const evStartMs = new Date(ev.startIso ?? 0).getTime();
+          return Math.abs(evStartMs - currentStartMs) <= DUPLICATE_TIME_WINDOW_MS;
+        });
+
+        if (!canonicalId) {
+          canonicalId = matchingCurrentTime?.eventId ?? allSessionEvents[0].eventId;
+          const canonicalEvent = allSessionEvents.find(ev => ev.eventId === canonicalId);
           sessionForOwner = {
             ...sessionForOwner,
-            googleCalendarEventId: canonical.eventId,
-            googleMeetUrl: sessionForOwner.googleMeetUrl ?? canonical.meetUrl ?? undefined,
+            googleCalendarEventId: canonicalId ?? undefined,
+            googleMeetUrl: sessionForOwner.googleMeetUrl ?? canonicalEvent?.meetUrl ?? undefined,
           };
         }
+
+        // 1-2. 기준 이외의 모든 유령/중복 일정 청소
+        const duplicates = allSessionEvents.filter(ev => ev.eventId !== canonicalId);
         for (const dup of duplicates) {
-          if (dup.eventId === canonical.eventId) continue;
-          if (dup.eventId === sessionForOwner.googleCalendarEventId) continue;
           try {
             await deleteEvent({
               token: providerToken,
@@ -1434,8 +1484,9 @@ async function runSync(args: SyncArgs): Promise<void> {
               eventId: dup.eventId,
               sendUpdates: "none",
             });
+            console.log(`[Purge] 중복/유령 일정 삭제 성공: ${student.name} ${next.index}회차 (${dup.startIso})`);
           } catch (err) {
-            console.error("Google Calendar 중복 이벤트 정리 실패:", err);
+            console.error(`[Purge] 중복/유령 일정 삭제 실패: ${dup.eventId}`, err);
           }
         }
       }
