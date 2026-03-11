@@ -374,7 +374,10 @@ function buildBaseDatesISOFromRules(student: Student, count: number): string[] {
     const changes = rawChanges
       .filter((c) => Number.isFinite(c.startIndex) && c.startIndex >= 1)
       .map((c) => {
-        const carryOffset = carrySumUntil(localMetaMap, c.startIndex);
+        // 법칙이 바뀌는 시점은 그 '회차'가 앉을 '의자' 번호입니다.
+        // 이때 해당 회차 자체의 이월은 의자 번호를 결정하는 변수이지, 법칙의 경계를 가르는 변수가 아니어야 합니다.
+        // 따라서 이전 회차까지의 이월만 합산합니다.
+        const carryOffset = carrySumUntil(localMetaMap, c.startIndex - 1);
         return {
           ...c,
           baseStartIndex: c.startIndex + carryOffset,
