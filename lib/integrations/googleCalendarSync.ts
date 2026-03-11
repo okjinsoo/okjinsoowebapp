@@ -81,6 +81,8 @@ function normalizeEmail(v: unknown): string {
 function isValidEmail(email: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
+ 
+const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 function ownerSessionKey(ownerEmail: string, sessionId: string): string {
   return `${ownerEmail}::${sessionId}`;
@@ -280,12 +282,13 @@ async function requestGoogle(args: {
   path: string;
   query?: Record<string, string>;
   body?: unknown;
+  _retry?: boolean;
 }): Promise<unknown> {
   const url = new URL(`${GOOGLE_CALENDAR_BASE_URL}${args.path}`);
   for (const [k, v] of Object.entries(args.query ?? {})) {
     url.searchParams.set(k, v);
   }
-
+ 
   const res = await fetch(url.toString(), {
     method: args.method,
     headers: {
@@ -294,24 +297,34 @@ async function requestGoogle(args: {
     },
     body: args.body === undefined || args.method === "GET" ? undefined : JSON.stringify(args.body),
   });
-
+ 
   if (res.status === 204) return null;
-
+ 
   let body: unknown = null;
   try {
     body = await res.json();
   } catch {
     body = null;
   }
-
+ 
   if (!res.ok) {
     const msg = parseErrorText(body);
+    if (res.status === 401 && !args._retry) {
+      // 401 발생 시 토큰 만료 가능성이 있으므로 최신 세션을 다시 로드해서 1회 재시도해봅니다.
+      console.warn(`[Google API] 401 감지됨. 토큰 재로드 후 재시도 중... (${msg})`);
+      const auth = loadAuthSession();
+      const nextToken = text(auth?.providerAccessToken);
+      if (nextToken && nextToken !== args.token) {
+        return requestGoogle({ ...args, token: nextToken, _retry: true });
+      }
+    }
+ 
     if (res.status === 401) {
       throw new Error(`401 구글 캘린더 권한이 만료되었거나 무효합니다. (${msg}) 홈에서 로그아웃 후 다시 로그인해주세요.`);
     }
     throw new Error(`${res.status} ${msg}`);
   }
-
+ 
   return body;
 }
 
@@ -1045,12 +1058,9 @@ async function runTeacherCalendarRebuild(args: {
         token: providerToken,
         ownerEmail,
       });
-      await purgeManagedEventsForStudent({
-        token: providerToken,
-        calendarIds: [calendarId],
-        student,
-        teacherEmail: ownerEmail,
-      });
+
+      // [중요] 일괄 삭제(purgeManagedEventsForStudent)는 401 에러나 타임아웃에 취약하고 누락 위험이 있습니다.
+      // 대신 아래 개별 루프에서 findSessionEvents를 통해 확실하게 청소 및 입양을 진행합니다.
 
       const visibleRows = filterVisibleSessions(student, rows);
       const localMetaMap = readMetaMap(student.token);
@@ -1075,14 +1085,68 @@ async function runTeacherCalendarRebuild(args: {
 
       for (const session of orderedSessions) {
         try {
-          const result = await createEvent({
+          // 1. 강제 청소 및 입양 (Purge & Adopt):
+          // 현재 세션ID 또는 꼬리표(이름+회차) 기준 모든 일정을 뒤져서 유령을 청소합니다.
+          const allSessionEvents = await findSessionEvents({
             token: providerToken,
             calendarId,
-            session: { ...session, googleCalendarEventId: undefined, googleMeetUrl: undefined },
+            session,
             student,
-            teacher,
-            sendUpdates: "none",
           });
+
+          let sessionToCreateOrUpdate = { ...session };
+          if (allSessionEvents.length > 0) {
+            await delay(100);
+            const currentStartMs = new Date(safeIso(session.displayAt) ?? 0).getTime();
+            // 가장 가까운 시간을 찾거나, 없으면 첫 번째 일정을 입양(나중에 PATCH로 이동됨)
+            const matchingCurrentTime = allSessionEvents.find(ev => {
+              const evStartMs = new Date(ev.startIso ?? 0).getTime();
+              return Math.abs(evStartMs - currentStartMs) <= DUPLICATE_TIME_WINDOW_MS;
+            });
+            const canonicalId = matchingCurrentTime?.eventId ?? allSessionEvents[0].eventId;
+            const canonicalEvent = allSessionEvents.find(ev => ev.eventId === canonicalId);
+
+            sessionToCreateOrUpdate = {
+              ...sessionToCreateOrUpdate,
+              googleCalendarEventId: canonicalId ?? undefined,
+              googleMeetUrl: sessionToCreateOrUpdate.googleMeetUrl ?? canonicalEvent?.meetUrl ?? undefined,
+            };
+
+            // 기준 외의 모든 유령 삭제
+            const duplicates = allSessionEvents.filter(ev => ev.eventId !== canonicalId);
+            for (const dup of duplicates) {
+              try {
+                await deleteEvent({
+                  token: providerToken,
+                  calendarId,
+                  eventId: dup.eventId,
+                  sendUpdates: "none",
+                });
+              } catch (err) {
+                console.warn(`[Rebuild-Purge] 유령 일정 삭제 실패: ${dup.eventId}`, err);
+              }
+            }
+          }
+
+          let result: { eventId: string | null; meetUrl: string | null };
+          if (sessionToCreateOrUpdate.googleCalendarEventId) {
+            result = await updateEvent({
+              token: providerToken,
+              calendarId,
+              session: sessionToCreateOrUpdate,
+              student,
+              teacher,
+            });
+          } else {
+            result = await createEvent({
+              token: providerToken,
+              calendarId,
+              session: { ...sessionToCreateOrUpdate, googleCalendarEventId: undefined, googleMeetUrl: undefined },
+              student,
+              teacher,
+              sendUpdates: "none",
+            });
+          }
           if (!result.eventId) {
             throw new Error("유효한 수업 시간이 없어 캘린더 일정을 만들지 못했습니다.");
           }
@@ -1452,6 +1516,7 @@ async function runSync(args: SyncArgs): Promise<void> {
       });
 
       if (allSessionEvents.length > 0) {
+        await delay(100);
         const currentStartMs = new Date(safeIso(sessionForOwner.displayAt) ?? 0).getTime();
 
         // 1-1. 기준(Canonical) 일정 선정
