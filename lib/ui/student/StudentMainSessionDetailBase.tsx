@@ -140,6 +140,7 @@ export default function StudentMainSessionDetailBase({ role }: { role: "a" | "t"
         </div>
         {token && Number.isFinite(index) ? (
           <SessionClientCore
+            key={`${token}-${index}`}
             role={role}
             token={token}
             sessionIndex={index}

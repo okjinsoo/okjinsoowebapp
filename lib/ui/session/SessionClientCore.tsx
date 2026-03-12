@@ -136,6 +136,7 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
 
   const [isReordering, setIsReordering] = useState(false);
   const [isHydrating, setIsHydrating] = useState(true); // [V3 추가] 서버 데이터 수신 대기 상태
+  const [isSaving, setIsSaving] = useState(false); // [V4 추가] 동기화 중 상태
 
   // tree
   const [tree, setTree] = useState<LectureTree>(() => loadLectureTree());
@@ -255,7 +256,7 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
 
   // save (관련 상태 변경 시 한꺼번에 저장하여 BROWSER_STORAGE_EVENT 발생 최소화)
   useEffect(() => {
-    if (!mounted || isHydrating) return; // [V3] 서버 데이터 수신 중에는 저장 방지 (레이스 컨디션 방지)
+    if (!mounted || isHydrating || isSaving) return; // [V3/V4] 서버 통신 중에는 자동 저장 방지
 
     // [버그수정] 저장 직전 타임스탬프 기록 → onStorageChanged가 2초간 이 변경을 외부 이벤트로 오해하지 않도록
     localWriteTimestampRef.current = Date.now();
@@ -401,7 +402,42 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
   }, [pickerLeafOptions, pickerQuery]);
 
   return (
-    <section style={{ marginTop: 12 }}>
+    <section style={{ marginTop: 12, position: "relative" }}>
+      {/* 초기 로딩 및 저장 중 오버레이 */}
+      {(isHydrating || isSaving) && (
+        <div style={{
+          position: "absolute",
+          inset: -10,
+          background: "rgba(255,255,255,0.4)",
+          backdropFilter: "blur(1px)",
+          zIndex: 50,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          borderRadius: 16,
+        }}>
+          <div style={{
+            padding: "10px 20px",
+            background: "var(--surface-bg)",
+            border: "1px solid var(--surface-border)",
+            borderRadius: 30,
+            boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
+            fontWeight: 600,
+            fontSize: 14,
+            display: "flex",
+            alignItems: "center",
+            gap: 10
+          }}>
+            <div className="spinner" style={{ width: 16, height: 16, border: "2px solid var(--action-primary-bg)", borderTopColor: "transparent", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
+            {isHydrating ? "최신 데이터를 불러오는 중..." : "변경 사항을 적용하는 중..."}
+          </div>
+        </div>
+      )}
+
+      <style dangerouslySetInnerHTML={{ __html: `
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+      `}} />
+
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
         <div className="card-title">오늘의 학습</div>
       </div>
@@ -413,7 +449,28 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
         {canAssignLectures ? (
           <div style={{ display: "flex", gap: 8 }}>
             <button
-              onClick={() => setIsReordering((r) => !r)}
+              onClick={async () => {
+                if (isReordering) {
+                  // 완료 시점에 강제 저장 후 종료
+                  setIsSaving(true);
+                  try {
+                    await pushSharedSnapshot({
+                      stateKv: {
+                        [keyLeafIds(token, sessionIndex)]: JSON.stringify(lectureLeafIds),
+                        [keyLastAdded(token, sessionIndex)]: lastAddedLeafId,
+                      },
+                    });
+                  } catch (err) {
+                    console.error("순서 변경 저장 실패:", err);
+                  } finally {
+                    setIsSaving(false);
+                    setIsReordering(false);
+                  }
+                } else {
+                  setIsReordering(true);
+                }
+              }}
+              disabled={isHydrating || isSaving}
               className="btn btn-black"
               style={{
                 padding: "6px 12px",
@@ -421,12 +478,14 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
                 border: `1px solid ${isReordering ? "var(--action-primary-border)" : "var(--control-border)"}`,
                 color: isReordering ? "var(--action-contrast-text)" : "var(--text-main)",
                 fontWeight: isReordering ? 700 : 400,
+                minWidth: 90,
               }}
             >
-              {isReordering ? "순서 완료" : "순서 변경"}
+              {isSaving ? "변경 중..." : isReordering ? "순서 완료" : "순서 변경"}
             </button>
             <button
               onClick={() => setNoticeModal({ content: "" })}
+              disabled={isHydrating || isSaving}
               className="btn btn-black"
               style={{ padding: "6px 12px", background: "var(--color-bg)", border: "1px solid var(--control-border)", color: "var(--text-main)" }}
             >
@@ -434,12 +493,13 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
             </button>
             <button
               onClick={() => setCustomModal({ title: "", url: "" })}
+              disabled={isHydrating || isSaving}
               className="btn btn-black"
               style={{ padding: "6px 12px", background: "var(--color-bg)", border: "1px solid var(--control-border)", color: "var(--text-main)" }}
             >
               + 문제 추가
             </button>
-            <button onClick={() => void openPicker()} className="btn btn-black" disabled={pickerSyncing}>
+            <button onClick={() => void openPicker()} className="btn btn-black" disabled={isHydrating || isSaving || pickerSyncing}>
               {pickerSyncing ? "강의 동기화 중..." : "+ 강의 추가"}
             </button>
           </div>
@@ -964,24 +1024,41 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
 
               <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
                 <button
-                  onClick={() => {
+                  onClick={async () => {
                     const titleStr = customModal?.title || ''.trim() || "제목 없는 문제";
                     const urlStr = customModal?.url || ''.trim();
 
-                    // custom_ 로 시작하는 고유 ID 발급
                     const randId = typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID().slice(0, 8) : Math.random().toString(36).slice(2, 10);
                     const leafId = `custom_${randId}`;
 
-                    // 배열 제일 끝에 삽입하고, progress에 메타데이터 저장
-                    setLectureLeafIds((prev) => [...prev, leafId]);
-                    setProgressByLeafId((prev) => ({
-                      ...prev,
-                      [leafId]: { ...defaultProgress(), customTitle: titleStr, customProblemUrl: urlStr },
-                    }));
-                    setLastAddedLeafId(leafId);
+                    setIsSaving(true);
+                    try {
+                      const nextIds = [...lectureLeafIds, leafId];
+                      const nextProg = {
+                        ...progressByLeafId,
+                        [leafId]: { ...defaultProgress(), customTitle: titleStr, customProblemUrl: urlStr },
+                      };
 
-                    setCustomModal(null);
+                      await pushSharedSnapshot({
+                        stateKv: {
+                          [keyLeafIds(token, sessionIndex)]: JSON.stringify(nextIds),
+                          [keyProgress(token, sessionIndex)]: JSON.stringify(nextProg),
+                          [keyLastAdded(token, sessionIndex)]: leafId,
+                        },
+                      });
+
+                      setLectureLeafIds(nextIds);
+                      setProgressByLeafId(nextProg);
+                      setLastAddedLeafId(leafId);
+                      setCustomModal(null);
+                    } catch (err) {
+                      console.error("문제 추가 실패:", err);
+                      window.alert("저장에 실패했습니다. 다시 시도해주세요.");
+                    } finally {
+                      setIsSaving(false);
+                    }
                   }}
+                  disabled={isSaving}
                   style={{
                     padding: "8px 12px",
                     borderRadius: 10,
@@ -989,12 +1066,14 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
                     background: "var(--action-primary-bg)",
                     color: "var(--action-contrast-text)",
                     fontWeight: 600,
+                    minWidth: 90,
                   }}
                 >
-                  문제 추가
+                  {isSaving ? "적용 중..." : "문제 추가"}
                 </button>
                 <button
                   onClick={() => setCustomModal(null)}
+                  disabled={isSaving}
                   style={{ padding: "8px 12px", borderRadius: 10, border: "1px solid var(--control-border)", background: "var(--surface-bg)" }}
                 >
                   취소
@@ -1046,7 +1125,7 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
 
               <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
                 <button
-                  onClick={() => {
+                  onClick={async () => {
                     const contentStr = noticeModal?.content || ''.trim();
                     if (!contentStr) {
                       window.alert("내용을 입력해주세요.");
@@ -1056,15 +1135,34 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
                     const randId = typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID().slice(0, 8) : Math.random().toString(36).slice(2, 10);
                     const leafId = `notice_${randId}`;
 
-                    setLectureLeafIds((prev) => [...prev, leafId]);
-                    setProgressByLeafId((prev) => ({
-                      ...prev,
-                      [leafId]: { ...defaultProgress(), noticeContent: contentStr },
-                    }));
-                    setLastAddedLeafId(leafId);
+                    setIsSaving(true);
+                    try {
+                      const nextIds = [...lectureLeafIds, leafId];
+                      const nextProg = {
+                        ...progressByLeafId,
+                        [leafId]: { ...defaultProgress(), noticeContent: contentStr },
+                      };
 
-                    setNoticeModal(null);
+                      await pushSharedSnapshot({
+                        stateKv: {
+                          [keyLeafIds(token, sessionIndex)]: JSON.stringify(nextIds),
+                          [keyProgress(token, sessionIndex)]: JSON.stringify(nextProg),
+                          [keyLastAdded(token, sessionIndex)]: leafId,
+                        },
+                      });
+
+                      setLectureLeafIds(nextIds);
+                      setProgressByLeafId(nextProg);
+                      setLastAddedLeafId(leafId);
+                      setNoticeModal(null);
+                    } catch (err) {
+                      console.error("공지 등록 실패:", err);
+                      window.alert("저장에 실패했습니다.");
+                    } finally {
+                      setIsSaving(false);
+                    }
                   }}
+                  disabled={isSaving}
                   style={{
                     padding: "8px 12px",
                     borderRadius: 10,
@@ -1072,12 +1170,14 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
                     background: "var(--action-primary-bg)",
                     color: "var(--action-contrast-text)",
                     fontWeight: 600,
+                    minWidth: 90,
                   }}
                 >
-                  공지 등록
+                  {isSaving ? "적용 중..." : "공지 등록"}
                 </button>
                 <button
                   onClick={() => setNoticeModal(null)}
+                  disabled={isSaving}
                   style={{ padding: "8px 12px", borderRadius: 10, border: "1px solid var(--control-border)", background: "var(--surface-bg)" }}
                 >
                   취소
@@ -1196,12 +1296,37 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
                               return (
                                 <button
                                   key={`quick:${leaf.id}`}
-                                  onClick={() => {
-                                    if (disabled) return;
-                                    addLectureLeaf(leaf);
-                                    closePicker();
+                                  onClick={async () => {
+                                    if (disabled || isSaving) return;
+                                    
+                                    setIsSaving(true);
+                                    try {
+                                      const nextIds = [...lectureLeafIds, leaf.leafId];
+                                      const nextProg = {
+                                        ...progressByLeafId,
+                                        [leaf.leafId]: progressByLeafId[leaf.leafId] ?? defaultProgress(),
+                                      };
+
+                                      await pushSharedSnapshot({
+                                        stateKv: {
+                                          [keyLeafIds(token, sessionIndex)]: JSON.stringify(nextIds),
+                                          [keyProgress(token, sessionIndex)]: JSON.stringify(nextProg),
+                                          [keyLastAdded(token, sessionIndex)]: leaf.leafId,
+                                        },
+                                      });
+
+                                      setLectureLeafIds(nextIds);
+                                      setProgressByLeafId(nextProg);
+                                      setLastAddedLeafId(leaf.leafId);
+                                      closePicker();
+                                    } catch (err) {
+                                      console.error("강의 추가 실패:", err);
+                                      window.alert("저장에 실패했습니다.");
+                                    } finally {
+                                      setIsSaving(false);
+                                    }
                                   }}
-                                  disabled={disabled}
+                                  disabled={disabled || isSaving}
                                   style={{
                                     textAlign: "left",
                                     border: "1px solid var(--surface-border)",
