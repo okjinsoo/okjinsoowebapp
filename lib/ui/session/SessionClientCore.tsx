@@ -137,6 +137,7 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
   const [isReordering, setIsReordering] = useState(false);
   const [isHydrating, setIsHydrating] = useState(true); // [V3 추가] 서버 데이터 수신 대기 상태
   const [isSaving, setIsSaving] = useState(false); // [V4 추가] 동기화 중 상태
+  const [savingActionName, setSavingActionName] = useState(""); // [V5 추가] 어떤 작업을 저장 중인지 표시
 
   // tree
   const [tree, setTree] = useState<LectureTree>(() => loadLectureTree());
@@ -429,7 +430,7 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
             gap: 10
           }}>
             <div className="spinner" style={{ width: 16, height: 16, border: "2px solid var(--action-primary-bg)", borderTopColor: "transparent", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
-            {isHydrating ? "최신 데이터를 불러오는 중..." : "변경 사항을 적용하는 중..."}
+            {isHydrating ? "최신 데이터를 불러오는 중..." : (savingActionName || "변경 사항을 적용하는 중...")}
           </div>
         </div>
       )}
@@ -452,6 +453,7 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
               onClick={async () => {
                 if (isReordering) {
                   // 완료 시점에 강제 저장 후 종료
+                  setSavingActionName("변경 사항을 저장하는 중...");
                   setIsSaving(true);
                   try {
                     await pushSharedSnapshot({
@@ -464,6 +466,7 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
                     console.error("순서 변경 저장 실패:", err);
                   } finally {
                     setIsSaving(false);
+                    setSavingActionName("");
                     setIsReordering(false);
                   }
                 } else {
@@ -616,36 +619,97 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
                     ) : null}
                   </div>
 
-                  {canAssignLectures ? (
+                   {canAssignLectures ? (
                     <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                       <button
-                        onClick={() => {
+                        onClick={async () => {
                           const ok = window.confirm("제출 정보를 초기화할까요? (필기/풀이 링크와 상태가 초기화됩니다)");
                           if (!ok) return;
-                          resetSubmission(leafId);
+
+                          setSavingActionName("제출 내역을 초기화하는 중...");
+                          setIsSaving(true);
+                          try {
+                            const nextProg = {
+                              ...progressByLeafId,
+                              [leafId]: {
+                                ...defaultProgress(),
+                                lectureClicks: p.lectureClicks ?? 0,
+                              },
+                            };
+                            await pushSharedSnapshot({
+                              stateKv: {
+                                [keyProgress(token, sessionIndex)]: JSON.stringify(nextProg),
+                              },
+                            });
+                            setProgressByLeafId(nextProg);
+                          } catch (err) {
+                            console.error("제출 초기화 실패:", err);
+                            window.alert("초기화에 실패했습니다.");
+                          } finally {
+                            setIsSaving(false);
+                            setSavingActionName("");
+                          }
                         }}
+                        disabled={isSaving}
                         style={{
                           padding: "6px 10px",
                           borderRadius: 8,
                           border: "1px solid var(--control-border)",
                           background: "var(--surface-bg)",
-                          cursor: "pointer",
+                          cursor: isSaving ? "not-allowed" : "pointer",
                           height: 32,
                           fontWeight: 500,
+                          opacity: isSaving ? 0.6 : 1,
                         }}
                       >
                         제출 초기화
                       </button>
                       <button
-                        onClick={() => removeLeaf(leafId)}
+                        onClick={async () => {
+                          const ok = window.confirm("이 강의를 이 회차에서 삭제할까요?");
+                          if (!ok) return;
+
+                          setSavingActionName("강의를 삭제하는 중...");
+                          setIsSaving(true);
+                          try {
+                            const nextIds = lectureLeafIds.filter((id) => id !== leafId);
+                            const nextProg = { ...progressByLeafId };
+                            delete nextProg[leafId];
+
+                            // lastAddedLeafId 보정
+                            const nextLastAdded = lastAddedLeafId === leafId
+                              ? (nextIds.length ? nextIds[nextIds.length - 1] : "")
+                              : lastAddedLeafId;
+
+                            await pushSharedSnapshot({
+                              stateKv: {
+                                [keyLeafIds(token, sessionIndex)]: JSON.stringify(nextIds),
+                                [keyProgress(token, sessionIndex)]: JSON.stringify(nextProg),
+                                [keyLastAdded(token, sessionIndex)]: nextLastAdded,
+                              },
+                            });
+
+                            setLectureLeafIds(nextIds);
+                            setProgressByLeafId(nextProg);
+                            setLastAddedLeafId(nextLastAdded);
+                          } catch (err) {
+                            console.error("삭제 실패:", err);
+                            window.alert("삭제에 실패했습니다.");
+                          } finally {
+                            setIsSaving(false);
+                            setSavingActionName("");
+                          }
+                        }}
+                        disabled={isSaving}
                         style={{
                           padding: "6px 10px",
                           borderRadius: 8,
                           border: "1px solid var(--control-border)",
                           background: "var(--surface-bg)",
-                          cursor: "pointer",
+                          cursor: isSaving ? "not-allowed" : "pointer",
                           height: 32,
                           fontWeight: 500,
+                          opacity: isSaving ? 0.6 : 1,
                         }}
                       >
                         삭제
@@ -863,6 +927,7 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
                     );
                     if (!ok) return;
 
+                    setSavingActionName("필기 결과물을 제출 중...");
                     setIsSaving(true);
                     try {
                       const leafId = noteModal!.leafId;
@@ -884,6 +949,7 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
                       window.alert("저장에 실패했습니다.");
                     } finally {
                       setIsSaving(false);
+                      setSavingActionName("");
                     }
                   }}
                   disabled={isSaving}
@@ -964,6 +1030,7 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
                       return;
                     }
 
+                    setSavingActionName("풀이 결과물을 제출 중...");
                     setIsSaving(true);
                     try {
                       const leafId = solveModal!.leafId;
@@ -985,6 +1052,7 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
                       window.alert("저장에 실패했습니다.");
                     } finally {
                       setIsSaving(false);
+                      setSavingActionName("");
                     }
                   }}
                   disabled={isSaving}
@@ -1077,6 +1145,7 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
                     const randId = typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID().slice(0, 8) : Math.random().toString(36).slice(2, 10);
                     const leafId = `custom_${randId}`;
 
+                    setSavingActionName("문제를 추가하는 중...");
                     setIsSaving(true);
                     try {
                       const nextIds = [...lectureLeafIds, leafId];
@@ -1102,6 +1171,7 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
                       window.alert("저장에 실패했습니다. 다시 시도해주세요.");
                     } finally {
                       setIsSaving(false);
+                      setSavingActionName("");
                     }
                   }}
                   disabled={isSaving}
@@ -1181,6 +1251,7 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
                     const randId = typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID().slice(0, 8) : Math.random().toString(36).slice(2, 10);
                     const leafId = `notice_${randId}`;
 
+                    setSavingActionName("공지를 등록하는 중...");
                     setIsSaving(true);
                     try {
                       const nextIds = [...lectureLeafIds, leafId];
@@ -1206,6 +1277,7 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
                       window.alert("저장에 실패했습니다.");
                     } finally {
                       setIsSaving(false);
+                      setSavingActionName("");
                     }
                   }}
                   disabled={isSaving}
@@ -1345,6 +1417,7 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
                                   onClick={async () => {
                                     if (disabled || isSaving) return;
                                     
+                                    setSavingActionName("강의를 추가하는 중...");
                                     setIsSaving(true);
                                     try {
                                       const nextIds = [...lectureLeafIds, leaf.leafId];
@@ -1370,6 +1443,7 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
                                       window.alert("저장에 실패했습니다.");
                                     } finally {
                                       setIsSaving(false);
+                                      setSavingActionName("");
                                     }
                                   }}
                                   disabled={disabled || isSaving}
