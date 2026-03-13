@@ -852,7 +852,7 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
               />
               <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
                 <button
-                  onClick={() => {
+                  onClick={async () => {
                     const link = noteModal?.value || ''.trim();
                     if (!link) {
                       window.alert("필기 제출 파일 URL을 입력해주세요.");
@@ -862,18 +862,41 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
                       "제출 후 강의와 필기 파일을 수정할 수 없습니다. 문제풀 준비가 되었나요?"
                     );
                     if (!ok) return;
-                    updateProgress(noteModal!.leafId, { noteDone: true, noteLink: link });
-                    setNoteModal(null);
+
+                    setIsSaving(true);
+                    try {
+                      const leafId = noteModal!.leafId;
+                      const nextProg = {
+                        ...progressByLeafId,
+                        [leafId]: { ...(progressByLeafId[leafId] ?? defaultProgress()), noteDone: true, noteLink: link },
+                      };
+
+                      await pushSharedSnapshot({
+                        stateKv: {
+                          [keyProgress(token, sessionIndex)]: JSON.stringify(nextProg),
+                        },
+                      });
+
+                      setProgressByLeafId(nextProg);
+                      setNoteModal(null);
+                    } catch (err) {
+                      console.error("필기 제출 실패:", err);
+                      window.alert("저장에 실패했습니다.");
+                    } finally {
+                      setIsSaving(false);
+                    }
                   }}
+                  disabled={isSaving}
                   style={{
                     padding: "8px 12px",
                     borderRadius: 10,
                     border: "1px solid var(--action-primary-border)",
                     background: "var(--action-primary-bg)",
                     color: "var(--action-contrast-text)",
+                    minWidth: 80,
                   }}
                 >
-                  제출
+                  {isSaving ? "제출 중..." : "제출"}
                 </button>
                 <button
                   onClick={() => setNoteModal(null)}
@@ -934,24 +957,47 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
               />
               <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
                 <button
-                  onClick={() => {
+                  onClick={async () => {
                     const link = solveModal?.value || ''.trim();
                     if (!link) {
                       window.alert("풀이 제출 파일 URL을 입력해주세요.");
                       return;
                     }
-                    updateProgress(solveModal!.leafId, { solveDone: true, solveLink: link });
-                    setSolveModal(null);
+
+                    setIsSaving(true);
+                    try {
+                      const leafId = solveModal!.leafId;
+                      const nextProg = {
+                        ...progressByLeafId,
+                        [leafId]: { ...(progressByLeafId[leafId] ?? defaultProgress()), solveDone: true, solveLink: link },
+                      };
+
+                      await pushSharedSnapshot({
+                        stateKv: {
+                          [keyProgress(token, sessionIndex)]: JSON.stringify(nextProg),
+                        },
+                      });
+
+                      setProgressByLeafId(nextProg);
+                      setSolveModal(null);
+                    } catch (err) {
+                      console.error("풀이 제출 실패:", err);
+                      window.alert("저장에 실패했습니다.");
+                    } finally {
+                      setIsSaving(false);
+                    }
                   }}
+                  disabled={isSaving}
                   style={{
                     padding: "8px 12px",
                     borderRadius: 10,
                     border: "1px solid var(--action-success-border)",
                     background: "var(--action-success-bg)",
                     color: "var(--action-contrast-text)",
+                    minWidth: 80,
                   }}
                 >
-                  제출
+                  {isSaving ? "제출 중..." : "제출"}
                 </button>
                 <button
                   onClick={() => setSolveModal(null)}
