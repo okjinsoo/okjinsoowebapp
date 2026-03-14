@@ -8,6 +8,7 @@ import {
   clearAuthSession,
   ensureAuthSession,
   getSupabaseConfig,
+  isProviderTokenExpired,
   type AuthSession,
 } from "@/lib/auth/supabaseAuth";
 import {
@@ -263,6 +264,24 @@ export default function HomePage() {
                   로그아웃
                 </button>
               </div>
+
+              {isProviderTokenExpired(session) && !roleLoading && canAccessRole(role, "teacher") && (
+                <div
+                  style={{
+                    marginTop: 16,
+                    borderRadius: 12,
+                    border: "1px solid #fca5a5",
+                    background: "#fef2f2",
+                    color: "#991b1b",
+                    padding: "12px 14px",
+                    fontSize: 14,
+                    fontWeight: 600,
+                  }}
+                >
+                  ⚠️ <b>구글 캘린더 연결 열쇠가 만료되었습니다.</b><br/>
+                  일정 동기화를 위해 반드시 <b>로그아웃 후 다시 로그인</b>해 주세요.
+                </div>
+              )}
             </>
           )}
 

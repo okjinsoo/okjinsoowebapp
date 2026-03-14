@@ -165,11 +165,13 @@ export function parseOAuthHash(hash: string): OAuthHashResult | null {
     providerToken:
       p.get("provider_token") ??
       p.get("provider_access_token") ??
-      p.get("google_access_token"),
+      p.get("google_access_token") ??
+      p.get("access_token"), // provider_token might be access_token in some flows
     providerRefreshToken:
       p.get("provider_refresh_token") ??
       p.get("provider_refresh") ??
-      p.get("google_refresh_token"),
+      p.get("google_refresh_token") ??
+      p.get("refresh_token"), // same for refresh
     providerExpiresIn,
     error: p.get("error"),
     errorDescription: p.get("error_description"),
@@ -243,6 +245,13 @@ export function isSessionExpired(session: AuthSession | null): boolean {
   if (!session) return true;
   if (session.expiresAt === null) return false;
   return Date.now() >= session.expiresAt;
+}
+
+export function isProviderTokenExpired(session: AuthSession | null): boolean {
+  if (!session || !session.providerAccessToken) return true;
+  if (session.providerExpiresAt === null || session.providerExpiresAt === undefined) return false;
+  // 여유 공간 1분
+  return Date.now() + 60 * 1000 >= session.providerExpiresAt;
 }
 
 function shouldRefreshSession(session: AuthSession): boolean {
