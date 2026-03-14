@@ -92,6 +92,7 @@ export default function TodaySessionsCard({
     pauseRefundCompleted: false,
   });
   const [consultError, setConsultError] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
 
   function openConsult(row: TodaySessionRow) {
     setConsultStudentId(row.studentId);
@@ -153,42 +154,47 @@ export default function TodaySessionsCard({
     const history = student.paymentHistory ?? [];
     const sessions: Session[] = []; // TodaySessionsCard에서는 세션 목록을 비워둬도 기본 저장 가능
 
-    const res = await submitConsultation(
-      {
-        isAdmin,
-        student,
-        history,
-        consultRecords: list,
-        sessions,
-        token: student.token || "",
-        applyHistory: async (recs: PaymentRecord[], patch?: Partial<Student>, skip?: boolean, opts?: { consultationRecords?: ConsultationRecord[] }) => {
-          const nextConsultRecords = opts?.consultationRecords ?? list;
-          const updatedStudent = { ...student, ...patch, paymentHistory: recs };
-          // Simple session count update
-          const baseCount = student.planCount ?? 0;
-          const added = recs.reduce((sum: number, r: PaymentRecord) => sum + r.addedCount, 0);
-          updatedStudent.planCount = baseCount + added;
+    setIsSaving(true);
+    try {
+      const res = await submitConsultation(
+        {
+          isAdmin,
+          student,
+          history,
+          consultRecords: list,
+          sessions,
+          token: student.token || "",
+          applyHistory: async (recs: PaymentRecord[], patch?: Partial<Student>, skip?: boolean, opts?: { consultationRecords?: ConsultationRecord[] }) => {
+            const nextConsultRecords = opts?.consultationRecords ?? list;
+            const updatedStudent = { ...student, ...patch, paymentHistory: recs };
+            // Simple session count update
+            const baseCount = student.planCount ?? 0;
+            const added = recs.reduce((sum: number, r: PaymentRecord) => sum + r.addedCount, 0);
+            updatedStudent.planCount = baseCount + added;
 
-          upsertStudent(updatedStudent);
-          saveConsultationsByStudent(student.id, nextConsultRecords);
-          return true;
+            upsertStudent(updatedStudent);
+            saveConsultationsByStudent(student.id, nextConsultRecords);
+            return true;
+          },
+          persistConsultationState: async (recs: ConsultationRecord[], patch?: Student) => {
+            if (patch) upsertStudent(patch);
+            saveConsultationsByStudent(student.id, recs);
+            return true;
+          },
         },
-        persistConsultationState: async (recs: ConsultationRecord[], patch?: Student) => {
-          if (patch) upsertStudent(patch);
-          saveConsultationsByStudent(student.id, recs);
-          return true;
-        },
-      },
-      consultForm,
-      consultEditingId
-    );
+        consultForm,
+        consultEditingId
+      );
 
-    if (res.error) {
-      setConsultError(res.error);
-      return;
-    }
-    if (res.ok) {
-      setConsultOpen(false);
+      if (res.error) {
+        setConsultError(res.error);
+        return;
+      }
+      if (res.ok) {
+        setConsultOpen(false);
+      }
+    } finally {
+      setIsSaving(false);
     }
   }
 
@@ -294,6 +300,7 @@ export default function TodaySessionsCard({
         onClose={() => setConsultOpen(false)}
         onSave={saveConsult}
         onDelete={consultEditingId ? deleteConsult : undefined}
+        loading={isSaving}
       />
     </section>
   );

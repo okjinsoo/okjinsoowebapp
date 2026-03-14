@@ -39,6 +39,7 @@ export default function ConsultModal({
   onSave,
   onDelete,
   title = "상담 기록",
+  loading,
 }: {
   open: boolean;
   role: Role;
@@ -49,14 +50,15 @@ export default function ConsultModal({
   onSave: () => void;
   onDelete?: () => void;
   title?: string;
+  loading?: boolean;
 }) {
   if (!open) return null;
   const isAdmin = role === "a";
   const isTeacher = role === "t";
   const isReadOnly = role === "s";
 
-  const baseDisabled = isReadOnly;
-  const pauseAdminLocked = isTeacher || isReadOnly;
+  const baseDisabled = isReadOnly || loading;
+  const pauseAdminLocked = isTeacher || isReadOnly || loading;
   const panelStyle = {
     background: "var(--surface-bg)",
     border: "1px solid var(--surface-border)",
@@ -360,8 +362,8 @@ export default function ConsultModal({
             취소
           </button>
           {isReadOnly ? null : (
-            <button className="btn btn-bold" onClick={onSave}>
-              저장
+            <button className="btn btn-bold" onClick={onSave} disabled={loading}>
+              {loading ? "적용 중..." : "저장"}
             </button>
           )}
         </div>

@@ -102,15 +102,26 @@ export default function SessionQuickActions({ role, token, index }: Props) {
   const [draftReason, setDraftReason] = useState<string>("");
   const [draftRecord, setDraftRecord] = useState<string>("");
 
-  const togglePresent = () => {
-    if (!canEdit) return;
-    upsertMeta(token, index, { status: isPresent ? "planned" : "present" });
+  const [isSaving, setIsSaving] = useState(false);
+  const togglePresent = async () => {
+    if (!canEdit || isSaving) return;
+    setIsSaving(true);
+    try {
+      await upsertMeta(token, index, { status: isPresent ? "planned" : "present" });
+    } finally {
+      setIsSaving(false);
+    }
   };
 
-  const toggleAbsent = () => {
-    if (!canEdit) return;
+  const toggleAbsent = async () => {
+    if (!canEdit || isSaving) return;
     if (isAbsent) {
-      upsertMeta(token, index, { status: "planned" });
+      setIsSaving(true);
+      try {
+        await upsertMeta(token, index, { status: "planned" });
+      } finally {
+        setIsSaving(false);
+      }
       return;
     }
     setOpenMode("absent");
@@ -337,7 +348,7 @@ export default function SessionQuickActions({ role, token, index }: Props) {
 
   const onCancel = () => setOpen(false);
 
-  const onSave = () => {
+  const onSave = async () => {
     const chk = canSave();
     if (!chk.ok) {
       alert(chk.msg ?? "입력값을 확인해주세요.");
@@ -349,19 +360,23 @@ export default function SessionQuickActions({ role, token, index }: Props) {
     const h = checkOverride ? (draftOverrideHour ?? 0) : 0;
     const m = checkOverride ? (draftOverrideMinute ?? 0) : 0;
 
-    upsertMeta(token, index, {
-      status,
-      carry: checkCarry ? Number(draftCarry) : 0,
-      overrideDate: checkOverride ? draftOverrideDate : "",
-      overrideHour: checkOverride ? h : null,
-      overrideMinute: checkOverride ? m : null,
-      overrideSource: checkOverride ? "manual" : "",
-      reason: needReasonUI ? draftReason : "",
-      record: needReasonUI ? draftRecord : "",
-    });
-    syncSessionDisplayAtByToken(token);
-
-    setOpen(false);
+    setIsSaving(true);
+    try {
+      await upsertMeta(token, index, {
+        status,
+        carry: checkCarry ? Number(draftCarry) : 0,
+        overrideDate: checkOverride ? draftOverrideDate : "",
+        overrideHour: checkOverride ? h : null,
+        overrideMinute: checkOverride ? m : null,
+        overrideSource: checkOverride ? "manual" : "",
+        reason: needReasonUI ? draftReason : "",
+        record: needReasonUI ? draftRecord : "",
+      });
+      syncSessionDisplayAtByToken(token);
+      setOpen(false);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
@@ -373,15 +388,23 @@ export default function SessionQuickActions({ role, token, index }: Props) {
 
         {canEdit ? (
           <>
-            <button className={`${isPresent ? "btn btn-blue" : "btn btn-white"}`} onClick={togglePresent}>
-              출석
+            <button
+              className={`${isPresent ? "btn btn-blue" : "btn btn-white"}`}
+              onClick={togglePresent}
+              disabled={isSaving}
+            >
+              {isSaving && isPresent ? "..." : "출석"}
             </button>
 
-            <button className={`${isAbsent ? "btn btn-red" : "btn btn-white"}`} onClick={toggleAbsent}>
-              결석
+            <button
+              className={`${isAbsent ? "btn btn-red" : "btn btn-white"}`}
+              onClick={toggleAbsent}
+              disabled={isSaving}
+            >
+              {isSaving && isAbsent ? "..." : "결석"}
             </button>
 
-            <button className="btn btn-white btn-bold" onClick={openAdjustModal}>
+            <button className="btn btn-white btn-bold" onClick={openAdjustModal} disabled={isSaving}>
               조정
             </button>
           </>
@@ -409,6 +432,7 @@ export default function SessionQuickActions({ role, token, index }: Props) {
                     type="button"
                     onClick={clickPresent}
                     className={`rounded border ${checkPresent ? "btn btn-blue" : "btn btn-white"}`}
+                    disabled={isSaving}
                   >
                     출석
                   </button>
@@ -417,6 +441,7 @@ export default function SessionQuickActions({ role, token, index }: Props) {
                     type="button"
                     onClick={clickAbsent}
                     className={`rounded border ${checkAbsent ? "btn btn-red" : "btn btn-white"}`}
+                    disabled={isSaving}
                   >
                     결석
                   </button>
@@ -434,6 +459,7 @@ export default function SessionQuickActions({ role, token, index }: Props) {
                       type="checkbox"
                       checked={checkOverride}
                       onChange={(e) => toggleOverride(e.target.checked)}
+                      disabled={isSaving}
                     />
                     <span>변경</span>
                   </label>
@@ -444,6 +470,7 @@ export default function SessionQuickActions({ role, token, index }: Props) {
                       className="rounded border border-neutral-300 px-2 py-1 text-xs"
                       style={{ borderColor: "var(--control-border)" }}
                       onClick={resetOverrideOnly}
+                      disabled={isSaving}
                     >
                       초기화
                     </button>
@@ -464,6 +491,7 @@ export default function SessionQuickActions({ role, token, index }: Props) {
                         type="date"
                         value={draftOverrideDate}
                         onChange={(e) => setDraftOverrideDate(e.target.value)}
+                        disabled={isSaving}
                       />
 
                       <div className="flex items-center gap-2">
@@ -475,6 +503,7 @@ export default function SessionQuickActions({ role, token, index }: Props) {
                             const v = e.target.value;
                             setDraftOverrideHour(v === "" ? null : Number(v));
                           }}
+                          disabled={isSaving}
                         >
                           <option value="">시 선택</option>
                           {Array.from({ length: 24 }, (_, h) => (
@@ -500,6 +529,7 @@ export default function SessionQuickActions({ role, token, index }: Props) {
                             }
                             setDraftOverrideMinute(Number(v) === 30 ? 30 : 0);
                           }}
+                          disabled={isSaving}
                         >
                           <option value="">분 선택</option>
                           <option value={0}>00</option>
@@ -530,6 +560,7 @@ export default function SessionQuickActions({ role, token, index }: Props) {
                       type="checkbox"
                       checked={checkCarry}
                       onChange={(e) => toggleCarry(e.target.checked)}
+                      disabled={isSaving}
                     />
                     <span>이월</span>
                   </label>
@@ -540,6 +571,7 @@ export default function SessionQuickActions({ role, token, index }: Props) {
                       className="rounded border border-neutral-300 px-2 py-1 text-xs"
                       style={{ borderColor: "var(--control-border)" }}
                       onClick={resetCarryOnly}
+                      disabled={isSaving}
                     >
                       초기화
                     </button>
@@ -556,6 +588,7 @@ export default function SessionQuickActions({ role, token, index }: Props) {
                         style={{ borderColor: "var(--control-border)" }}
                         onClick={() => setDraftCarry((x) => Math.max(0, Math.floor((x ?? 0) - 1)))}
                         type="button"
+                        disabled={isSaving}
                       >
                         -
                       </button>
@@ -567,6 +600,7 @@ export default function SessionQuickActions({ role, token, index }: Props) {
                         style={{ borderColor: "var(--control-border)" }}
                         onClick={() => setDraftCarry((x) => Math.max(0, Math.floor((x ?? 0) + 1)))}
                         type="button"
+                        disabled={isSaving}
                       >
                         +
                       </button>
@@ -587,6 +621,7 @@ export default function SessionQuickActions({ role, token, index }: Props) {
                       value={draftReason}
                       onChange={(e) => setDraftReason(e.target.value)}
                       placeholder="사유를 입력해주세요"
+                      disabled={isSaving}
                     />
                   </label>
 
@@ -599,6 +634,7 @@ export default function SessionQuickActions({ role, token, index }: Props) {
                       value={draftRecord}
                       onChange={(e) => setDraftRecord(e.target.value)}
                       placeholder="캡쳐 화면 url 첨부"
+                      disabled={isSaving}
                     />
                   </label>
                 </>
@@ -606,11 +642,11 @@ export default function SessionQuickActions({ role, token, index }: Props) {
             </div>
 
             <div className="mt-4 flex flex-wrap justify-end gap-2">
-              <button className="btn" onClick={onCancel}>
+              <button className="btn" onClick={onCancel} disabled={isSaving}>
                 취소
               </button>
-              <button className="btn btn-bold" onClick={onSave}>
-                저장
+              <button className="btn btn-bold" onClick={onSave} disabled={isSaving}>
+                {isSaving ? "적용 중..." : "저장"}
               </button>
             </div>
           </div>

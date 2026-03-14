@@ -95,19 +95,21 @@ export function metaMapKey(token: string) {
   return `tutorweb_metaMap_v1:${token}`;
 }
 
-function writeMetaMap(token: string, metaMap: Record<number, SessionMeta>) {
+async function writeMetaMap(token: string, metaMap: Record<number, SessionMeta>) {
   if (typeof window === "undefined") return;
   const key = metaMapKey(token);
   const raw = JSON.stringify(metaMap);
   browserStorage.setItem(key, raw);
   window.dispatchEvent(new CustomEvent(TUTORWEB_EVENTS.metaMapUpdated, { detail: { token } }));
-  void pushSharedSnapshot({
-    stateKv: {
-      [key]: raw,
-    },
-  }).catch((err) => {
+  try {
+    await pushSharedSnapshot({
+      stateKv: {
+        [key]: raw,
+      },
+    });
+  } catch (err) {
     console.error("공유 스냅샷 동기화 실패(metaMap):", err);
-  });
+  }
 }
 
 export function readMetaMap(token: string): Record<number, SessionMeta> {
@@ -144,7 +146,7 @@ export function readMetaMap(token: string): Record<number, SessionMeta> {
   }
 }
 
-export function upsertMeta(token: string, index: number, patch: Partial<SessionMeta>): SessionMeta {
+export async function upsertMeta(token: string, index: number, patch: Partial<SessionMeta>): Promise<SessionMeta> {
   const current = readMetaMap(token);
   const prev = current[index] ?? {};
   const next: SessionMeta = { ...prev, ...patch };
@@ -159,7 +161,7 @@ export function upsertMeta(token: string, index: number, patch: Partial<SessionM
   next.record = typeof next.record === "string" ? next.record : "";
 
   current[index] = next;
-  writeMetaMap(token, current);
+  await writeMetaMap(token, current);
   return next;
 }
 

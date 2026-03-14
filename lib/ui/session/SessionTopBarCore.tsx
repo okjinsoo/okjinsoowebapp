@@ -106,6 +106,7 @@ export default function SessionTopBarCore({ role, token, index }: Props) {
   const [draftReason, setDraftReason] = useState<string>("");
   const [draftRecord, setDraftRecord] = useState<string>("");
 
+  const [isSaving, setIsSaving] = useState(false);
   useEffect(() => {
     const onStudents = () => setStudentTick((x) => x + 1);
     const onSessions = () => setSessionTick((x) => x + 1);
@@ -258,17 +259,26 @@ export default function SessionTopBarCore({ role, token, index }: Props) {
   const isAbsent = meta.status === "absent";
   const statusBadge = getSessionStatusBadge(meta.status);
 
-  const togglePresent = () => {
-    if (!canEdit) return;
-    upsertMeta(token, index, { status: isPresent ? "planned" : "present" });
+  const togglePresent = async () => {
+    if (!canEdit || isSaving) return;
+    setIsSaving(true);
+    try {
+      await upsertMeta(token, index, { status: isPresent ? "planned" : "present" });
+    } finally {
+      setIsSaving(false);
+    }
   };
-
-  const toggleAbsent = () => {
-    if (!canEdit) return;
+  const toggleAbsent = async () => {
+    if (!canEdit || isSaving) return;
 
     // 이미 결석이면 해제
     if (isAbsent) {
-      upsertMeta(token, index, { status: "planned" });
+      setIsSaving(true);
+      try {
+        await upsertMeta(token, index, { status: "planned" });
+      } finally {
+        setIsSaving(false);
+      }
       return;
     }
 
@@ -276,7 +286,6 @@ export default function SessionTopBarCore({ role, token, index }: Props) {
     setOpenMode("absent");
     setOpen(true);
   };
-
   const openAdjustModal = () => {
     if (!canEdit) return;
     setOpenMode("edit");
@@ -368,17 +377,22 @@ export default function SessionTopBarCore({ role, token, index }: Props) {
   });
 
   const saveConsultRecord = async () => {
-    const res = await submitConsult(consultForm, consultEditingId);
-    if (res.error) {
-      setConsultError(res.error);
-      return;
-    }
-    if (res.ok) {
-      setConsultOpen(false);
-      setConsultTick((x) => x + 1);
+    if (isSaving) return;
+    setIsSaving(true);
+    try {
+      const res = await submitConsult(consultForm, consultEditingId);
+      if (res.error) {
+        setConsultError(res.error);
+        return;
+      }
+      if (res.ok) {
+        setConsultOpen(false);
+        setConsultTick((x) => x + 1);
+      }
+    } finally {
+      setIsSaving(false);
     }
   };
-
   const deleteConsultRecord = () => {
     if (!student || !consultEditingId) return;
     const list = loadConsultationsByStudent(student.id);
@@ -507,7 +521,7 @@ export default function SessionTopBarCore({ role, token, index }: Props) {
 
   const onCancel = () => setOpen(false);
 
-  const onSave = () => {
+  const onSave = async () => {
     const chk = canSave();
     if (!chk.ok) {
       alert(chk.msg ?? "입력값을 확인해주세요.");
@@ -519,19 +533,23 @@ export default function SessionTopBarCore({ role, token, index }: Props) {
     const h = checkOverride ? (draftOverrideHour ?? 0) : 0;
     const m = checkOverride ? (draftOverrideMinute ?? 0) : 0;
 
-    upsertMeta(token, index, {
-      status,
-      carry: checkCarry ? Number(draftCarry) : 0,
-      overrideDate: checkOverride ? draftOverrideDate : "",
-      overrideHour: checkOverride ? h : null,
-      overrideMinute: checkOverride ? m : null,
-      overrideSource: checkOverride ? "manual" : "",
-      reason: needReasonUI ? draftReason : "",
-      record: needReasonUI ? draftRecord : "",
-    });
-    syncSessionDisplayAtByToken(token);
-
-    setOpen(false);
+    setIsSaving(true);
+    try {
+      await upsertMeta(token, index, {
+        status,
+        carry: checkCarry ? Number(draftCarry) : 0,
+        overrideDate: checkOverride ? draftOverrideDate : "",
+        overrideHour: checkOverride ? h : null,
+        overrideMinute: checkOverride ? m : null,
+        overrideSource: checkOverride ? "manual" : "",
+        reason: needReasonUI ? draftReason : "",
+        record: needReasonUI ? draftRecord : "",
+      });
+      syncSessionDisplayAtByToken(token);
+      setOpen(false);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const openMeet = () => {
@@ -609,14 +627,21 @@ export default function SessionTopBarCore({ role, token, index }: Props) {
 
         {canEdit ? (
           <>
-            <button className={`rounded border ${isPresent ? "btn btn-blue" : "btn"}`} onClick={togglePresent}>
-              출석
+            <button
+              className={`rounded border ${isPresent ? "btn btn-blue" : "btn"}`}
+              onClick={togglePresent}
+              disabled={isSaving}
+            >
+              {isSaving && isPresent ? "적용 중..." : "출석"}
             </button>
 
-            <button className={`rounded border ${isAbsent ? "btn btn-red" : "btn"}`} onClick={toggleAbsent}>
-              결석
+            <button
+              className={`rounded border ${isAbsent ? "btn btn-red" : "btn"}`}
+              onClick={toggleAbsent}
+              disabled={isSaving}
+            >
+              {isSaving && isAbsent ? "적용 중..." : "결석"}
             </button>
-
             <button
               className="rounded border border-neutral-300 bg-transparent btn btn-bold"
               onClick={openAdjustModal}
@@ -844,11 +869,11 @@ export default function SessionTopBarCore({ role, token, index }: Props) {
             </div>
 
             <div className="mt-4 flex flex-wrap justify-end gap-2">
-              <button className="btn" onClick={onCancel}>
+              <button className="btn" onClick={onCancel} disabled={isSaving}>
                 취소
               </button>
-              <button className="btn btn-bold" onClick={onSave}>
-                저장
+              <button className="btn btn-bold" onClick={onSave} disabled={isSaving}>
+                {isSaving ? "적용 중..." : "저장"}
               </button>
             </div>
           </div>
@@ -863,7 +888,8 @@ export default function SessionTopBarCore({ role, token, index }: Props) {
         onChange={setConsultForm}
         onClose={() => setConsultOpen(false)}
         onSave={saveConsultRecord}
-        onDelete={consultEditingId ? deleteConsultRecord : undefined}
+        onDelete={isAdmin ? deleteConsultRecord : undefined}
+        loading={isSaving}
       />
     </div>
   );
