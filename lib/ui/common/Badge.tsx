@@ -3,6 +3,7 @@
 
 import React from "react";
 
+export type BadgeStyle = React.CSSProperties;
 export type BadgeTone = "gray" | "blue" | "green" | "orange" | "red";
 
 const TONE_STYLE: Record<BadgeTone, React.CSSProperties> = {

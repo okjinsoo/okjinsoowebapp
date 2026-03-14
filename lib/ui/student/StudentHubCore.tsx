@@ -15,6 +15,7 @@ import {
 import { buildConsultationMap, pickPrimaryConsultTag, type ConsultTag } from "@/lib/ui/session/consultationMap";
 import { findClassIndexByDatePreferFuture, findLastClassIndex } from "@/lib/ui/session/pauseHelpers";
 import { formatGrade, formatPhone, formatSchedule } from "@/lib/ui/student/formatters";
+import AchievementBadge from "@/lib/ui/common/AchievementBadge";
 import {
   loadSessions,
   rebuildTeacherGoogleCalendarForStudentIds,
@@ -57,7 +58,7 @@ import Badge from "@/lib/ui/common/Badge";
 import SessionQuickActions from "@/lib/ui/session/SessionQuickActions";
 import AutoResizeTextarea from "@/lib/ui/common/AutoResizeTextarea";
 import { ConsultBadge, ConsultButton } from "@/lib/ui/common/ConsultParts";
-import { getAchievementBadgeStyle } from "@/lib/ui/common/achievementBadge";
+// REMOVED: import { getAchievementBadgeStyle } from "@/lib/ui/common/achievementBadge";
 import { getSessionStatusBadge } from "@/lib/ui/common/sessionStatusBadge";
 import { buildSessionContextBadges, getSessionExtraBadgeStyle } from "@/lib/ui/common/sessionExtraBadge";
 import { StudentPaymentPanel } from "./panels/StudentPaymentPanel";
@@ -583,7 +584,7 @@ export default function StudentHubCore({
       iso: string;
       status?: string;
       badges: string[];
-      percent: number;
+      percent: number | null;
       lastClass?: boolean;
     }[] = [];
 
@@ -1342,7 +1343,7 @@ export default function StudentHubCore({
                     </div>
                     <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
                       <div>{fmtKST_yyyyMMdd_HHmm_noSeconds(item.iso)}</div>
-                      <Badge style={getAchievementBadgeStyle(item.percent)}>{item.percent}%</Badge>
+                      <AchievementBadge percent={item.percent} />
                       {(() => {
                         const statusBadge = getSessionStatusBadge(item.status as "present" | "absent" | "planned");
                         return <Badge style={statusBadge.style}>{statusBadge.label}</Badge>;

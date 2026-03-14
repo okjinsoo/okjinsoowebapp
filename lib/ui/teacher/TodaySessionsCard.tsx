@@ -11,7 +11,7 @@ import { loadStudents, upsertStudent } from "@/lib/storage/students";
 import { normalizeConsultPurpose, validateConsultForm } from "@/lib/factories/consultationFactory";
 import { computePauseLifecycle } from "@/lib/factories/studentStatusFactory";
 import { ConsultBadge, ConsultButton } from "@/lib/ui/common/ConsultParts";
-import { getAchievementBadgeStyle } from "@/lib/ui/common/achievementBadge";
+import AchievementBadge from "@/lib/ui/common/AchievementBadge";
 import { getSessionStatusBadge } from "@/lib/ui/common/sessionStatusBadge";
 import { getSessionExtraBadgeStyle } from "@/lib/ui/common/sessionExtraBadge";
 import ConsultModal, { ConsultFormState } from "@/lib/ui/common/ConsultModal";
@@ -33,7 +33,7 @@ export type TodaySessionRow = {
   badges?: string[];
   ddayLabel: string;
   ddayClass: string;
-  percent: number;
+  percent: number | null;
   lastClass?: boolean;
   consultTag?: {
     label: string;
@@ -252,7 +252,7 @@ export default function TodaySessionsCard({
                     </div>
 
                     {/* 2. 성취도(퍼센트) */}
-                    <Badge style={getAchievementBadgeStyle(r.percent)}>{r.percent}%</Badge>
+                    <AchievementBadge percent={r.percent} />
 
                     {/* 3. 출결 상태 */}
                     <Badge style={statusBadge.style}>{statusBadge.label}</Badge>

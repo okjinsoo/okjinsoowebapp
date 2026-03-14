@@ -21,7 +21,7 @@ import Badge from "@/lib/ui/common/Badge";
 import SessionQuickActions from "@/lib/ui/session/SessionQuickActions";
 import { buildConsultationMap, pickPrimaryConsultTag } from "@/lib/ui/session/consultationMap";
 import { findLastClassIndex } from "@/lib/ui/session/pauseHelpers";
-import { getAchievementBadgeStyle } from "@/lib/ui/common/achievementBadge";
+import AchievementBadge from "@/lib/ui/common/AchievementBadge";
 import { getSessionStatusBadge } from "@/lib/ui/common/sessionStatusBadge";
 import { buildSessionContextBadges, getSessionExtraBadgeStyle } from "@/lib/ui/common/sessionExtraBadge";
 import type { ConsultTag } from "@/lib/ui/session/consultationMap";
@@ -174,9 +174,9 @@ export default function StudentSessionListCore({ role, token, prefix, hideTokenI
   );
 
   const progressByIndex = useMemo(() => {
-    if (!mounted) return {} as Record<number, { done: number; total: number; percent: number }>;
+    if (!mounted) return {} as Record<number, { done: number; total: number; percent: number | null }>;
     void progressTick;
-    const out: Record<number, { done: number; total: number; percent: number }> = {};
+    const out: Record<number, { done: number; total: number; percent: number | null }> = {};
     for (const s of sessions) {
       out[s.index] = calculateSessionProgressSummary({
         token,
@@ -517,7 +517,7 @@ export default function StudentSessionListCore({ role, token, prefix, hideTokenI
                     <div>
                       {r.dateText} {r.timeText}
                     </div>
-                    <Badge style={getAchievementBadgeStyle(r.progress.percent)}>{r.progress.percent}%</Badge>
+                    <AchievementBadge percent={r.progress.percent} />
                     <Badge style={statusBadge.style}>{statusBadge.label}</Badge>
                     {r.badges.filter(b => b !== "마지막 수업").length > 0 ? (
                       <div className="flex items-center gap-2 flex-wrap">
@@ -616,7 +616,7 @@ export default function StudentSessionListCore({ role, token, prefix, hideTokenI
                     <div>
                       {r.dateText} {r.timeText}
                     </div>
-                    <Badge style={getAchievementBadgeStyle(r.progress.percent)}>{r.progress.percent}%</Badge>
+                    <AchievementBadge percent={r.progress.percent} />
                     <Badge style={statusBadge.style}>{statusBadge.label}</Badge>
                     {!(
                       consultTag &&

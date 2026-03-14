@@ -1,11 +1,13 @@
-export type AchievementBadgeStyle = {
-  background: string;
-  color: string;
-};
+import { BadgeStyle } from "./Badge";
+
+export type AchievementBadgeStyle = BadgeStyle;
 
 const BADGE_TEXT = "#ffffff";
 
-export function getAchievementBadgeStyle(percent: number): AchievementBadgeStyle {
+export function getAchievementBadgeStyle(percent: number | null): AchievementBadgeStyle {
+  if (percent === null) {
+    return { background: "#94a3b8", color: BADGE_TEXT };
+  }
   const score = Number.isFinite(percent) ? Math.max(0, Math.min(100, Math.round(percent))) : 0;
 
   if (score <= 50) {

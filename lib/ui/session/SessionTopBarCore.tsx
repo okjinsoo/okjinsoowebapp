@@ -14,7 +14,7 @@ import {
 import { buildConsultationRecord, normalizeConsultPurpose, validateConsultForm } from "@/lib/factories/consultationFactory";
 import { fmtKST_yyyyMMdd_HHmm_noSeconds } from "@/lib/ui/session/format";
 import Badge from "@/lib/ui/common/Badge";
-import { getAchievementBadgeStyle } from "@/lib/ui/common/achievementBadge";
+import AchievementBadge from "@/lib/ui/common/AchievementBadge";
 import { getSessionStatusBadge } from "@/lib/ui/common/sessionStatusBadge";
 import { findStudentByToken, upsertStudent } from "@/lib/storage/students";
 import { sessionsByStudent } from "@/lib/storage/sessions";
@@ -225,8 +225,8 @@ export default function SessionTopBarCore({ role, token, index }: Props) {
 
   const consultTag = pickPrimaryConsultTag(consultMap[index]);
 
-  const achievementPercent = useMemo(() => {
-    if (!mounted) return 0;
+  const achievementPercent = useMemo((): number | null => {
+    if (!mounted) return null;
     void progressTick;
     return calculateSessionAchievementPercent({
       token,
@@ -579,7 +579,7 @@ export default function SessionTopBarCore({ role, token, index }: Props) {
         <div className="flex items-center gap-2 flex-wrap text-dim">
           <div>{mounted ? (effectiveISO ? fmtKST_yyyyMMdd_HHmm_noSeconds(effectiveISO) : "예정일 없음") : "-"}</div>
           <Badge style={statusBadge.style}>{statusBadge.label}</Badge>
-          <Badge style={getAchievementBadgeStyle(achievementPercent)}>{achievementPercent}%</Badge>
+          <AchievementBadge percent={achievementPercent} />
           {!(
             lastClassIndex &&
             index === lastClassIndex &&

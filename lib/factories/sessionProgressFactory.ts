@@ -15,7 +15,7 @@ export type SessionProgressMap = Record<string, SessionProgressItem>;
 export type SessionProgressSummary = {
   done: number;
   total: number;
-  percent: number;
+  percent: number | null;
 };
 
 function readJson<T>(key: string, fallback: T): T {
@@ -74,14 +74,14 @@ export function calculateSessionProgressSummary(args: {
   return {
     done,
     total,
-    percent: total === 0 ? 0 : Math.round((done / total) * 100),
+    percent: total === 0 ? null : Math.round((done / total) * 100),
   };
 }
 
 export function calculateSessionAchievementPercent(args: {
   token: string;
   sessionIndex: number;
-}): number {
+}): number | null {
   return calculateSessionProgressSummary(args).percent;
 }
 
