@@ -11,20 +11,42 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "unauthorized" }, { status: 401 });
     }
 
+    const clientDigest = request.nextUrl.searchParams.get("digest")?.trim();
+    if (clientDigest && clientDigest === viewer.digest) {
+      return NextResponse.json({
+        ok: true,
+        changed: false,
+        digest: viewer.digest,
+      });
+    }
+
     const stateKey = request.nextUrl.searchParams.get("stateKey")?.trim() ?? "";
     if (stateKey) {
       return NextResponse.json({
         ok: true,
+        changed: true,
+        digest: viewer.digest,
         value: viewer.snapshot.stateKv[stateKey] ?? null,
       });
     }
 
+    // [V18 최적화] 학생 계정은 본인 데이터만 전송하여 패킷 크기 절감
+    const sessions = viewer.role === "student" && viewer.studentId
+      ? viewer.snapshot.sessions.filter(s => s.studentId === viewer.studentId)
+      : viewer.snapshot.sessions;
+
+    const students = viewer.role === "student" && viewer.studentId
+      ? viewer.snapshot.students.filter(s => s.id === viewer.studentId)
+      : viewer.snapshot.students;
+
     return NextResponse.json({
       ok: true,
+      changed: true,
+      digest: viewer.digest,
       snapshot: {
-        teachers: viewer.snapshot.teachers,
-        students: viewer.snapshot.students,
-        sessions: viewer.snapshot.sessions,
+        teachers: viewer.snapshot.teachers, // 선생님 정보는 학생도 참조하므로 유지
+        students,
+        sessions,
         stateKv: viewer.snapshot.stateKv,
       },
     });

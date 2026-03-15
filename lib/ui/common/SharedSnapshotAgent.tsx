@@ -13,7 +13,9 @@ import {
 
 const PUSH_DEBOUNCE_MS = 700;
 const PUSH_RETRY_MS = 1500;
-const REMOTE_PULL_INTERVAL_MS = 5000; // 30초에서 5초로 단축하여 실시간성 강화
+// [전송량 최적화] 역할별 기본 주기 정의
+const PULL_INTERVAL_STUDENT_MS = 60000;  // 학생: 60초
+const PULL_INTERVAL_TEACHER_MS = 10000;  // 선생님/관리자: 10초
 const AUTH_KEY = "tutorweb_auth_session_v1";
 
 const PENDING_LOCK_TIMEOUT_MS = 5000; // [최적화] pending 잠금 최대 유지 시간: 5초 초과 시 강제 해제
@@ -135,12 +137,36 @@ export default function SharedSnapshotAgent() {
       }
     };
 
-    void hydrate().finally(() => {
+    // [전송량 최적화] 역할에 따른 동기화 주기 설정
+    const setupInterval = async () => {
+      // 1. 초기 1회 강제 동기화 (최신 정보 확보)
+      await hydrate(true);
       trySyncCalendarForCurrentLogin();
-    });
-    const intervalId = window.setInterval(() => {
-      void hydrate(true);
-    }, REMOTE_PULL_INTERVAL_MS);
+
+      const auth = loadAuthSession();
+      if (!auth) return null;
+      
+      // pullSnapshot이 완료되었으므로 경로 기반으로 역할을 안전하게 추론
+      const role = window.location.pathname.startsWith("/a/") ? "a" :
+                   window.location.pathname.startsWith("/t/") ? "t" :
+                   window.location.pathname.startsWith("/s/") ? "s" : "guest";
+
+      if (role === "s") {
+        console.log("[V18 최적화] 학생 모드 - 동기화 주기: 60초");
+        return window.setInterval(() => {
+          void hydrate(true);
+        }, PULL_INTERVAL_STUDENT_MS);
+      } else if (role === "t" || role === "a") {
+        console.log(`[V18 최적화] ${role === "a" ? "관리자" : "선생님"} 모드 - 동기화 주기: 10초`);
+        return window.setInterval(() => {
+          void hydrate(true);
+        }, PULL_INTERVAL_TEACHER_MS);
+      }
+      return null;
+    };
+
+    let intervalId: number | null = null;
+    void setupInterval().then(id => { intervalId = id; });
 
     // [안전망] 탭/앱이 닫히거나 백그라운드로 전환될 때 pending 데이터를 즉시 전송
     const onPageHide = () => {
@@ -158,7 +184,7 @@ export default function SharedSnapshotAgent() {
     document.addEventListener("visibilitychange", onVisible);
 
     return () => {
-      window.clearInterval(intervalId);
+      if (intervalId !== null) window.clearInterval(intervalId);
       if (pushTimerRef.current) {
         clearTimeout(pushTimerRef.current);
         pushTimerRef.current = null;

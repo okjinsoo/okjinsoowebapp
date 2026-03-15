@@ -21,7 +21,8 @@ const SNAPSHOT_KEY = "main";
 const TEACHERS_KEY = "tutorweb_teachers_v1";
 const STUDENTS_KEY = "tutorweb_students_v1";
 const SESSIONS_KEY = "tutorweb_sessions_v1";
-const PULL_COOLDOWN_MS = 2000; // 5초에서 2초로 단축하여 실시간 동기화 반응성 향상
+const PULL_COOLDOWN_MS = 2000;
+const DIGEST_STORAGE_KEY = "tutorweb_snapshot_digest_v1";
 
 type SnapshotRow = {
   teachers?: Teacher[];
@@ -38,6 +39,8 @@ type InternalSnapshotResponse = {
     sessions?: Session[];
     stateKv?: Record<string, string> | null;
   };
+  digest?: string;
+  changed?: boolean;
   value?: string | null;
   sessionsSynced?: boolean;
   stateKvSynced?: boolean;
@@ -152,10 +155,12 @@ async function getHeaders(args?: { json?: boolean; forceRefresh?: boolean }): Pr
   return headers;
 }
 
-function buildInternalSnapshotUrl(stateKey?: string): string {
-  if (!stateKey) return "/api/snapshot";
-  const params = new URLSearchParams({ stateKey });
-  return `/api/snapshot?${params.toString()}`;
+function buildInternalSnapshotUrl(args?: { stateKey?: string; digest?: string }): string {
+  const params = new URLSearchParams();
+  if (args?.stateKey) params.set("stateKey", args.stateKey);
+  if (args?.digest) params.set("digest", args.digest);
+  const qs = params.toString();
+  return qs ? `/api/snapshot?${qs}` : "/api/snapshot";
 }
 
 async function fetchInternalSnapshot(args?: {
@@ -171,7 +176,8 @@ async function fetchInternalSnapshot(args?: {
   if (typeof window === "undefined") return null;
 
   try {
-    const res = await fetch(buildInternalSnapshotUrl(args?.stateKey), {
+    const digest = !args?.stateKey && !args?.body ? (browserStorage.getItem(DIGEST_STORAGE_KEY) ?? undefined) : undefined;
+    const res = await fetch(buildInternalSnapshotUrl({ stateKey: args?.stateKey, digest }), {
       method: args?.body ? "POST" : "GET",
       headers: args?.body ? { "Content-Type": "application/json" } : undefined,
       body: args?.body ? JSON.stringify(args.body) : undefined,
@@ -645,7 +651,20 @@ export async function pullSharedSnapshotAndHydrateWithOptions(args?: {
         stateKv,
       });
       lastPullSnapshotAt = Date.now();
+      if (internal.digest) {
+        browserStorage.setItem(DIGEST_STORAGE_KEY, internal.digest);
+      }
       return { teachers, students, sessions };
+    }
+
+    if (internal?.ok && internal.changed === false) {
+      // 서버에서 바뀐 게 없다고 함 -> 로컬 데이터 그대로 사용
+      lastPullSnapshotAt = Date.now();
+      return {
+        teachers: readLocalTeachers(),
+        students: readLocalStudents(),
+        sessions: readLocalSessions(),
+      };
     }
 
     const cfg = getSupabaseConfig();

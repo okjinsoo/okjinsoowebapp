@@ -49,6 +49,7 @@ export type ViewerContext = {
   teacherId: string | null;
   studentId: string | null;
   snapshot: NormalizedSnapshot;
+  digest: string;
 };
 
 export type SnapshotPatch = {
@@ -58,6 +59,32 @@ export type SnapshotPatch = {
   stateKv?: Record<string, string>;
   dropStateKeys?: string[];
 };
+
+/**
+ * [V18 최적화] 데이터의 변경 여부를 짧은 문자열로 요약합니다.
+ * 본문 전체를 보내기 전에 이 값을 비교하여 바뀐 게 없으면 전송을 생략합니다.
+ */
+export function calculateSnapshotDigest(snapshot: NormalizedSnapshot): string {
+  // 간단하고 빠른 해시 대용: 핵심 데이터의 개수와 마지막 요소들의 특징을 조합
+  const tCount = snapshot.teachers.length;
+  const sCount = snapshot.students.length;
+  const sessCount = snapshot.sessions.length;
+  const kvCount = Object.keys(snapshot.stateKv).length;
+  
+  // 데이터가 많을 경우 전체를 JSON.stringify 하는 것도 비용이므로, 
+  // 구조적 특징과 샘플 데이터를 조합하여 지문을 만듭니다.
+  const sample = JSON.stringify({
+    tc: tCount,
+    sc: sCount,
+    sec: sessCount,
+    kc: kvCount,
+    // 마지막 세션의 ID와 상태Kv의 키들만 포함해도 대부분의 변경을 감지 가능
+    ls: snapshot.sessions[sessCount - 1]?.id ?? "",
+    lk: Object.keys(snapshot.stateKv).sort().slice(-1)[0] ?? ""
+  });
+  
+  return Buffer.from(sample).toString("base64");
+}
 
 function getSupabaseServerConfig(): SupabaseConfig | null {
   const url = (process.env.NEXT_PUBLIC_SUPABASE_URL ?? "").trim();
@@ -310,6 +337,7 @@ export async function resolveViewerContext(request: NextRequest): Promise<Viewer
     teacherId,
     studentId,
     snapshot,
+    digest: calculateSnapshotDigest(snapshot), // [V18 추가]
   };
 }
 
