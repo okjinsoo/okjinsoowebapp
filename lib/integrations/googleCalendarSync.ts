@@ -310,19 +310,51 @@ async function requestGoogle(args: {
   if (!res.ok) {
     const msg = parseErrorText(body);
     if (res.status === 401 && !args._retry) {
-      // 401 발생 시 토큰 만료 가능성이 있으므로 최신 세션을 다시 로드해서 1회 재시도해봅니다.
-      console.warn(`[Google API] 401 감지됨. 토큰 재로드 후 재시도 중... (${msg})`);
+      // [보안] 게스트 계정(미등록 사용자)은 캘린더 리커버리를 시도하지 않음
+      const { resolveUserRole } = await import("@/lib/auth/roleAuth");
       const auth = loadAuthSession();
-      const nextToken = text(auth?.providerAccessToken);
-      if (nextToken && nextToken !== args.token) {
-        return requestGoogle({ ...args, token: nextToken, _retry: true });
+      const userRole = await resolveUserRole({ email: auth?.email, accessToken: auth?.accessToken });
+      if (userRole === "guest") {
+        console.warn(`[Google API] 게스트 계정은 캘린더 접근 권한이 없습니다.`);
+        throw new Error("미등록 계정은 이 기능을 사용할 수 없습니다. 원장님께 등록을 요청해 주세요.");
+      }
+
+      // 401 발생 시 토큰 만료 가능성이 있으므로 강제 갱신을 시도해봅니다.
+      // 단, 현재 세션의 토큰이 요청에 사용된 토큰과 동일할 때만 갱신을 시도합니다.
+      console.warn(`[Google API] 401 감지됨. 세션 갱신 시도 중... (${msg})`);
+      try {
+        const { forceRefreshAuthSession, loadAuthSession } = await import("@/lib/auth/supabaseAuth");
+        const current = loadAuthSession();
+        // 이미 다른 곳에서 갱신해서 토큰이 바뀌어 있다면, 굳이 또 갱신하지 않고 새 토큰으로 1회 리트라이
+        if (current?.providerAccessToken && current.providerAccessToken !== args.token) {
+          console.log("[Google API] 이미 토큰이 갱신되어 있습니다. 새 토큰으로 재시도합니다.");
+          return requestGoogle({ ...args, token: current.providerAccessToken, _retry: true });
+        }
+        
+        // 토큰이 그대로라면 실제 서버 갱신 시도
+        const nextSession = await forceRefreshAuthSession();
+        const nextToken = nextSession?.providerAccessToken;
+        if (nextToken && nextToken !== args.token) {
+          console.log("[Google API] 토큰 갱신 성공. 새 토큰으로 재시도합니다.");
+          return requestGoogle({ ...args, token: nextToken, _retry: true });
+        }
+        console.warn("[Google API] 토큰 자동 갱신으로도 해결되지 않았습니다. (토큰 동일)");
+      } catch (err) {
+        console.error("[Google API Recovery Failed]", err);
       }
     }
  
     if (res.status === 401) {
       const tokenPrefix = args.token ? `${args.token.substring(0, 8)}...` : "NONE";
       console.error(`[Google API Persistent 401] Token: ${tokenPrefix}, Msg: ${msg}`);
-      throw new Error(`401 구글 캘린더 권한이 만료되었거나 무효합니다. (토근ID: ${tokenPrefix}, 사유: ${msg}) 홈에서 로그아웃 후 'Sign in with Google' 버튼으로 다시 로그인해주세요.`);
+      
+      // 재로그인 유도를 위해 전역 이벤트를 발생시킵니다.
+      if (typeof window !== "undefined") {
+        const { TUTORWEB_EVENTS } = await import("@/lib/events/tutorwebEvents");
+        window.dispatchEvent(new CustomEvent(TUTORWEB_EVENTS.googleAuthError, { detail: { msg } }));
+      }
+
+      throw new Error(`401 구글 캘린더 권한이 만료되었거나 무효합니다. 사유: ${msg}. 홈에서 로그아웃 후 다시 로그인하거나 '구글 권한 다시 연결' 버튼을 클릭해주세요.`);
     }
     throw new Error(`${res.status} ${msg}`);
   }
@@ -1266,19 +1298,11 @@ async function runSync(args: SyncArgs): Promise<void> {
   const teacherById = new Map(teachers.map((t) => [t.id, t] as const));
   const patches: SessionPatch[] = [];
 
-  // 학생 계정으로 로그인해도 "옥진수학" 전용 캘린더가 자동으로 생성되도록 보장
-  const isStudentAccount = students.some(
-    (student) => normalizeEmail(student.googleEmail) === currentEmail
-  );
-  if (isStudentAccount) {
-    try {
-      await ensureAppCalendarIdWithRecovery({
-        token: providerToken,
-        ownerEmail: currentEmail,
-      });
-    } catch (err) {
-      console.error("학생 계정 전용 캘린더 준비 실패:", err);
-    }
+  const { resolveUserRole } = await import("@/lib/auth/roleAuth");
+  const userRole = await resolveUserRole({ email: auth?.email, accessToken: auth?.accessToken });
+  if (userRole === "student") {
+    console.log("[Calendar Sync] 학생 권한은 캘린더 동기화 기능을 사용하지 않습니다. (Phase 18 권한 격리)");
+    return;
   }
 
   const visibleNextSessions: Session[] = [];

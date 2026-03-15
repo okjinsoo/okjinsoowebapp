@@ -11,12 +11,15 @@ import {
   sessionLeafIdsKey,
   sessionProgressByLeafIdKey,
   SHARED_LECTURE_TREE_KEY,
+  SHARED_DRIVE_ROOT_ID_KEY,
 } from "@/lib/storage/sharedStateKeys";
 import {
   canAssignSessionLectures,
   canSeeSessionInternalFields,
   type SessionRole,
 } from "@/lib/policies/sessionRolePolicy";
+import { loadAuthSession } from "@/lib/auth/supabaseAuth";
+import { ensureFolder } from "@/lib/integrations/googleDriveSync";
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import type {
@@ -31,6 +34,8 @@ import {
   parseLectureTreeRaw,
 } from "@/lib/storage/lectures";
 
+import DriveUploadModal from "@/lib/ui/common/DriveUploadModal";
+
 type Props = {
   token: string;
   sessionIndex: number; // 1-based
@@ -44,7 +49,6 @@ type LeafProgress = {
   solveDone: boolean;
   noteLink: string;
   solveLink: string;
-  lectureClicks: number;
   // --- 임의 문제(Ad-hoc) 전용 정보 ---
   customTitle?: string;
   customProblemUrl?: string;
@@ -63,7 +67,7 @@ function keyLastAdded(token: string, sessionIndex: number) {
 }
 
 function defaultProgress(): LeafProgress {
-  return { noteDone: false, solveDone: false, noteLink: "", solveLink: "", lectureClicks: 0 };
+  return { noteDone: false, solveDone: false, noteLink: "", solveLink: "" };
 }
 
 function updatedAtMs(tree: LectureTree): number | null {
@@ -127,8 +131,8 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
   const [lectureLeafIds, setLectureLeafIds] = useState<string[]>([]);
   const [progressByLeafId, setProgressByLeafId] = useState<ProgressByLeafId>({});
   const [lastAddedLeafId, setLastAddedLeafId] = useState<string>("");
-  const [noteModal, setNoteModal] = useState<{ leafId: string; value: string } | null>(null);
-  const [solveModal, setSolveModal] = useState<{ leafId: string; value: string } | null>(null);
+  const [noteModal, setNoteModal] = useState<{ leafId: string; title: string } | null>(null);
+  const [solveModal, setSolveModal] = useState<{ leafId: string; title: string } | null>(null);
 
   // 신규 모달 상태
   const [customModal, setCustomModal] = useState<{ title: string; url: string } | null>(null);
@@ -220,6 +224,48 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
     return () => clearTimeout(id);
   }, [token, sessionIndex]);
 
+  // 구글 드라이브 본진 ID 저장 (전역 공유)
+  const [remoteDriveRootId, setRemoteDriveRootId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!mounted) return;
+    void (async () => {
+      const val = await readRemoteSharedStateKvValue(SHARED_DRIVE_ROOT_ID_KEY);
+      setRemoteDriveRootId(val);
+    })();
+  }, [mounted]);
+
+  // 본진 드라이브 설정 함수
+  const handleInitDriveRoot = async () => {
+    try {
+      setIsSaving(true);
+      setSavingActionName("본진 드라이브 설정 중");
+      
+      const auth = loadAuthSession();
+      const providerToken = auth?.providerAccessToken;
+      if (!providerToken) throw new Error("구글 계정 연결이 필요합니다. 로그아웃 후 다시 로그인해 주세요.");
+
+      // 1. 01_옥진수학 -> 01_Students 경로 확보
+      const brandId = await ensureFolder({ token: providerToken, name: "01_옥진수학" });
+      const studentsId = await ensureFolder({ token: providerToken, name: "01_Students", parentId: brandId });
+
+      // 2. 확보된 ID를 시스템 본진으로 저장
+      await pushSharedSnapshot({
+        stateKv: {
+          [SHARED_DRIVE_ROOT_ID_KEY]: studentsId
+        }
+      });
+      setRemoteDriveRootId(studentsId);
+      
+      window.alert("본진 드라이브 설정이 완료되었습니다! 이제 모든 학생은 이 폴더로 과제를 배달합니다.");
+    } catch (err) {
+      console.error("본진 설정 실패:", err);
+      window.alert("본진 설정 중 오류가 발생했습니다: " + (err instanceof Error ? err.message : "알 수 없는 오류"));
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   useEffect(() => {
     if (!mounted) return;
 
@@ -300,7 +346,6 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
         ...prev,
         [leafId]: {
           ...defaultProgress(),
-          lectureClicks: cur.lectureClicks ?? 0,
         },
       };
     });
@@ -486,6 +531,22 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
             >
               {isSaving ? "변경 중..." : isReordering ? "순서 완료" : "순서 변경"}
             </button>
+            {role === "a" && (
+              <button
+                onClick={handleInitDriveRoot}
+                disabled={isHydrating || isSaving}
+                className="btn btn-black"
+                style={{ 
+                  padding: "6px 12px", 
+                  background: "#fdf2f2", 
+                  border: "1px solid #fecaca", 
+                  color: "#dc2626",
+                  fontWeight: 700
+                }}
+              >
+                본진 드라이브 입지 선정
+              </button>
+            )}
             <button
               onClick={() => setNoticeModal({ content: "" })}
               disabled={isHydrating || isSaving}
@@ -520,12 +581,14 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
           const lectureUrl = leaf?.lectureUrl?.trim() ?? "";
           const problemUrl =
             leaf?.problemUrls?.map((u) => (u ?? "").trim()).find((u) => u) ?? "";
+          const isCustom = leafId.startsWith("custom_");
+          const targetProblemUrl = isCustom ? (p.customProblemUrl || "") : problemUrl;
           const noteLocked = !!p.noteDone;
           const solveLocked = !!p.solveDone;
           const canOpenLecture = !!lectureUrl && !noteLocked;
-          const canOpenProblem = !!problemUrl && noteLocked;
+          const canOpenProblem = isCustom ? !!targetProblemUrl : (!!problemUrl && noteLocked);
           const canSubmitNote = !noteLocked;
-          const canSubmitSolve = noteLocked && !solveLocked;
+          const canSubmitSolveFinal = isCustom ? !solveLocked : (noteLocked && !solveLocked); 
 
           return (
             <div
@@ -536,7 +599,6 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
                 gap: 12,
               }}
             >
-              {/* 순서 변경 모드 진입 시 표시되는 좌측 컨트롤 패널 */}
               {isReordering && canAssignLectures && (
                 <div style={{ display: "flex", flexDirection: "column", justifyContent: "center", gap: 8 }}>
                   <button
@@ -584,7 +646,6 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
                 </div>
               )}
 
-              {/* 기존 카드 본체 */}
               <div
                 style={{
                   border: isReordering ? "2px dashed var(--action-primary-border)" : "1px solid var(--surface-border)",
@@ -606,11 +667,6 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
                         leaf?.title ?? "(삭제되었거나 찾을 수 없는 강의)"
                       )}
 
-                      {!leafId.startsWith("notice_") && (
-                        <span style={{ fontWeight: 600, opacity: 0.75, marginLeft: 8 }}>
-                          [ 학습 횟수 : {p.lectureClicks ?? 0}회 ]
-                        </span>
-                      )}
                     </div>
                     {canSeeInternalFields ? (
                       <div style={{ opacity: 0.7, marginTop: 4 }}>
@@ -621,49 +677,6 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
 
                    {canAssignLectures ? (
                     <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                      <button
-                        onClick={async () => {
-                          const ok = window.confirm("제출 정보를 초기화할까요? (필기/풀이 링크와 상태가 초기화됩니다)");
-                          if (!ok) return;
-
-                          setSavingActionName("제출 내역을 초기화하는 중...");
-                          setIsSaving(true);
-                          try {
-                            const nextProg = {
-                              ...progressByLeafId,
-                              [leafId]: {
-                                ...defaultProgress(),
-                                lectureClicks: p.lectureClicks ?? 0,
-                              },
-                            };
-                            await pushSharedSnapshot({
-                              stateKv: {
-                                [keyProgress(token, sessionIndex)]: JSON.stringify(nextProg),
-                              },
-                            });
-                            setProgressByLeafId(nextProg);
-                          } catch (err) {
-                            console.error("제출 초기화 실패:", err);
-                            window.alert("초기화에 실패했습니다.");
-                          } finally {
-                            setIsSaving(false);
-                            setSavingActionName("");
-                          }
-                        }}
-                        disabled={isSaving}
-                        style={{
-                          padding: "6px 10px",
-                          borderRadius: 8,
-                          border: "1px solid var(--control-border)",
-                          background: "var(--surface-bg)",
-                          cursor: isSaving ? "not-allowed" : "pointer",
-                          height: 32,
-                          fontWeight: 500,
-                          opacity: isSaving ? 0.6 : 1,
-                        }}
-                      >
-                        제출 초기화
-                      </button>
                       <button
                         onClick={async () => {
                           const ok = window.confirm("이 강의를 이 회차에서 삭제할까요?");
@@ -721,51 +734,65 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
                 {!leafId.startsWith("notice_") && (
                   <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
                     {(() => {
-                      const primaryBorder = noteLocked ? "var(--action-secondary-border)" : "var(--action-primary-border)";
-                      const primaryBg = noteLocked ? "var(--action-secondary-bg)" : "var(--action-primary-bg)";
-                      const secondaryBorder = noteLocked ? "var(--action-primary-border)" : "var(--action-secondary-border)";
-                      const secondaryBg = noteLocked ? "var(--action-primary-bg)" : "var(--action-secondary-bg)";
+                      // 1. 스타일 결정 로직 (원장님 가이드 반영)
+                      // - 주황(Active): 현재 해야 할 단계
+                      // - 파랑(Done): 완료된 단계
+                      // - 회색(Locked): 아직 못 가는 단계
+                      
+                      const activeStyle = { bg: "var(--status-active-bg)", border: "var(--status-active-border)", text: "var(--status-active-text)" };
+                      const doneStyle = { bg: "var(--status-done-bg)", border: "var(--status-done-border)", text: "var(--status-done-text)" };
+                      const lockedStyle = { bg: "var(--status-locked-bg)", border: "var(--status-locked-border)", text: "var(--status-locked-text)" };
 
-                      const isCustom = leafId.startsWith("custom_");
-                      // 임의 문제인 경우 문제 URL은 customProblemUrl 사용
-                      const targetProblemUrl = isCustom ? (p.customProblemUrl || "") : problemUrl;
+                      // 강의 & 필기 버튼 스타일
+                      const lectureNoteStatus = noteLocked ? doneStyle : activeStyle;
+
+                      // 문제 & 풀이 버튼 스타일
+                      let problemSolveStatus = lockedStyle;
+                      if (isCustom) {
+                        problemSolveStatus = solveLocked ? doneStyle : activeStyle;
+                      } else {
+                        if (solveLocked) problemSolveStatus = doneStyle;
+                        else if (noteLocked) problemSolveStatus = activeStyle;
+                      }
 
                       const lectureStyle = {
                         padding: "8px 10px",
                         borderRadius: 10,
-                        border: `1px solid ${primaryBorder}`,
-                        background: primaryBg,
-                        color: "var(--action-contrast-text)",
+                        border: `1px solid ${lectureNoteStatus.border} !important`,
+                        background: `${lectureNoteStatus.bg} !important`,
+                        color: `${lectureNoteStatus.text} !important`,
                         cursor: canOpenLecture ? "pointer" : "not-allowed",
+                        fontWeight: 700,
                       } as const;
 
                       const noteStyle = {
                         padding: "8px 10px",
                         borderRadius: 10,
-                        border: `1px solid ${primaryBorder}`,
-                        background: primaryBg,
-                        color: "var(--action-contrast-text)",
+                        border: `1px solid ${lectureNoteStatus.border} !important`,
+                        background: `${lectureNoteStatus.bg} !important`,
+                        color: `${lectureNoteStatus.text} !important`,
                         cursor: canSubmitNote ? "pointer" : "not-allowed",
+                        fontWeight: 700,
                       } as const;
 
                       const problemStyle = {
                         padding: "8px 10px",
                         borderRadius: 10,
-                        // 임의 문제일 땐 필기 제출(잠금) 단계가 없으므로 primary 색상으로 표시
-                        border: `1px solid ${isCustom ? "var(--action-primary-border)" : secondaryBorder}`,
-                        background: isCustom ? "var(--action-primary-bg)" : secondaryBg,
-                        color: "var(--action-contrast-text)",
+                        border: `1px solid ${problemSolveStatus.border} !important`,
+                        background: `${problemSolveStatus.bg} !important`,
+                        color: `${problemSolveStatus.text} !important`,
                         cursor: isCustom ? (targetProblemUrl ? "pointer" : "not-allowed") : (canOpenProblem ? "pointer" : "not-allowed"),
+                        fontWeight: 700,
                       } as const;
 
                       const solveStyle = {
                         padding: "8px 10px",
                         borderRadius: 10,
-                        border: `1px solid ${isCustom ? "var(--action-primary-border)" : secondaryBorder}`,
-                        background: isCustom ? "var(--action-primary-bg)" : secondaryBg,
-                        color: "var(--action-contrast-text)",
-                        // 임의 문제 풀이 제출 상태도 별도로 따짐 (noteLocked 의존 제거)
-                        cursor: isCustom ? (!solveLocked ? "pointer" : "not-allowed") : (canSubmitSolve ? "pointer" : "not-allowed"),
+                        border: `1px solid ${problemSolveStatus.border} !important`,
+                        background: `${problemSolveStatus.bg} !important`,
+                        color: `${problemSolveStatus.text} !important`,
+                        cursor: isCustom ? (!solveLocked ? "pointer" : "not-allowed") : (canSubmitSolveFinal ? "pointer" : "not-allowed"),
+                        fontWeight: 700,
                       } as const;
 
                       return (
@@ -776,7 +803,6 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
                                 onClick={() => {
                                   if (!lectureUrl) return;
                                   if (noteLocked) return;
-                                  updateProgress(leafId, { lectureClicks: (p.lectureClicks ?? 0) + 1 });
                                   window.open(lectureUrl, "_blank", "noopener,noreferrer");
                                 }}
                                 disabled={!canOpenLecture}
@@ -787,42 +813,73 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
                             )}
 
                             {!isCustom && (
-                              <button
-                                onClick={() => {
-                                  if (!canSubmitNote) return;
-                                  setNoteModal({ leafId, value: (p.noteLink ?? "").trim() });
-                                }}
-                                disabled={!canSubmitNote}
-                                style={noteStyle}
-                              >
-                                필기 제출
-                              </button>
+                              <div style={{ position: "relative", width: "100%" }}>
+                                {noteLocked ? (
+                                  <div style={{
+                                    ...noteStyle,
+                                    cursor: "default",
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "center"
+                                  }}>
+                                    <span style={{ fontSize: 13, lineHeight: 1, fontWeight: 700 }}>필기 제출 완료</span>
+                                  </div>
+                                ) : (
+                                  <button
+                                    onClick={() => {
+                                      if (!canSubmitNote) return;
+                                    const leaf = getLeaf(leafId);
+                                    const modalTitle = isCustom ? (p.customTitle || "문제 풀이") : (leaf?.title || "필기 제출");
+                                    setNoteModal({ leafId, title: modalTitle });
+                                    }}
+                                    disabled={!canSubmitNote}
+                                    style={{ ...noteStyle, width: "100%" }}
+                                  >
+                                    필기 제출
+                                  </button>
+                                )}
+                              </div>
                             )}
 
                             <button
                               onClick={() => {
                                 if (!targetProblemUrl) return;
-                                if (!isCustom && !noteLocked) return;
-                                updateProgress(leafId, { lectureClicks: (p.lectureClicks ?? 0) + 1 }); // 문제 클릭 시에도 횟수 가산
+                                if (!canOpenProblem) return;
                                 window.open(targetProblemUrl, "_blank", "noopener,noreferrer");
                               }}
-                              disabled={isCustom ? !targetProblemUrl : !canOpenProblem}
+                              disabled={!canOpenProblem}
                               style={problemStyle}
                             >
                               문제
                             </button>
 
-                            <button
-                              onClick={() => {
-                                if (!isCustom && !canSubmitSolve) return;
-                                if (isCustom && solveLocked) return;
-                                setSolveModal({ leafId, value: (p.solveLink ?? "").trim() });
-                              }}
-                              disabled={isCustom ? solveLocked : !canSubmitSolve}
-                              style={solveStyle}
-                            >
-                              풀이 제출
-                            </button>
+                            <div style={{ position: "relative", width: "100%" }}>
+                              {solveLocked ? (
+                                <div style={{
+                                  ...solveStyle,
+                                  cursor: "default",
+                                  display: "flex",
+                                  alignItems: "center",
+                                  justifyContent: "center"
+                                }}>
+                                  <span style={{ fontSize: 13, lineHeight: 1, fontWeight: 700 }}>풀이 제출 완료</span>
+                                </div>
+                              ) : (
+                                <button
+                                  onClick={() => {
+                                    // For custom problems, canSubmitSolveFinal is always true if not solveLocked
+                                    if (!isCustom && !canSubmitSolveFinal) return;
+                                    const leaf = getLeaf(leafId);
+                                    const modalTitle = isCustom ? (p.customTitle || "문제 풀이") : (leaf?.title || "풀이 제출");
+                                    setSolveModal({ leafId, title: modalTitle });
+                                  }}
+                                  disabled={isCustom ? solveLocked : !canSubmitSolveFinal}
+                                  style={{ ...solveStyle, width: "100%" }}
+                                >
+                                  풀이 제출
+                                </button>
+                              )}
+                            </div>
                           </div>
 
                           <div style={{ display: "flex", gap: 16, alignItems: "center", color: "var(--text-muted)", fontSize: 13 }}>
@@ -841,23 +898,53 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
                       );
                     })()}
 
-                    {canSeeInternalFields && !leafId.startsWith("custom_") && (
-                      <div style={{ color: "var(--text-muted)" }}>
-                        필기 URL:{" "}
-                        <span style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" }}>
-                          {p.noteLink ? p.noteLink : "-"}
-                        </span>
+                    {canSeeInternalFields && (
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginTop: 4 }}>
+                        {/* 필기 섹션 (커스텀 문제는 제외) */}
+                        {!isCustom && p.noteDone && (
+                          <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                            <button
+                              onClick={() => p.noteLink && window.open(p.noteLink, "_blank")}
+                              style={{ padding: "6px 12px", borderRadius: 8, background: "var(--surface-hover)", border: "1px solid var(--surface-border)", fontSize: 12, fontWeight: 700, cursor: "pointer" }}
+                            >
+                              📂 필기 폴더 바로가기
+                            </button>
+                            <button
+                              onClick={() => {
+                                if (window.confirm("이 학생의 필기 제출을 초기화하고 다시 제출하게 할까요?")) {
+                                  updateProgress(leafId, { noteDone: false, noteLink: "" });
+                                }
+                              }}
+                              style={{ padding: "6px 12px", borderRadius: 8, background: "#fee2e2", border: "1px solid #fecaca", color: "#dc2626", fontSize: 12, fontWeight: 700, cursor: "pointer" }}
+                            >
+                              필기 초기화
+                            </button>
+                          </div>
+                        )}
+
+                        {/* 풀이 섹션 */}
+                        {p.solveDone && (
+                          <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                            <button
+                              onClick={() => p.solveLink && window.open(p.solveLink, "_blank")}
+                              style={{ padding: "6px 12px", borderRadius: 8, background: "var(--surface-hover)", border: "1px solid var(--surface-border)", fontSize: 12, fontWeight: 700, cursor: "pointer" }}
+                            >
+                              📂 풀이 폴더 바로가기
+                            </button>
+                            <button
+                              onClick={() => {
+                                if (window.confirm("이 학생의 풀이 제출을 초기화하고 다시 제출하게 할까요?")) {
+                                  updateProgress(leafId, { solveDone: false, solveLink: "" });
+                                }
+                              }}
+                              style={{ padding: "6px 12px", borderRadius: 8, background: "#fee2e2", border: "1px solid #fecaca", color: "#dc2626", fontSize: 12, fontWeight: 700, cursor: "pointer" }}
+                            >
+                              풀이 초기화
+                            </button>
+                          </div>
+                        )}
                       </div>
                     )}
-
-                    {canSeeInternalFields ? (
-                      <div style={{ color: "var(--text-muted)" }}>
-                        풀이 URL:{" "}
-                        <span style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" }}>
-                          {p.solveLink ? p.solveLink : "-"}
-                        </span>
-                      </div>
-                    ) : null}
                   </div>
                 )}
               </div>
@@ -872,217 +959,7 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
             </div>
           ) : null
         }
-      </div >
-
-      {
-        noteModal ? (
-          <div
-            style={{
-              position: "fixed",
-              inset: 0,
-              background: "rgba(0,0,0,0.35)",
-              display: "flex",
-              justifyContent: "center",
-              alignItems: "center",
-              padding: 16,
-              zIndex: 1000,
-            }}
-            onClick={() => setNoteModal(null)}
-          >
-            <div
-              style={{
-                width: "min(520px, 100%)",
-                background: "var(--surface-bg)",
-                borderRadius: 14,
-                padding: 16,
-                border: "1px solid var(--surface-border)",
-              }}
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div style={{ fontWeight: 800, marginBottom: 8 }}>필기 제출</div>
-              <div style={{ color: "var(--text-muted)", marginBottom: 8 }}>
-                필기 제출 파일 URL을 입력하세요.
-              </div>
-              <input
-                value={noteModal?.value || ''}
-                onChange={(e) => setNoteModal((prev) => prev ? { ...prev, value: e.target.value } : null)}
-                placeholder="https://..."
-                style={{
-                  width: "100%",
-                  padding: "8px 10px",
-                  borderRadius: 10,
-                  border: "1px solid var(--control-border)",
-                }}
-              />
-              <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-                <button
-                  onClick={async () => {
-                    const link = noteModal?.value || ''.trim();
-                    if (!link) {
-                      window.alert("필기 제출 파일 URL을 입력해주세요.");
-                      return;
-                    }
-                    const ok = window.confirm(
-                      "제출 후 강의와 필기 파일을 수정할 수 없습니다. 문제풀 준비가 되었나요?"
-                    );
-                    if (!ok) return;
-
-                    setSavingActionName("필기 결과물을 제출 중...");
-                    setIsSaving(true);
-                    try {
-                      const leafId = noteModal!.leafId;
-                      const nextProg = {
-                        ...progressByLeafId,
-                        [leafId]: { ...(progressByLeafId[leafId] ?? defaultProgress()), noteDone: true, noteLink: link },
-                      };
-
-                      await pushSharedSnapshot({
-                        stateKv: {
-                          [keyProgress(token, sessionIndex)]: JSON.stringify(nextProg),
-                        },
-                      });
-
-                      setProgressByLeafId(nextProg);
-                      setNoteModal(null);
-                    } catch (err) {
-                      console.error("필기 제출 실패:", err);
-                      window.alert("저장에 실패했습니다.");
-                    } finally {
-                      setIsSaving(false);
-                      setSavingActionName("");
-                    }
-                  }}
-                  disabled={isSaving}
-                  style={{
-                    padding: "8px 12px",
-                    borderRadius: 10,
-                    border: "1px solid var(--action-primary-border)",
-                    background: "var(--action-primary-bg)",
-                    color: "var(--action-contrast-text)",
-                    minWidth: 80,
-                  }}
-                >
-                  {isSaving ? "제출 중..." : "제출"}
-                </button>
-                <button
-                  onClick={() => setNoteModal(null)}
-                  style={{
-                    padding: "8px 12px",
-                    borderRadius: 10,
-                    border: "1px solid var(--control-border)",
-                    background: "var(--surface-bg)",
-                  }}
-                >
-                  취소
-                </button>
-              </div>
-            </div>
-          </div >
-        ) : null
-      }
-
-      {
-        solveModal ? (
-          <div
-            style={{
-              position: "fixed",
-              inset: 0,
-              background: "rgba(0,0,0,0.35)",
-              display: "flex",
-              justifyContent: "center",
-              alignItems: "center",
-              padding: 16,
-              zIndex: 1000,
-            }}
-            onClick={() => setSolveModal(null)}
-          >
-            <div
-              style={{
-                width: "min(520px, 100%)",
-                background: "var(--surface-bg)",
-                borderRadius: 14,
-                padding: 16,
-                border: "1px solid var(--surface-border)",
-              }}
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div style={{ fontWeight: 800, marginBottom: 8 }}>풀이 제출</div>
-              <div style={{ color: "var(--text-muted)", marginBottom: 8 }}>
-                풀이 제출 파일 URL을 입력하세요.
-              </div>
-              <input
-                value={solveModal?.value || ''}
-                onChange={(e) => setSolveModal((prev) => prev ? { ...prev, value: e.target.value } : null)}
-                placeholder="https://..."
-                style={{
-                  width: "100%",
-                  padding: "8px 10px",
-                  borderRadius: 10,
-                  border: "1px solid var(--control-border)",
-                }}
-              />
-              <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-                <button
-                  onClick={async () => {
-                    const link = solveModal?.value || ''.trim();
-                    if (!link) {
-                      window.alert("풀이 제출 파일 URL을 입력해주세요.");
-                      return;
-                    }
-
-                    setSavingActionName("풀이 결과물을 제출 중...");
-                    setIsSaving(true);
-                    try {
-                      const leafId = solveModal!.leafId;
-                      const nextProg = {
-                        ...progressByLeafId,
-                        [leafId]: { ...(progressByLeafId[leafId] ?? defaultProgress()), solveDone: true, solveLink: link },
-                      };
-
-                      await pushSharedSnapshot({
-                        stateKv: {
-                          [keyProgress(token, sessionIndex)]: JSON.stringify(nextProg),
-                        },
-                      });
-
-                      setProgressByLeafId(nextProg);
-                      setSolveModal(null);
-                    } catch (err) {
-                      console.error("풀이 제출 실패:", err);
-                      window.alert("저장에 실패했습니다.");
-                    } finally {
-                      setIsSaving(false);
-                      setSavingActionName("");
-                    }
-                  }}
-                  disabled={isSaving}
-                  style={{
-                    padding: "8px 12px",
-                    borderRadius: 10,
-                    border: "1px solid var(--action-success-border)",
-                    background: "var(--action-success-bg)",
-                    color: "var(--action-contrast-text)",
-                    minWidth: 80,
-                  }}
-                >
-                  {isSaving ? "제출 중..." : "제출"}
-                </button>
-                <button
-                  onClick={() => setSolveModal(null)}
-                  style={{
-                    padding: "8px 12px",
-                    borderRadius: 10,
-                    border: "1px solid var(--control-border)",
-                    background: "var(--surface-bg)",
-                  }}
-                >
-                  취소
-                </button>
-              </div>
-            </div>
-          </div>
-        ) : null
-      }
+      </div>
 
       {/* 임의 문제 추가 모달 */}
       {
@@ -1482,6 +1359,93 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
           </div>
         ) : null
       }
-    </section >
+        {/* 구글 드라이브 업로드 모달 (필기) */}
+      <DriveUploadModal
+        open={!!noteModal}
+        token={token}
+        sessionIndex={sessionIndex}
+        contentTitle={noteModal?.title || ""}
+        submitType="필기 제출"
+        initialValue="" 
+        rootFolderId={remoteDriveRootId}
+        onClose={() => setNoteModal(null)}
+        onComplete={async (driveLink) => {
+          if (!noteModal) return;
+          const { leafId } = noteModal;
+          
+          setSavingActionName("필기 제출을 확정하는 중...");
+          setIsSaving(true);
+          try {
+            const nextProg = {
+              ...progressByLeafId,
+              [leafId]: {
+                ...(progressByLeafId[leafId] || defaultProgress()),
+                noteDone: true,
+                noteLink: driveLink,
+              }
+            };
+            
+            await pushSharedSnapshot({
+              stateKv: {
+                [keyProgress(token, sessionIndex)]: JSON.stringify(nextProg),
+              },
+            });
+            setProgressByLeafId(nextProg);
+            setNoteModal(null);
+          } catch (err) {
+            console.error("필기 제출 저장 실패:", err);
+            window.alert("제출 기록 저장에 실패했습니다.");
+          } finally {
+            setIsSaving(false);
+            setSavingActionName("");
+          }
+        }}
+      />
+
+      {/* 구글 드라이브 업로드 모달 (풀이) */}
+      <DriveUploadModal
+        open={!!solveModal}
+        token={token}
+        sessionIndex={sessionIndex}
+        contentTitle={solveModal?.title || ""}
+        submitType="풀이 제출"
+        initialValue=""
+        rootFolderId={remoteDriveRootId}
+        onClose={() => setSolveModal(null)}
+        onComplete={async (driveLink) => {
+          if (!solveModal) return;
+          const { leafId } = solveModal;
+
+          setSavingActionName("풀이 제출을 확정하는 중...");
+          setIsSaving(true);
+          try {
+            const nextProg = {
+              ...progressByLeafId,
+              [leafId]: {
+                ...(progressByLeafId[leafId] || defaultProgress()),
+                solveDone: true,
+                solveLink: driveLink,
+              }
+            };
+
+            await pushSharedSnapshot({
+              stateKv: {
+                [keyProgress(token, sessionIndex)]: JSON.stringify(nextProg),
+              },
+            });
+            setProgressByLeafId(nextProg);
+            setSolveModal(null);
+          } catch (err) {
+            console.error("풀이 제출 저장 실패:", err);
+            window.alert("제출 기록 저장에 실패했습니다.");
+          } finally {
+            setIsSaving(false);
+            setSavingActionName("");
+          }
+        }}
+      />
+
+      {/* 기존 모달들 하단에 유지 (필요시) */}
+    </section>
   );
 }

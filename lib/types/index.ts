@@ -76,6 +76,9 @@ export type Student = {
   consultationHistory?: ConsultationRecord[];
   pauseEffectiveDate?: string;
   pauseStatus?: "confirmed" | "paused" | "none";
+
+  // 구글 드라이브 본진 사물함 ID (원장님이 생성 및 부여)
+  driveFolderId?: string;
 };
 
 export type ConsultationRecord = {

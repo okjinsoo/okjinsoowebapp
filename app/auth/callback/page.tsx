@@ -24,6 +24,12 @@ export default function AuthCallbackPage() {
         }
 
         const parsed = parseOAuthHash(window.location.hash);
+        
+        // [보안 패치] 토큰 정보가 포함된 URL Hash를 즉시 삭제하여 주소창 노출을 차단합니다.
+        if (typeof window !== "undefined" && window.location.hash) {
+          window.history.replaceState(null, "", window.location.pathname + window.location.search);
+        }
+
         if (!parsed) {
           throw new Error(
             "로그인 토큰을 받지 못했어요. Supabase Redirect URL을 '/auth/callback'으로 등록했는지 확인해주세요."

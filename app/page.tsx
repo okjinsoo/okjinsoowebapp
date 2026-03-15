@@ -80,7 +80,8 @@ export default function HomePage() {
 
     setBusy(true);
     const redirectTo = `${window.location.origin}/auth/callback`;
-    const url = buildGoogleAuthUrl(redirectTo, true);
+    // 일반 계정 로그인: 캘린더 권한 없이 드라이브 권한만 최소 요청 (Phase 18 보안 고도화)
+    const url = buildGoogleAuthUrl(redirectTo, false);
     if (!url) {
       setBusy(false);
       setError("로그인 URL을 만들지 못했어요.");

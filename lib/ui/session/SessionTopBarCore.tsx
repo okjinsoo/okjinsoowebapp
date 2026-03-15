@@ -11,7 +11,15 @@ import {
   useMetaMap,
   getDdayMeta,
 } from "@/lib/factories/sessionFactories";
-import { buildConsultationRecord, normalizeConsultPurpose, validateConsultForm } from "@/lib/factories/consultationFactory";
+import {
+  buildConsultationRecord,
+  normalizeConsultPurpose,
+  validateConsultForm,
+} from "@/lib/factories/consultationFactory";
+import {
+  buildGoogleAuthUrl,
+  forceRefreshAuthSession,
+} from "@/lib/auth/supabaseAuth";
 import { fmtKST_yyyyMMdd_HHmm_noSeconds } from "@/lib/ui/session/format";
 import Badge from "@/lib/ui/common/Badge";
 import AchievementBadge from "@/lib/ui/common/AchievementBadge";
@@ -106,18 +114,29 @@ export default function SessionTopBarCore({ role, token, index }: Props) {
   const [draftReason, setDraftReason] = useState<string>("");
   const [draftRecord, setDraftRecord] = useState<string>("");
 
+  // 구글 인증 에러 상태
+  const [authError, setAuthError] = useState<string | null>(null);
+
   const [isSaving, setIsSaving] = useState(false);
   useEffect(() => {
     const onStudents = () => setStudentTick((x) => x + 1);
     const onSessions = () => setSessionTick((x) => x + 1);
     const onConsultations = () => setConsultTick((x) => x + 1);
+    const onAuthError = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      setAuthError(detail?.msg || "권한 만료");
+    };
+
     window.addEventListener(TUTORWEB_EVENTS.studentsUpdated, onStudents);
     window.addEventListener(TUTORWEB_EVENTS.sessionsUpdated, onSessions);
     window.addEventListener(TUTORWEB_EVENTS.consultationsUpdated, onConsultations);
+    window.addEventListener(TUTORWEB_EVENTS.googleAuthError, onAuthError);
+
     return () => {
       window.removeEventListener(TUTORWEB_EVENTS.studentsUpdated, onStudents);
       window.removeEventListener(TUTORWEB_EVENTS.sessionsUpdated, onSessions);
       window.removeEventListener(TUTORWEB_EVENTS.consultationsUpdated, onConsultations);
+      window.removeEventListener(TUTORWEB_EVENTS.googleAuthError, onAuthError);
     };
   }, []);
 
@@ -581,6 +600,77 @@ export default function SessionTopBarCore({ role, token, index }: Props) {
       }}
       className="flex items-center justify-between gap-3"
     >
+      {/* 구글 인증 에러 긴급 복구 배너 */}
+      {authError && (
+        <div 
+          style={{
+            position: "absolute",
+            top: "100%",
+            left: 0,
+            right: 0,
+            zIndex: 100,
+            background: "#fff1f2",
+            border: "1px solid #fecaca",
+            padding: "8px 12px",
+            marginTop: 8,
+            borderRadius: 10,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 12,
+            boxShadow: "0 4px 12px rgba(225, 29, 72, 0.15)",
+            animation: "slideIn 0.3s ease-out"
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 8, color: "#e11d48", fontSize: 13, fontWeight: 600 }}>
+            <span style={{ fontSize: 16 }}>⚠️</span>
+            <span>구글 캘린더 작업 중 권한 오류가 발생했습니다. (사유: {authError.substring(0, 40)}...)</span>
+          </div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button
+              onClick={() => {
+                const needsCalendar = role === "a" || role === "t";
+                const url = buildGoogleAuthUrl(window.location.href, needsCalendar);
+                if (url) window.location.href = url;
+              }}
+              style={{
+                background: "#e11d48",
+                color: "white",
+                border: "none",
+                padding: "6px 12px",
+                borderRadius: 8,
+                fontSize: 12,
+                fontWeight: 700,
+                cursor: "pointer",
+                boxShadow: "0 2px 4px rgba(225, 29, 72, 0.2)"
+              }}
+            >
+              지금 바로 다시 연결하기
+            </button>
+            <button
+              onClick={() => setAuthError(null)}
+              style={{
+                background: "white",
+                color: "#64748b",
+                border: "1px solid #e2e8f0",
+                padding: "6px 10px",
+                borderRadius: 8,
+                fontSize: 12,
+                cursor: "pointer"
+              }}
+            >
+              닫기
+            </button>
+          </div>
+          <style jsx>{`
+            @keyframes slideIn {
+              from { opacity: 0; transform: translateY(-10px); }
+              to { opacity: 1; transform: translateY(0); }
+            }
+          `}</style>
+        </div>
+      )}
+
       {/* 좌측: 회차 목록 카드 레이아웃과 1:1 */}
       <div
         style={{

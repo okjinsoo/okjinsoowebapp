@@ -17,5 +17,5 @@ export function canUseConsultFeatures(role: SessionRole): boolean {
 }
 
 export function canTriggerCalendarSync(role: SessionRole): boolean {
-  return role === "a" || role === "t" || role === "s";
+  return role === "a" || role === "t";
 }

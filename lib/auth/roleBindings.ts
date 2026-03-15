@@ -178,6 +178,10 @@ export async function upsertRoleBinding(args: {
 
   if (!res.ok) {
     const text = await res.text();
+    if (res.status === 403) {
+      console.warn(`[RoleBinding] 권한 부족으로 서버 동기화 건너뜐 (정상동작에 지장없음): ${text}`);
+      return; 
+    }
     throw new Error(`role_bindings upsert failed: ${res.status} ${text}`);
   }
 }
@@ -231,6 +235,10 @@ export async function deleteRoleBinding(args: {
 
   if (!res.ok) {
     const text = await res.text();
+    if (res.status === 403) {
+      console.warn(`[RoleBinding] 권한 부족으로 서버 삭제 동기화 건너뜀 (정상동작에 지장없음): ${text}`);
+      return; 
+    }
     throw new Error(`role_bindings delete failed: ${res.status} ${text}`);
   }
 }

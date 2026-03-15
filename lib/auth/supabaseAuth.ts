@@ -125,16 +125,18 @@ export function buildGoogleAuthUrl(redirectTo: string, requestCalendar: boolean 
   url.searchParams.set("redirect_to", redirectTo);
 
   if (requestCalendar) {
-    // 관리자/선생님: 캘린더 관리를 위해 전체 scope 요청
+    // 관리자/선생님: 캘린더 관리 및 드라이브 제어를 위해 전체 scope 요청
     url.searchParams.set(
       "scopes",
-      "email profile openid https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/calendar.events"
+      "email profile openid https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/drive.metadata.readonly"
     );
   } else {
-    // 학생: 캘린더 권한 불필요 (경고창 회피)
-    url.searchParams.set("scopes", "email profile openid");
+    // 학생: 캘린더 권한은 불필요하지만 드라이브 업로드를 위한 권한 추가
+    url.searchParams.set(
+      "scopes",
+      "email profile openid https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/drive.metadata.readonly"
+    );
   }
-
   url.searchParams.set("prompt", "select_account consent");
   url.searchParams.set("access_type", "offline");
   url.searchParams.set("include_granted_scopes", "true");
@@ -151,27 +153,29 @@ export function parseOAuthHash(hash: string): OAuthHashResult | null {
 
   const expiresInRaw = Number(p.get("expires_in") ?? "");
   const expiresIn = Number.isFinite(expiresInRaw) ? Math.max(0, Math.floor(expiresInRaw)) : null;
-  const providerExpiresInRaw = Number(
-    p.get("provider_expires_in") ?? p.get("provider_token_expires_in") ?? ""
-  );
-  const providerExpiresIn = Number.isFinite(providerExpiresInRaw)
-    ? Math.max(0, Math.floor(providerExpiresInRaw))
+  const providerExpiresInRawStr = p.get("provider_expires_in") ?? p.get("provider_token_expires_in") ?? "";
+  const providerExpiresIn = (providerExpiresInRawStr.trim() && !isNaN(Number(providerExpiresInRawStr)))
+    ? Math.max(0, Math.floor(Number(providerExpiresInRawStr)))
     : null;
+
+  const candidateProviderToken =
+    p.get("provider_token") ??
+    p.get("provider_access_token") ??
+    p.get("google_access_token");
+
+  // [위험 방지] Supabase의 access_token(JWT, 보통 'ey'로 시작)이 provider_token으로 오인되는 것을 방지
+  const finalProviderToken = candidateProviderToken || (p.get("access_token")?.startsWith("ey") ? null : p.get("access_token"));
 
   return {
     accessToken,
     refreshToken: p.get("refresh_token"),
     expiresIn,
-    providerToken:
-      p.get("provider_token") ??
-      p.get("provider_access_token") ??
-      p.get("google_access_token") ??
-      p.get("access_token"), // provider_token might be access_token in some flows
+    providerToken: finalProviderToken,
     providerRefreshToken:
       p.get("provider_refresh_token") ??
       p.get("provider_refresh") ??
       p.get("google_refresh_token") ??
-      p.get("refresh_token"), // same for refresh
+      (p.get("refresh_token")?.length && p.get("refresh_token")!.length < 100 ? p.get("refresh_token") : null), 
     providerExpiresIn,
     error: p.get("error"),
     errorDescription: p.get("error_description"),
@@ -286,6 +290,10 @@ async function refreshAuthSessionOnce(session: AuthSession): Promise<AuthSession
   const expiresInRaw = Number(body.expires_in ?? "");
   const expiresIn = Number.isFinite(expiresInRaw) ? Math.max(0, Math.floor(expiresInRaw)) : null;
 
+  const providerAccessToken = body.access_token && !body.access_token.startsWith("ey") 
+    ? body.access_token 
+    : session.providerAccessToken;
+
   const next: AuthSession = {
     accessToken,
     refreshToken:
@@ -296,9 +304,12 @@ async function refreshAuthSessionOnce(session: AuthSession): Promise<AuthSession
     userId: typeof body.user?.id === "string" ? body.user.id : session.userId,
     email: typeof body.user?.email === "string" ? body.user.email : session.email,
     provider: "google",
-    providerAccessToken: session.providerAccessToken ?? null,
-    providerRefreshToken: session.providerRefreshToken ?? null,
-    providerExpiresAt: session.providerExpiresAt ?? null,
+    providerAccessToken: providerAccessToken ?? null,
+    providerRefreshToken: session.providerRefreshToken ?? null, // Supabase Refresh Token API는 보통 provider_refresh_token을 주지 않으므로 기존 값 유지
+    // [보완] 구글 토큰을 새로 받은 게 아니라면 기존 만료 시간을 유지해야 합니다.
+    providerExpiresAt: (providerAccessToken === session.providerAccessToken) 
+      ? session.providerExpiresAt ?? null 
+      : null, 
   };
 
   saveAuthSession(next);

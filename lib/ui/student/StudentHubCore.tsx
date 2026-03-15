@@ -5,7 +5,7 @@ import { loadAuthSession } from "@/lib/auth/supabaseAuth";
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { findStudentByToken, loadStudents, saveStudents } from "@/lib/storage/students";
+import { findStudentByToken, loadStudents, saveStudents, saveStudentsServerFirst } from "@/lib/storage/students";
 import { loadTeachers, TEACHERS_EVENT } from "@/lib/storage/teachers";
 import {
   loadAllConsultationsStore,
@@ -75,8 +75,13 @@ import {
   canUseConsultFeatures,
   type SessionRole,
 } from "@/lib/policies/sessionRolePolicy";
-import { pushSharedSnapshot } from "@/lib/storage/sharedSnapshot";
-import { SHARED_CONSULTATIONS_KEY } from "@/lib/storage/sharedStateKeys";
+import {
+  pullSharedSnapshotAndHydrateWithOptions,
+  pushSharedSnapshot,
+  readRemoteSharedStateKvValue,
+} from "@/lib/storage/sharedSnapshot";
+import { SHARED_CONSULTATIONS_KEY, SHARED_DRIVE_ROOT_ID_KEY } from "@/lib/storage/sharedStateKeys";
+import { ensureFolder, shareFolderWithEmail } from "@/lib/integrations/googleDriveSync";
 import { loadLatestCoreSnapshotBaseline } from "@/lib/storage/safeSnapshotMerge";
 import { makeId } from "@/lib/utils/id";
 import { kstDateMs, nowIso, todayYmdKST } from "@/lib/utils/date";
@@ -226,6 +231,7 @@ export default function StudentHubCore({
   const [progressTick, setProgressTick] = useState(0);
   const [calendarSyncing, setCalendarSyncing] = useState(false);
   const [calendarSyncMessage, setCalendarSyncMessage] = useState("");
+  const [isLockerSyncing, setIsLockerSyncing] = useState(false);
 
   useEffect(() => {
     const id = setTimeout(() => setMounted(true), 0);
@@ -492,6 +498,49 @@ export default function StudentHubCore({
       }
       setCalendarSyncing(false);
     }, 2200);
+  }
+  
+  async function onClickLockerResync() {
+    if (!student) return;
+    setIsLockerSyncing(true);
+    try {
+      // 1. 구글 권한 확인
+      const auth = loadAuthSession();
+      const providerToken = auth?.providerAccessToken;
+      if (!providerToken) throw new Error("구글 계정 연결이 필요합니다. 로그아웃 후 다시 로그인해 주세요.");
+
+      // 2. 최신 설정(본진 ID 등) 불러오기
+      await pullSharedSnapshotAndHydrateWithOptions({ forceRemote: true });
+      const driveRootId = await readRemoteSharedStateKvValue(SHARED_DRIVE_ROOT_ID_KEY);
+      
+      if (!driveRootId) {
+        throw new Error("먼저 관리자 페이지에서 [본진 드라이브 입지 선정]을 완료해 주세요.");
+      }
+
+      // 3. 학생 전용 사물함 폴더 생성/확인
+      const folderName = `${student.cohort}_${student.name}`;
+      const fid = await ensureFolder({ token: providerToken, name: folderName, parentId: driveRootId });
+
+      // 4. 학생 이메일로 권한 부여
+      if (student.googleEmail?.includes("@")) {
+        await shareFolderWithEmail({
+          token: providerToken,
+          fileId: fid,
+          email: student.googleEmail
+        });
+      }
+
+      // 5. 서버에 폴더 ID 저장 및 동기화
+      const nextStudents = loadStudents().map(s => s.id === student.id ? { ...s, driveFolderId: fid } : s);
+      await saveStudentsServerFirst(nextStudents);
+      
+      window.alert(`사물함 정비 완료! ✨\n\n- 폴더 이름: ${folderName}\n- 배정 ID: ${fid}\n\n이제 사진을 제출하면 이 폴더로 안전하게 배달됩니다.`);
+    } catch (err) {
+      console.error("사물함 개별 정비 실패:", err);
+      window.alert("정비에 실패했습니다: " + (err instanceof Error ? err.message : "알 수 없는 오류"));
+    } finally {
+      setIsLockerSyncing(false);
+    }
   }
 
   function resolveScheduleStartIndexByDate(targetDate: string): number {
@@ -1262,14 +1311,31 @@ export default function StudentHubCore({
         ) : null}
 
         {canTriggerCalendarSync(accessRole) ? (
-          <button
-            className="btn btn-white"
-            onClick={onClickCalendarResync}
-            disabled={calendarSyncing}
-            title="현재 학생의 회차 캘린더/Meet를 다시 동기화"
-          >
-            {calendarSyncing ? "회차 동기화 중..." : "회차 동기화"}
-          </button>
+          <div style={{ display: "flex", gap: 8 }}>
+            {(accessRole === "a" || accessRole === "t") && (
+              <button
+                className="btn"
+                onClick={onClickLockerResync}
+                disabled={isLockerSyncing}
+                style={{ 
+                  background: "#fdf2f2", 
+                  border: "1px solid #fecaca", 
+                  color: "#dc2626",
+                  fontWeight: 700
+                }}
+              >
+                {isLockerSyncing ? "정리 중..." : "사물함 정리"}
+              </button>
+            )}
+            <button
+              className="btn btn-white"
+              onClick={onClickCalendarResync}
+              disabled={calendarSyncing}
+              title="현재 학생의 회차 캘린더/Meet를 다시 동기화"
+            >
+              {calendarSyncing ? "회차 동기화 중..." : "회차 동기화"}
+            </button>
+          </div>
         ) : null}
 
         <button onClick={() => router.push(sessionListHref)} className="btn btn-green">

@@ -13,7 +13,7 @@ import {
 
 const PUSH_DEBOUNCE_MS = 700;
 const PUSH_RETRY_MS = 1500;
-const REMOTE_PULL_INTERVAL_MS = 5000; // 30초에서 5초로 단축하여 실시간성 강화항목 수정 Corporate
+const REMOTE_PULL_INTERVAL_MS = 5000; // 30초에서 5초로 단축하여 실시간성 강화
 const AUTH_KEY = "tutorweb_auth_session_v1";
 
 const PENDING_LOCK_TIMEOUT_MS = 5000; // [최적화] pending 잠금 최대 유지 시간: 5초 초과 시 강제 해제
