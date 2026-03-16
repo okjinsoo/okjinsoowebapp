@@ -235,36 +235,6 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
     })();
   }, [mounted]);
 
-  // 본진 드라이브 설정 함수
-  const handleInitDriveRoot = async () => {
-    try {
-      setIsSaving(true);
-      setSavingActionName("본진 드라이브 설정 중");
-      
-      const auth = loadAuthSession();
-      const providerToken = auth?.providerAccessToken;
-      if (!providerToken) throw new Error("구글 계정 연결이 필요합니다. 로그아웃 후 다시 로그인해 주세요.");
-
-      // 1. 01_옥진수학 -> 01_Students 경로 확보
-      const brandId = await ensureFolder({ token: providerToken, name: "01_옥진수학" });
-      const studentsId = await ensureFolder({ token: providerToken, name: "01_Students", parentId: brandId });
-
-      // 2. 확보된 ID를 시스템 본진으로 저장
-      await pushSharedSnapshot({
-        stateKv: {
-          [SHARED_DRIVE_ROOT_ID_KEY]: studentsId
-        }
-      });
-      setRemoteDriveRootId(studentsId);
-      
-      window.alert("본진 드라이브 설정이 완료되었습니다! 이제 모든 학생은 이 폴더로 과제를 배달합니다.");
-    } catch (err) {
-      console.error("본진 설정 실패:", err);
-      window.alert("본진 설정 중 오류가 발생했습니다: " + (err instanceof Error ? err.message : "알 수 없는 오류"));
-    } finally {
-      setIsSaving(false);
-    }
-  };
 
   useEffect(() => {
     if (!mounted) return;
@@ -531,22 +501,6 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
             >
               {isSaving ? "변경 중..." : isReordering ? "순서 완료" : "순서 변경"}
             </button>
-            {role === "a" && (
-              <button
-                onClick={handleInitDriveRoot}
-                disabled={isHydrating || isSaving}
-                className="btn btn-black"
-                style={{ 
-                  padding: "6px 12px", 
-                  background: "#fdf2f2", 
-                  border: "1px solid #fecaca", 
-                  color: "#dc2626",
-                  fontWeight: 700
-                }}
-              >
-                본진 드라이브 입지 선정
-              </button>
-            )}
             <button
               onClick={() => setNoticeModal({ content: "" })}
               disabled={isHydrating || isSaving}

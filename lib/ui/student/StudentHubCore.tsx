@@ -1328,12 +1328,18 @@ export default function StudentHubCore({
               </button>
             )}
             <button
-              className="btn btn-white"
+              className="btn"
               onClick={onClickCalendarResync}
               disabled={calendarSyncing}
+              style={{ 
+                background: "#fdf2f2", 
+                border: "1px solid #fecaca", 
+                color: "#dc2626",
+                fontWeight: 700
+              }}
               title="현재 학생의 회차 캘린더/Meet를 다시 동기화"
             >
-              {calendarSyncing ? "회차 동기화 중..." : "회차 동기화"}
+              {calendarSyncing ? "동기화 중..." : "회차 동기화"}
             </button>
           </div>
         ) : null}
