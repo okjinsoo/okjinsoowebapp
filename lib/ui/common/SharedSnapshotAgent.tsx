@@ -6,32 +6,30 @@ import { BROWSER_STORAGE_EVENT } from "@/lib/storage/browserStorage";
 import { pullSharedSnapshotAndHydrateWithOptions, pushSharedSnapshot } from "@/lib/storage/sharedSnapshot";
 import { syncGoogleCalendarForExistingSessions } from "@/lib/storage/sessions";
 import {
-  isSessionProgressStateKey,
   isSharedStateKvKey,
-  SHARED_LECTURE_TREE_KEY,
 } from "@/lib/storage/sharedStateKeys";
 
 const PUSH_DEBOUNCE_MS = 700;
 const PUSH_RETRY_MS = 1500;
-// [전송량 최적화] 역할별 기본 주기 정의
-const PULL_INTERVAL_STUDENT_MS = 60000;  // 학생: 60초
-const PULL_INTERVAL_TEACHER_MS = 10000;  // 선생님/관리자: 10초
+// [전송량 최적화] 역할별 기본 주기 정의 (Edge Requests 감축을 위해 대폭 완화)
+const PULL_INTERVAL_STUDENT_MS = 300000; // 학생: 5분 (기존 1분)
+const PULL_INTERVAL_TEACHER_MS = 30000;  // 선생님/관리자: 30초 (기존 10초)
 const AUTH_KEY = "tutorweb_auth_session_v1";
 
-const PENDING_LOCK_TIMEOUT_MS = 5000; // [최적화] pending 잠금 최대 유지 시간: 5초 초과 시 강제 해제
+const PENING_LOCK_TIMEOUT_MS = 5000; 
 
 export default function SharedSnapshotAgent() {
   const hydratingRef = useRef(false);
   const pushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pullIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pendingStateKvRef = useRef<Record<string, string>>({});
-  const pendingLockedAtRef = useRef<number | null>(null); // [최적화] pending 잠금 시작 시각
+  const pendingLockedAtRef = useRef<number | null>(null); 
   const calendarSyncKeyRef = useRef("");
 
   useEffect(() => {
     const trySyncCalendarForCurrentLogin = () => {
       const auth = loadAuthSession();
-      if (!auth?.email) return;
-      if (!auth?.providerAccessToken) return;
+      if (!auth?.email || !auth?.providerAccessToken) return;
       const syncKey = `${auth.email.toLowerCase()}::${auth.userId ?? ""}`;
       if (calendarSyncKeyRef.current === syncKey) return;
       calendarSyncKeyRef.current = syncKey;
@@ -41,12 +39,9 @@ export default function SharedSnapshotAgent() {
     const hydrate = async (forceRemote = false) => {
       if (hydratingRef.current) return;
       if (Object.keys(pendingStateKvRef.current).length > 0) {
-        // [최적화] pending 잠금이 5초를 초과하면 강제 해제하여 무한 차단 방지
         const lockedAt = pendingLockedAtRef.current;
-        if (lockedAt !== null && Date.now() - lockedAt > PENDING_LOCK_TIMEOUT_MS) {
-          console.warn("[SharedSnapshotAgent] pending 잠금 타임아웃 → 강제 해제 후 hydrate 재시도");
+        if (lockedAt !== null && Date.now() - lockedAt > PENING_LOCK_TIMEOUT_MS) {
           pendingLockedAtRef.current = null;
-          // 타임아웃된 pending은 다시 예약하여 재전송 시도
           schedulePush(PUSH_RETRY_MS);
         } else {
           return;
@@ -56,7 +51,7 @@ export default function SharedSnapshotAgent() {
       try {
         await pullSharedSnapshotAndHydrateWithOptions({ forceRemote });
       } catch (err) {
-        console.error("공유 스냅샷 하이드레이션 실패(agent):", err);
+        console.error("공유 스냅샷 하이드레이션 실패:", err);
       } finally {
         hydratingRef.current = false;
       }
@@ -65,55 +60,39 @@ export default function SharedSnapshotAgent() {
     const flushPending = () => {
       const pending = { ...pendingStateKvRef.current };
       pendingStateKvRef.current = {};
-      pendingLockedAtRef.current = null; // 잠금 해제
+      pendingLockedAtRef.current = null;
       if (Object.keys(pending).length === 0) return;
 
       void pushSharedSnapshot({ stateKv: pending })
         .then((result) => {
           if (result.stateKvSynced) return;
-          // 재전송 필요 시 잠금 시작 시각 기록
           if (Object.keys(pendingStateKvRef.current).length === 0) {
             pendingLockedAtRef.current = Date.now();
           }
-          pendingStateKvRef.current = {
-            ...pending,
-            ...pendingStateKvRef.current,
-          };
+          pendingStateKvRef.current = { ...pending, ...pendingStateKvRef.current };
           schedulePush(PUSH_RETRY_MS);
         })
-        .catch((err) => {
+        .catch(() => {
           if (Object.keys(pendingStateKvRef.current).length === 0) {
             pendingLockedAtRef.current = Date.now();
           }
-          pendingStateKvRef.current = {
-            ...pending,
-            ...pendingStateKvRef.current,
-          };
-          console.error("공유 스냅샷 업로드 실패(agent):", err);
+          pendingStateKvRef.current = { ...pending, ...pendingStateKvRef.current };
           schedulePush(PUSH_RETRY_MS);
         });
     };
 
     const schedulePush = (delayMs = PUSH_DEBOUNCE_MS) => {
-      if (pushTimerRef.current) {
-        clearTimeout(pushTimerRef.current);
-      }
-      pushTimerRef.current = setTimeout(() => {
-        flushPending();
-      }, delayMs);
+      if (pushTimerRef.current) clearTimeout(pushTimerRef.current);
+      pushTimerRef.current = setTimeout(() => flushPending(), delayMs);
     };
 
     const onStorageChanged: EventListener = (event) => {
       if (hydratingRef.current) return;
-
       const ce = event as CustomEvent<{ key?: string | null; newValue?: string | null }>;
       const key = ce.detail?.key ?? "";
-      if (key === AUTH_KEY) return;
-      if (!isSharedStateKvKey(key)) return;
-
+      if (key === AUTH_KEY || !isSharedStateKvKey(key)) return;
       const newValue = ce.detail?.newValue;
       if (typeof newValue !== "string") return;
-      // 새 데이터 추가 시 잠금 시작 시각 기록 (없을 때만)
       if (Object.keys(pendingStateKvRef.current).length === 0) {
         pendingLockedAtRef.current = Date.now();
       }
@@ -127,48 +106,55 @@ export default function SharedSnapshotAgent() {
       void hydrate(true);
     };
 
-    const onFocus = () => {
-      void hydrate(true);
-    };
-
-    const onVisible = () => {
-      if (document.visibilityState === "visible") {
-        void hydrate(true);
+    // [Edge Requests 최적화] 탭이 활성화될 때만 주기 실행 (절전 모드)
+    const restartInterval = () => {
+      if (pullIntervalRef.current) {
+        clearInterval(pullIntervalRef.current);
+        pullIntervalRef.current = null;
       }
-    };
-
-    // [전송량 최적화] 역할에 따른 동기화 주기 설정
-    const setupInterval = async () => {
-      // 1. 초기 1회 강제 동기화 (최신 정보 확보)
-      await hydrate(true);
-      trySyncCalendarForCurrentLogin();
-
-      const auth = loadAuthSession();
-      if (!auth) return null;
       
-      // pullSnapshot이 완료되었으므로 경로 기반으로 역할을 안전하게 추론
+      const auth = loadAuthSession();
+      if (!auth) return;
+
       const role = window.location.pathname.startsWith("/a/") ? "a" :
                    window.location.pathname.startsWith("/t/") ? "t" :
                    window.location.pathname.startsWith("/s/") ? "s" : "guest";
 
-      if (role === "s") {
-        console.log("[V18 최적화] 학생 모드 - 동기화 주기: 60초");
-        return window.setInterval(() => {
-          void hydrate(true);
-        }, PULL_INTERVAL_STUDENT_MS);
-      } else if (role === "t" || role === "a") {
-        console.log(`[V18 최적화] ${role === "a" ? "관리자" : "선생님"} 모드 - 동기화 주기: 10초`);
-        return window.setInterval(() => {
-          void hydrate(true);
-        }, PULL_INTERVAL_TEACHER_MS);
+      const intervalMs = role === "s" ? PULL_INTERVAL_STUDENT_MS : 
+                         (role === "t" || role === "a") ? PULL_INTERVAL_TEACHER_MS : null;
+
+      if (intervalMs) {
+        console.log(`[Phase 21 절전모드] ${role} 모드 동기화 시작 (${intervalMs / 1000}초 간격)`);
+        pullIntervalRef.current = setInterval(() => {
+          if (document.visibilityState === "visible") {
+            void hydrate(true);
+          }
+        }, intervalMs);
       }
-      return null;
     };
 
-    let intervalId: number | null = null;
-    void setupInterval().then(id => { intervalId = id; });
+    const stopInterval = () => {
+      if (pullIntervalRef.current) {
+        console.log("[Phase 21 절전모드] 백그라운드 전환 - 동기화 일시 정지");
+        clearInterval(pullIntervalRef.current);
+        pullIntervalRef.current = null;
+      }
+    };
 
-    // [안전망] 탭/앱이 닫히거나 백그라운드로 전환될 때 pending 데이터를 즉시 전송
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        void hydrate(true); 
+        restartInterval();
+      } else {
+        stopInterval();
+      }
+    };
+
+    // 초기 실행
+    void hydrate(true);
+    trySyncCalendarForCurrentLogin();
+    restartInterval();
+
     const onPageHide = () => {
       if (pushTimerRef.current) {
         clearTimeout(pushTimerRef.current);
@@ -179,21 +165,19 @@ export default function SharedSnapshotAgent() {
 
     window.addEventListener(BROWSER_STORAGE_EVENT, onStorageChanged);
     window.addEventListener(AUTH_EVENT, onAuthChanged);
-    window.addEventListener("focus", onFocus);
     window.addEventListener("pagehide", onPageHide);
-    document.addEventListener("visibilitychange", onVisible);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
 
     return () => {
-      if (intervalId !== null) window.clearInterval(intervalId);
+      stopInterval();
       if (pushTimerRef.current) {
         clearTimeout(pushTimerRef.current);
         pushTimerRef.current = null;
       }
       window.removeEventListener(BROWSER_STORAGE_EVENT, onStorageChanged);
       window.removeEventListener(AUTH_EVENT, onAuthChanged);
-      window.removeEventListener("focus", onFocus);
       window.removeEventListener("pagehide", onPageHide);
-      document.removeEventListener("visibilitychange", onVisible);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
   }, []);
 
