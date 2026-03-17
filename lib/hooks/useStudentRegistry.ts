@@ -18,9 +18,12 @@ import { TUTORWEB_EVENTS } from "@/lib/events/tutorwebEvents";
 import { todayYmdKST, kstDateMs, ymdFromISO_KST } from "@/lib/utils/date";
 import type { Student, Teacher, Session, ConsultationRecord } from "@/lib/types/index";
 import type { StudentStatusKind } from "@/lib/factories/studentStatusFactory";
+import { findLastClassIndex } from "@/lib/ui/session/pauseHelpers";
+import { SessionMeta } from "@/lib/ui/session/sessionEffective";
 
 export type EnhancedSession = Session & {
   effectiveISO: string | null;
+  meta: SessionMeta;
 };
 
 export type StudentMetrics = {
@@ -35,6 +38,7 @@ export type StudentMetrics = {
   pauseLifecycle: ReturnType<typeof computePauseLifecycle>;
   latestPauseRequest: ConsultationRecord | null;
   consultIndex: number | null;
+  lastClassIndex: number | null;
   sessions: EnhancedSession[];
 };
 
@@ -84,14 +88,14 @@ export function useStudentRegistry() {
       const enhancedSessions: EnhancedSession[] = [];
 
       for (const s of rawSessions) {
-        const { effectiveISO } = computeEffectiveISO({
+        const { effectiveISO, meta } = computeEffectiveISO({
           token: st.token,
           index: s.index,
           baseDatesISO,
           metaMap,
         });
         
-        enhancedSessions.push({ ...s, effectiveISO });
+        enhancedSessions.push({ ...s, effectiveISO, meta });
 
         if (!effectiveISO) continue;
         const ymd = ymdFromISO_KST(effectiveISO);
@@ -148,6 +152,17 @@ export function useStudentRegistry() {
         passedCount,
       });
 
+      const lastClassIndex =
+        (st.pauseStatus === "confirmed" || st.pauseStatus === "paused") && st.pauseEffectiveDate
+          ? findLastClassIndex({
+            token: st.token,
+            sessions: enhancedSessions,
+            baseDatesISO,
+            metaMap,
+            pauseEffectiveDate: st.pauseEffectiveDate,
+          })
+          : null;
+
       metricsMap.set(st.id, {
         student: st,
         teacher,
@@ -160,6 +175,7 @@ export function useStudentRegistry() {
         pauseLifecycle,
         latestPauseRequest,
         consultIndex,
+        lastClassIndex,
         sessions: enhancedSessions,
       });
     }

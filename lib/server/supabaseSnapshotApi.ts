@@ -489,6 +489,33 @@ export async function upsertSnapshotPatch(args: {
     state_kv?: Record<string, string>;
   } = { id: SNAPSHOT_KEY };
 
+  // [Phase 23 보안] 권한별 쓰기 제한
+  if (viewer.role === "student") {
+    // 1. 자신의 학생 정보만 수정 가능 (전체 학생 명단 수정 시도 차단)
+    if (hasStudents) {
+      if (!args.patch.students || args.patch.students.length > 1 || args.patch.students[0]?.id !== viewer.studentId) {
+        throw new Error("unauthorized_student_data_manipulation");
+      }
+      // 2. 민감 정보(결제, 횟수 등) 수정 시도 차단
+      const currentStudent = viewer.snapshot.students.find(s => s.id === viewer.studentId);
+      const patchStudent = args.patch.students[0];
+      if (currentStudent && patchStudent) {
+        if (patchStudent.planCount !== currentStudent.planCount || 
+            JSON.stringify(patchStudent.paymentHistory) !== JSON.stringify(currentStudent.paymentHistory)) {
+          throw new Error("unauthorized_financial_data_manipulation");
+        }
+      }
+    }
+    // 3. 수업(sessions) 및 선생님 정보 수정 차단
+    if (hasSessions || hasTeachers) {
+      throw new Error("unauthorized_session_or_teacher_manipulation");
+    }
+    // 4. 전역 설정(stateKv) 수정 차단
+    if (touchesStateKv) {
+       throw new Error("unauthorized_metadata_manipulation");
+    }
+  }
+
   if (hasTeachers) payload.teachers = args.patch.teachers ?? [];
   if (hasStudents) payload.students = args.patch.students ?? [];
   if (hasSessions) payload.sessions = args.patch.sessions ?? [];

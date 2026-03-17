@@ -62,7 +62,7 @@ function toDateYmd(iso?: string): string {
 export default function TodaySessionsCard({
   rows,
   role,
-  title = "오늘의 수업",
+  title = "오늘의 수업 ",
   emptyText = "오늘 수업이 없습니다.",
   leadBadgeLabel = "D-day",
   leadBadgeClassName = "bg-emerald-600 text-white",
@@ -232,13 +232,13 @@ export default function TodaySessionsCard({
               <div
                 key={`today-${r.token}-${r.index}`}
                 style={{
-                  display: "grid",
-                  gridTemplateColumns: "60px 1fr auto",
-                  gap: 30,
+                  display: "flex",
+                  gap: 20,
+                  justifyContent: "space-between",
                   alignItems: "center",
-                  padding: "8px 10px",
+                  padding: "12px 16px",
                   border: "1px solid var(--surface-border)",
-                  borderRadius: 8,
+                  borderRadius: 12,
                   background: "var(--surface-bg)",
                 }}
                 onMouseEnter={(e) => (e.currentTarget.style.background = "var(--surface-hover)")}
@@ -246,11 +246,21 @@ export default function TodaySessionsCard({
               >
                 <Link
                   href={`/${role}/smain/session/${r.index}`}
-                  className="block"
-                  style={{ display: "contents" }}
+                  style={{
+                    flex: 1,
+                    display: "grid",
+                    gridTemplateColumns: "140px 1fr",
+                    gap: 20,
+                    alignItems: "center",
+                    textDecoration: "none",
+                    color: "inherit",
+                  }}
                   onClick={() => saveCurrentStudentToken(r.token)}
                 >
-                  <div style={{ fontWeight: 700 }}>{r.studentName}</div>
+                  <div style={{ display: "flex", alignItems: "baseline", gap: 8, fontWeight: 700, whiteSpace: "nowrap" }}>
+                    <span style={{ fontSize: "1.1rem" }}>{r.studentName}</span>
+                    <span style={{ fontSize: "0.85rem", opacity: 0.6, fontWeight: 500 }}>{r.index}회차</span>
+                  </div>
                   <div className="flex items-center gap-2 flex-wrap text-dim">
                     {/* 1. 날짜 및 시간 */}
                     <div>
@@ -263,8 +273,8 @@ export default function TodaySessionsCard({
                     {/* 3. 출결 상태 */}
                     <Badge style={statusBadge.style}>{statusBadge.label}</Badge>
 
-                    {/* 4. 변경/이월 등 추가 배지 */}
-                    {(r.badges ?? []).map((badge) => (
+                    {/* 4. 추가 배지 (변경/이월 등) */}
+                    {(r.badges ?? []).filter(b => b !== "마지막 수업").map((badge) => (
                       <Badge key={`${r.token}:${r.index}:${badge}`} style={getSessionExtraBadgeStyle(badge)}>
                         {badge}
                       </Badge>
@@ -276,7 +286,7 @@ export default function TodaySessionsCard({
                     ) : null}
 
                     {/* 6. 마지막 수업 여부 */}
-                    {r.lastClass ? (
+                    {r.lastClass || (r.badges ?? []).includes("마지막 수업") ? (
                       <Badge style={{ background: "#ef4444", color: "#fff" }}>마지막 수업</Badge>
                     ) : null}
                   </div>

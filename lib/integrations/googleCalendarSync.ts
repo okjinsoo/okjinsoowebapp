@@ -60,7 +60,7 @@ const DUPLICATE_TIME_WINDOW_MS = 5 * 60 * 1000;
 const RECENT_CREATED_TTL_MS = 60 * 1000;
 const APP_CALENDAR_SUMMARY = "옥진수학";
 const APP_CALENDAR_DESCRIPTION = "옥진수학 자동 생성 수업 일정";
-const APP_EVENT_MARKER = "옥진수학 자동 생성 일정";
+export const APP_EVENT_MARKER = "옥진수학 자동 생성 일정";
 const STUDENT_MIRROR_MARKER = "학생용 보조 일정";
 const CALENDAR_CACHE_TTL_MS = 30 * 60 * 1000; // [최적화] 5분 → 30분: 반복 캘린더 목록 조회 대폭 감소
 
@@ -276,7 +276,7 @@ async function ensureAppCalendarId(args: {
   return foundId;
 }
 
-async function requestGoogle(args: {
+export async function requestGoogle(args: {
   token: string;
   method: "GET" | "POST" | "PATCH" | "DELETE";
   path: string;

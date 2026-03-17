@@ -36,6 +36,7 @@ import {
 } from "@/lib/factories/sessionProgressFactory";
 import { canUseConsultFeatures } from "@/lib/policies/sessionRolePolicy";
 import { todayYmdKST, ymdFromISO_KST } from "@/lib/utils/date";
+import { parseDateTime } from "@/lib/ui/session/format";
 
 type Props = {
   role: "a" | "t" | "s";
@@ -43,29 +44,6 @@ type Props = {
   prefix: string;
   hideTokenInRoute?: boolean;
 };
-
-function parseDateTime(iso: string | null | undefined) {
-  if (!iso) return { dateText: "날짜 없음", timeText: "-" };
-  const dt = new Date(iso);
-  if (!Number.isFinite(dt.getTime())) return { dateText: "날짜 없음", timeText: "-" };
-
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Seoul",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).formatToParts(dt);
-
-  const y = parts.find((p) => p.type === "year")?.value ?? "1970";
-  const m = parts.find((p) => p.type === "month")?.value ?? "01";
-  const d = parts.find((p) => p.type === "day")?.value ?? "01";
-  const hh = parts.find((p) => p.type === "hour")?.value ?? "00";
-  const mm = parts.find((p) => p.type === "minute")?.value ?? "00";
-  return { dateText: `${y}. ${m}. ${d}.`, timeText: `${hh}시 ${mm}분` };
-}
 
 function applyPauseStateFromConsultations(student: NonNullable<ReturnType<typeof findStudentByToken>>, records: ConsultationRecord[]) {
   const latestPause = [...records]

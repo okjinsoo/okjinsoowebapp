@@ -24,7 +24,7 @@ import { findLastClassIndex } from "@/lib/ui/session/pauseHelpers";
 import { calculateSessionAchievementPercent } from "@/lib/factories/sessionProgressFactory";
 import { TUTORWEB_EVENTS } from "@/lib/events/tutorwebEvents";
 import { useStudentRegistry } from "@/lib/hooks/useStudentRegistry";
-import { fmtKST_yyyyMMdd_HHmm_noSeconds } from "@/lib/ui/session/format";
+import { parseDateTime } from "@/lib/ui/session/format";
 
 export default function TeacherMainClient({ initialRole = "t" }: { initialRole?: "a" | "t" }) {
   const router = useRouter();
@@ -94,23 +94,34 @@ export default function TeacherMainClient({ initialRole = "t" }: { initialRole?:
         const dday = getDdayMeta(s.effectiveISO, now);
         if (dday.diff === null) continue;
 
+        // ✅ 학생 페이지와 동일한 날짜/시간 파서 사용
+        const { dateText, timeText } = parseDateTime(s.effectiveISO);
+        
+        // ✅ 성취도 퍼센트 계산
         const percent = calculateSessionAchievementPercent({ token: st.token, sessionIndex: s.index });
         
+        // ✅ 상담 배지 추출
+        const consultTag = pickPrimaryConsultTag(consultMap[s.index]);
+
+        // ✅ 세션 상태 배지 및 기타 특수 배지 (마지막 수업 등) 구성
+        const badges = buildBadges(s.meta);
+        const isLastClass = metrics.lastClassIndex === s.index;
+
         rows.push({
           studentId: st.id,
           token: st.token,
           studentName: st.name,
           index: s.index,
           effectiveISO: s.effectiveISO ?? "",
-          dateText: s.effectiveISO ? s.effectiveISO.split("T")[0].replace(/-/g, ". ") : "-",
-          timeText: s.effectiveISO ? fmtKST_yyyyMMdd_HHmm_noSeconds(s.effectiveISO).split(" ")[1] : "-",
-          status: "planned", // 간소화
-          badges: [], // 간소화
+          dateText,
+          timeText,
+          status: s.meta.status ?? "planned",
+          badges,
           ddayLabel: dday.label,
           ddayClass: dday.className,
           percent,
-          consultTag: undefined,
-          lastClass: false,
+          consultTag,
+          lastClass: isLastClass,
           diff: dday.diff,
         } as any);
       }
