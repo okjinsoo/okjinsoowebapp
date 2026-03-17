@@ -17,10 +17,10 @@ import {
 } from "@/lib/storage/sharedStateKeys";
 import type { Session, Student, Teacher } from "@/lib/types/index";
 
-const SNAPSHOT_KEY = "main";
-const TEACHERS_KEY = "tutorweb_teachers_v1";
-const STUDENTS_KEY = "tutorweb_students_v1";
-const SESSIONS_KEY = "tutorweb_sessions_v1";
+export const SNAPSHOT_KEY = "main";
+export const TEACHERS_KEY = "tutorweb_teachers_v1";
+export const STUDENTS_KEY = "tutorweb_students_v1";
+export const SESSIONS_KEY = "tutorweb_sessions_v1";
 const PULL_COOLDOWN_MS = 2000;
 const DIGEST_STORAGE_KEY = "tutorweb_snapshot_digest_v1";
 
@@ -212,7 +212,7 @@ export function readLocalSessions(): Session[] {
   return safeParseJson<Session[]>(browserStorage.getItem(SESSIONS_KEY), []);
 }
 
-function dispatchLocalSnapshotUpdated(args?: { includeSessions?: boolean }) {
+export function dispatchLocalSnapshotUpdated(args?: { includeSessions?: boolean }) {
   if (typeof window === "undefined") return;
   window.dispatchEvent(new CustomEvent(TUTORWEB_EVENTS.teachersUpdated));
   window.dispatchEvent(new CustomEvent(TUTORWEB_EVENTS.studentsUpdated));
@@ -469,12 +469,6 @@ type PushSharedSnapshotArgs = {
 const DAILY_BACKUP_KEY = "mk3:last_daily_backup_ts";
 
 export async function pushSharedSnapshot(args?: PushSharedSnapshotArgs): Promise<PushSharedSnapshotResult> {
-  // [CRITICAL SAFETY] 서버 데이터를 한 번도 가져오지 않은 상태에서 밀어넣기 방지
-  if (!isInitialDataLoaded && !args?.forceEmpty) {
-    console.warn("⚠️ [Safety Check] 서버 데이터를 아직 읽어오지 못해 저장을 중단합니다. (Loading Integrity)");
-    return { sessionsSynced: false, stateKvSynced: false };
-  }
-
   const hasTeachersArg = Object.prototype.hasOwnProperty.call(args ?? {}, "teachers");
   const hasStudentsArg = Object.prototype.hasOwnProperty.call(args ?? {}, "students");
   const hasSessionsArg = Object.prototype.hasOwnProperty.call(args ?? {}, "sessions");
@@ -483,33 +477,14 @@ export async function pushSharedSnapshot(args?: PushSharedSnapshotArgs): Promise
 
   const touchesStateKv = hasStateKvArg || hasDropStateKeysArg;
 
-  // [Emergency Fix] 인자로 넘어온 경우에만 명시적으로 패치에 포함
-  // 로컬 데이터를 '기본값'으로 사용하는 방식을 제거하여, 로딩되지 않은 빈 데이터가 서버를 덮어씌우는 것을 원천적으로 차단합니다.
   const teachers = hasTeachersArg ? (args?.teachers ?? []) : undefined;
   const students = hasStudentsArg ? (args?.students ?? []) : undefined;
   const sessions = hasSessionsArg ? (args?.sessions ?? []) : undefined;
   const stateKvPatch = hasStateKvArg ? toStateKv(args?.stateKv ?? {}) : undefined;
 
-  // [CRITICAL SAFETY] 학생/세션 데이터가 로컬에 아예 없거나 급격히 줄어든 경우 전송 차단
   const localStudents = readLocalStudents();
+  // 모든 데이터 전송 차단 가드 제거 (사용자 명령 우선)
   const incomingStudents = hasStudentsArg ? (args?.students ?? []) : localStudents;
-  
-  // 1. 완전 빈 데이터 전송 차단 (이미 구현됨)
-  if (incomingStudents.length === 0 && !args?.forceEmpty) {
-    console.warn("⚠️ [Safety Check] 전송할 학생 데이터가 비어있어 중단합니다. (Data Loss Prevention)");
-    return { sessionsSynced: false, stateKvSynced: false };
-  }
-
-  // 2. 대량 유실 방지 (Majority Guard): 기존 데이터 대비 50% 이상 급감 시 차단
-  // 단, 로컬에 데이터가 아예 없었던 초기 상태면 통과
-  if (localStudents.length > 5 && incomingStudents.length < localStudents.length * 0.5 && !args?.forceEmpty) {
-    const msg = `⚠️ [Safety Check] 학생 수가 급격히 줄어들었습니다 (${localStudents.length}명 -> ${incomingStudents.length}명). 전송을 차단합니다.`;
-    console.error(msg);
-    if (typeof window !== "undefined") {
-      window.alert("🚨 [데이터 보호 경보]\n\n학생 명단이 대량으로 삭제되려는 시도가 감지되어 서버 전송을 차단했습니다.\n화면을 새로고침하여 데이터를 다시 불러와 주세요.\n\n정말 삭제하시려면 대량 삭제 옵션을 사용해야 합니다.");
-    }
-    return { sessionsSynced: false, stateKvSynced: false };
-  }
 
   const body: any = {};
   if (hasTeachersArg) body.teachers = teachers;
@@ -707,20 +682,12 @@ export async function pullSharedSnapshotAndHydrateWithOptions(args?: {
       const sessions = Array.isArray(internalSnapshot.sessions) ? internalSnapshot.sessions : [];
       const stateKv = toStateKv(internalSnapshot.stateKv);
 
-      // [CRITICAL SAFETY] 역방향 오염 방지 (Cross-Check)
-      // 서버에서 가져온 명단이 0명인데, 로컬에는 이미 데이터가 있다면 적용을 거부하고 경고합니다.
-      const localStudents = readLocalStudents();
-      if (localStudents.length > 5 && students.length === 0) {
-        console.error("⚠️ [Safety Check] 서버 장부가 비어있습니다. 로컬 데이터를 보호하기 위해 동기화를 중단합니다.");
-        if (typeof window !== "undefined") {
-          window.alert("🚨 [데이터 보호 알림]\n\n서버의 학생 명단이 비어있는 상태입니다.\n로컬 데이터를 보호하기 위해 동기화가 일시 중단되었습니다.\n원장님께 문의하시거나 새로고침하여 다시 시도해 주세요.");
-        }
-        return { teachers: localStudents.length > 0 ? localStudents.map(s => ({} as any)) : [], students: localStudents, sessions: readLocalSessions() };
-      }
+      // 서버에서 가져온 데이터가 비어있더라도 사용자 명령에 따라 그대로 수용
+      const serverStudents = Array.isArray(internalSnapshot.students) ? internalSnapshot.students : [];
 
       applyLocalSnapshot({
         teachers,
-        students,
+        students: serverStudents,
         sessions,
         stateKv,
       });

@@ -3,11 +3,22 @@
 import { useEffect, useRef } from "react";
 import { AUTH_EVENT, loadAuthSession } from "@/lib/auth/supabaseAuth";
 import { BROWSER_STORAGE_EVENT } from "@/lib/storage/browserStorage";
-import { pullSharedSnapshotAndHydrateWithOptions, pushSharedSnapshot } from "@/lib/storage/sharedSnapshot";
+import {
+  pullSharedSnapshotAndHydrateWithOptions,
+  pushSharedSnapshot,
+  STUDENTS_KEY,
+  TEACHERS_KEY,
+  SESSIONS_KEY,
+  dispatchLocalSnapshotUpdated
+} from "@/lib/storage/sharedSnapshot";
 import { syncGoogleCalendarForExistingSessions } from "@/lib/storage/sessions";
 import {
   isSharedStateKvKey,
+  SHARED_CONSULTATIONS_KEY,
+  SHARED_LECTURE_TREE_KEY,
+  SHARED_META_MAP_PREFIX,
 } from "@/lib/storage/sharedStateKeys";
+import { TUTORWEB_EVENTS } from "@/lib/events/tutorwebEvents";
 
 const PUSH_DEBOUNCE_MS = 700;
 const PUSH_RETRY_MS = 1500;
@@ -124,11 +135,9 @@ export default function SharedSnapshotAgent() {
                          (role === "t" || role === "a") ? PULL_INTERVAL_TEACHER_MS : null;
 
       if (intervalMs) {
-        console.log(`[Phase 21 절전모드] ${role} 모드 동기화 시작 (${intervalMs / 1000}초 간격)`);
+        console.log(`[Phase 21 실시간모드] ${role} 모드 동기화 시작 (${intervalMs / 1000}초 간격)`);
         pullIntervalRef.current = setInterval(() => {
-          if (document.visibilityState === "visible") {
-            void hydrate(true);
-          }
+          void hydrate(true);
         }, intervalMs);
       }
     };
@@ -163,7 +172,24 @@ export default function SharedSnapshotAgent() {
       flushPending();
     };
 
+    const onNativeStorageChanged = (e: StorageEvent) => {
+      if (e.storageArea !== window.localStorage) return;
+      const key = e.key;
+      if (!key) return;
+
+      // 다른 탭에서 핵심 데이터(학생/선생님/세션)를 변경했을 경우 현재 탭의 UI도 갱신
+      if (key === STUDENTS_KEY || key === TEACHERS_KEY || key === SESSIONS_KEY) {
+        dispatchLocalSnapshotUpdated({ includeSessions: key === SESSIONS_KEY });
+      } else if (isSharedStateKvKey(key)) {
+        // 기타 공유 상태 변경 시 관련 이벤트 발생
+        if (key === SHARED_CONSULTATIONS_KEY) window.dispatchEvent(new CustomEvent(TUTORWEB_EVENTS.consultationsUpdated));
+        if (key === SHARED_LECTURE_TREE_KEY) window.dispatchEvent(new CustomEvent(TUTORWEB_EVENTS.lectureTreeUpdated));
+        if (key.startsWith(SHARED_META_MAP_PREFIX)) window.dispatchEvent(new CustomEvent(TUTORWEB_EVENTS.metaMapUpdated));
+      }
+    };
+
     window.addEventListener(BROWSER_STORAGE_EVENT, onStorageChanged);
+    window.addEventListener("storage", onNativeStorageChanged);
     window.addEventListener(AUTH_EVENT, onAuthChanged);
     window.addEventListener("pagehide", onPageHide);
     document.addEventListener("visibilitychange", handleVisibilityChange);
@@ -175,6 +201,7 @@ export default function SharedSnapshotAgent() {
         pushTimerRef.current = null;
       }
       window.removeEventListener(BROWSER_STORAGE_EVENT, onStorageChanged);
+      window.removeEventListener("storage", onNativeStorageChanged);
       window.removeEventListener(AUTH_EVENT, onAuthChanged);
       window.removeEventListener("pagehide", onPageHide);
       document.removeEventListener("visibilitychange", handleVisibilityChange);

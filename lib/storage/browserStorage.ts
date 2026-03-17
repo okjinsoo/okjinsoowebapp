@@ -15,10 +15,10 @@ function dispatchStorageChanged(detail: BrowserStorageEventDetail) {
   window.dispatchEvent(new CustomEvent(BROWSER_STORAGE_EVENT, { detail }));
 }
 
-function getSessionStorage(): Storage | null {
+function getLocalStorage(): Storage | null {
   if (typeof window === "undefined") return null;
   try {
-    return window.sessionStorage;
+    return window.localStorage;
   } catch {
     return null;
   }
@@ -26,13 +26,13 @@ function getSessionStorage(): Storage | null {
 
 class BrowserStorageImpl implements Storage {
   get length(): number {
-    const storage = getSessionStorage();
+    const storage = getLocalStorage();
     if (storage) return storage.length;
     return memoryFallback.size;
   }
 
   clear(): void {
-    const storage = getSessionStorage();
+    const storage = getLocalStorage();
     if (storage) {
       if (storage.length === 0) return;
       storage.clear();
@@ -45,20 +45,20 @@ class BrowserStorageImpl implements Storage {
   }
 
   getItem(key: string): string | null {
-    const storage = getSessionStorage();
+    const storage = getLocalStorage();
     if (storage) return storage.getItem(key);
     return memoryFallback.get(key) ?? null;
   }
 
   key(index: number): string | null {
-    const storage = getSessionStorage();
+    const storage = getLocalStorage();
     if (storage) return storage.key(index);
     const keys = Array.from(memoryFallback.keys());
     return keys[index] ?? null;
   }
 
   removeItem(key: string): void {
-    const storage = getSessionStorage();
+    const storage = getLocalStorage();
     if (storage) {
       const oldValue = storage.getItem(key);
       if (oldValue === null) return;
@@ -73,7 +73,7 @@ class BrowserStorageImpl implements Storage {
   }
 
   setItem(key: string, value: string): void {
-    const storage = getSessionStorage();
+    const storage = getLocalStorage();
     if (storage) {
       const oldValue = storage.getItem(key);
       if (oldValue === value) return;

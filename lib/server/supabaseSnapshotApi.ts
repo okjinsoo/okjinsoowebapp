@@ -465,12 +465,11 @@ export async function upsertSnapshotPatch(args: {
     }
   }
 
-  // [CRITICAL SAFETY] 서버측 Majority Guard (대량 유실 방지)
   if (hasStudents) {
-    const incomingStudents = args.patch.students ?? [];
+    const patchStudents = args.patch.students ?? [];
     const currentStudents = viewer.snapshot.students;
-    if (currentStudents.length > 5 && incomingStudents.length < currentStudents.length * 0.5) {
-       console.error(`[Security Guard] Blocked mass deletion attempt by ${viewer.email}: ${currentStudents.length} -> ${incomingStudents.length}`);
+    if (currentStudents.length > 5 && patchStudents.length < currentStudents.length * 0.5) {
+       console.error(`[Security Guard] Blocked mass deletion attempt by ${viewer.email}: ${currentStudents.length} -> ${patchStudents.length}`);
        throw new Error("server_blocked_mass_deletion");
     }
   }
