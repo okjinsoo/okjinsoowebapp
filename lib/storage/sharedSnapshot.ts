@@ -477,10 +477,24 @@ export async function pushSharedSnapshot(args?: PushSharedSnapshotArgs): Promise
   const sessions = hasSessionsArg ? (args?.sessions ?? []) : undefined;
   const stateKvPatch = hasStateKvArg ? toStateKv(args?.stateKv ?? {}) : undefined;
 
-  // [CRITICAL SAFETY] 학생/세션 데이터가 로컬에 아예 없는데 서버로 보내려는 상황 차단
-  const currentStudents = hasStudentsArg ? (args?.students ?? []) : readLocalStudents();
-  if (currentStudents.length === 0 && !args?.forceEmpty) {
+  // [CRITICAL SAFETY] 학생/세션 데이터가 로컬에 아예 없거나 급격히 줄어든 경우 전송 차단
+  const localStudents = readLocalStudents();
+  const incomingStudents = hasStudentsArg ? (args?.students ?? []) : localStudents;
+  
+  // 1. 완전 빈 데이터 전송 차단 (이미 구현됨)
+  if (incomingStudents.length === 0 && !args?.forceEmpty) {
     console.warn("⚠️ [Safety Check] 전송할 학생 데이터가 비어있어 중단합니다. (Data Loss Prevention)");
+    return { sessionsSynced: false, stateKvSynced: false };
+  }
+
+  // 2. 대량 유실 방지 (Majority Guard): 기존 데이터 대비 50% 이상 급감 시 차단
+  // 단, 로컬에 데이터가 아예 없었던 초기 상태면 통과
+  if (localStudents.length > 5 && incomingStudents.length < localStudents.length * 0.5 && !args?.forceEmpty) {
+    const msg = `⚠️ [Safety Check] 학생 수가 급격히 줄어들었습니다 (${localStudents.length}명 -> ${incomingStudents.length}명). 전송을 차단합니다.`;
+    console.error(msg);
+    if (typeof window !== "undefined") {
+      window.alert("🚨 [데이터 보호 경보]\n\n학생 명단이 대량으로 삭제되려는 시도가 감지되어 서버 전송을 차단했습니다.\n화면을 새로고침하여 데이터를 다시 불러와 주세요.\n\n정말 삭제하시려면 대량 삭제 옵션을 사용해야 합니다.");
+    }
     return { sessionsSynced: false, stateKvSynced: false };
   }
 
