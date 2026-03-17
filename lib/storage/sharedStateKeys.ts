@@ -3,7 +3,7 @@ export const SHARED_LECTURE_TREE_KEY = "mk3:lectureTree";
 export const SHARED_DRIVE_ROOT_ID_KEY = "mk3:driveRootId";
 export const SHARED_META_MAP_PREFIX = "tutorweb_metaMap_v1:";
 
-const SESSION_PROGRESS_KEY_PATTERN = /^mk3:[^:]+:session:\d+:(leafIds|progressByLeafId|lastAddedLeafId)$/;
+const SESSION_PROGRESS_KEY_PATTERN = /^mk3:[^:]+:session:\d+:(leafIds|progressByLeafId|lastAddedLeafId|items)$/;
 
 export function buildSessionStorageBaseKey(token: string, sessionIndex: number): string {
   return `mk3:${token}:session:${sessionIndex}`;

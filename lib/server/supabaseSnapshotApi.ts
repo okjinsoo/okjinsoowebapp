@@ -65,22 +65,26 @@ export type SnapshotPatch = {
  * 본문 전체를 보내기 전에 이 값을 비교하여 바뀐 게 없으면 전송을 생략합니다.
  */
 export function calculateSnapshotDigest(snapshot: NormalizedSnapshot): string {
-  // 간단하고 빠른 해시 대용: 핵심 데이터의 개수와 마지막 요소들의 특징을 조합
   const tCount = snapshot.teachers.length;
   const sCount = snapshot.students.length;
   const sessCount = snapshot.sessions.length;
-  const kvCount = Object.keys(snapshot.stateKv).length;
+  const kvKeys = Object.keys(snapshot.stateKv).sort();
+  const kvCount = kvKeys.length;
   
-  // 데이터가 많을 경우 전체를 JSON.stringify 하는 것도 비용이므로, 
-  // 구조적 특징과 샘플 데이터를 조합하여 지문을 만듭니다.
+  // [Phase 24.3 개선] 단순히 키 개수만 세는 게 아니라, 내용물의 변화를 감지할 수 있는 지문 생성
+  // 데이터가 너무 크면 성능 저하가 올 수 있으므로 하이브리드 방식을 사용합니다.
+  const kvSample = kvKeys.slice(-3).map(k => {
+    const val = snapshot.stateKv[k] || "";
+    return `${k}:${val.length}:${val.slice(-20)}`; // 키 이름, 길이, 마지막 20글자 조합
+  }).join("|");
+
   const sample = JSON.stringify({
     tc: tCount,
     sc: sCount,
     sec: sessCount,
     kc: kvCount,
-    // 마지막 세션의 ID와 상태Kv의 키들만 포함해도 대부분의 변경을 감지 가능
+    ks: kvSample, // [핵심] 주요 KV 데이터의 상태 샘플 포함
     ls: snapshot.sessions[sessCount - 1]?.id ?? "",
-    lk: Object.keys(snapshot.stateKv).sort().slice(-1)[0] ?? ""
   });
   
   return Buffer.from(sample).toString("base64");
