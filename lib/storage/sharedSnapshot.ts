@@ -31,6 +31,13 @@ type SnapshotRow = {
   state_kv?: Record<string, unknown> | null;
 };
 
+// [Safety] 서버 데이터가 한 번이라도 성공적으로 로드되었는지 확인하는 플래그
+let isInitialDataLoaded = false;
+
+export function markInitialDataLoaded() {
+  isInitialDataLoaded = true;
+}
+
 type InternalSnapshotResponse = {
   ok?: boolean;
   snapshot?: {
@@ -212,61 +219,6 @@ function dispatchLocalSnapshotUpdated(args?: { includeSessions?: boolean }) {
   if (args?.includeSessions) {
     window.dispatchEvent(new CustomEvent(TUTORWEB_EVENTS.sessionsUpdated));
   }
-}
-
-function applyStateKv(stateKv: Record<string, string> | null | undefined): {
-  changed: boolean;
-  hadConsultations: boolean;
-  hadMetaMap: boolean;
-  hadLectureTree: boolean;
-} {
-  if (typeof window === "undefined" || !stateKv) {
-    return {
-      changed: false,
-      hadConsultations: false,
-      hadMetaMap: false,
-      hadLectureTree: false,
-    };
-  }
-
-  let changed = false;
-  let hadConsultations = false;
-  let hadMetaMap = false;
-  let hadLectureTree = false;
-
-  for (const [key, value] of Object.entries(stateKv)) {
-    if (!shouldPersistKey(key)) continue;
-    const current = browserStorage.getItem(key);
-    if (current === value) continue;
-
-    if (key === SHARED_LECTURE_TREE_KEY) {
-      const currentMeta = lectureTreeMeta(current);
-      const incomingMeta = lectureTreeMeta(value);
-
-      // 로컬이 비어 있고 원격이 비어있지 않으면 원격 우선
-      if (currentMeta.leafCount === 0 && incomingMeta.leafCount > 0) {
-        // pass
-      } else if (currentMeta.leafCount > 0 && incomingMeta.leafCount === 0) {
-        // 원격이 비어있고 로컬이 비어있지 않으면 로컬 유지
-        continue;
-      } else {
-        const currentMs = currentMeta.updatedAtMs;
-        const incomingMs = incomingMeta.updatedAtMs;
-        // 로컬이 더 최신이면 원격의 오래된 값을 덮어쓰지 않음
-        if (currentMs !== null && incomingMs !== null && currentMs > incomingMs) {
-          continue;
-        }
-      }
-    }
-
-    browserStorage.setItem(key, value);
-    changed = true;
-    if (key === SHARED_CONSULTATIONS_KEY) hadConsultations = true;
-    if (key === SHARED_LECTURE_TREE_KEY) hadLectureTree = true;
-    if (key.startsWith(SHARED_META_MAP_PREFIX)) hadMetaMap = true;
-  }
-
-  return { changed, hadConsultations, hadMetaMap, hadLectureTree };
 }
 
 function applyLocalSnapshot(args: {
@@ -453,15 +405,24 @@ export async function readRemoteSharedStateKvValue(key: string): Promise<string 
   return stateKv[key] ?? null;
 }
 
-export type PushSharedSnapshotArgs = {
+type PushSharedSnapshotArgs = {
+  teachers?: Teacher[];
   students?: Student[];
   sessions?: Session[];
-  teachers?: Teacher[];
-  stateKv?: Record<string, string>;
+  stateKv?: Record<string, unknown>;
   dropStateKeys?: string[];
   forceEmpty?: boolean; // [Safety] 의도적으로 빈 데이터를 보낼 때 사용
 };
+
+const DAILY_BACKUP_KEY = "mk3:last_daily_backup_ts";
+
 export async function pushSharedSnapshot(args?: PushSharedSnapshotArgs): Promise<PushSharedSnapshotResult> {
+  // [CRITICAL SAFETY] 서버 데이터를 한 번도 가져오지 않은 상태에서 밀어넣기 방지
+  if (!isInitialDataLoaded && !args?.forceEmpty) {
+    console.warn("⚠️ [Safety Check] 서버 데이터를 아직 읽어오지 못해 저장을 중단합니다. (Loading Integrity)");
+    return { sessionsSynced: false, stateKvSynced: false };
+  }
+
   const hasTeachersArg = Object.prototype.hasOwnProperty.call(args ?? {}, "teachers");
   const hasStudentsArg = Object.prototype.hasOwnProperty.call(args ?? {}, "students");
   const hasSessionsArg = Object.prototype.hasOwnProperty.call(args ?? {}, "sessions");
@@ -511,6 +472,31 @@ export async function pushSharedSnapshot(args?: PushSharedSnapshotArgs): Promise
   }
 
   const internal = await fetchInternalSnapshot({ body });
+  
+  // [Safety] 성공적으로 저장된 후, 24시간마다 자동 백업(Daily Snapshot) 생성 시도
+  try {
+    const lastBackup = localStorage.getItem(DAILY_BACKUP_KEY);
+    const now = Date.now();
+    if (!lastBackup || now - parseInt(lastBackup) > 24 * 60 * 60 * 1000) {
+      const snapshotDate = new Date().toISOString().split("T")[0];
+      await fetchInternalSnapshot({
+        body: {
+          stateKv: {
+            [`mk3:backup:${snapshotDate}`]: JSON.stringify({
+              students: body.students || readLocalStudents(),
+              sessions: body.sessions || readLocalSessions(),
+              ts: now
+            })
+          }
+        }
+      });
+      localStorage.setItem(DAILY_BACKUP_KEY, now.toString());
+      console.log(`✅ Daily snapshot created: ${snapshotDate}`);
+    }
+  } catch (e) {
+    console.warn("Daily backup failed (silent):", e);
+  }
+
   if (
     internal &&
     typeof internal.sessionsSynced === "boolean" &&
