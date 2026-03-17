@@ -20,6 +20,7 @@ import { ensureAuthSession, getSupabaseConfig } from "@/lib/auth/supabaseAuth";
 import { saveCurrentTeacherId } from "@/lib/storage/teachers";
 import { useStudentRegistry } from "@/lib/hooks/useStudentRegistry";
 import DriveControlPanel from "@/lib/ui/admin/DriveControlPanel";
+import RescueCenter from "@/lib/ui/admin/RescueCenter";
 import { ymdFromISO_KST } from "@/lib/utils/date";
 
 export default function AdminMainPage() {
@@ -107,6 +108,7 @@ export default function AdminMainPage() {
       </div>
 
       <DriveControlPanel />
+      <RescueCenter />
 
       <section style={{ marginTop: 12, border: "1px solid var(--surface-border)", borderRadius: 12, padding: 12, background: "var(--surface-bg)" }}>
         <div style={{ fontWeight: 800, marginBottom: 8 }}>권한 동기화 테스트</div>

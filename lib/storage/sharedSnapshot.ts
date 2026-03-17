@@ -466,26 +466,28 @@ export async function pushSharedSnapshot(args?: {
   const hasStateKvArg = Object.prototype.hasOwnProperty.call(args ?? {}, "stateKv");
   const hasDropStateKeysArg = Object.prototype.hasOwnProperty.call(args ?? {}, "dropStateKeys");
 
-  // 서버 측에서 데이터를 재구성하기 위해 항상 핵심 컬렉션을 포함하는 것이 안전함
-  const includeTeachers = true;
-  const includeStudents = true;
-  const includeSessions = true;
   const touchesStateKv = hasStateKvArg || hasDropStateKeysArg;
 
-  const teachers = hasTeachersArg ? (args?.teachers ?? []) : readLocalTeachers();
-  const students = hasStudentsArg ? (args?.students ?? []) : readLocalStudents();
-  const sessions = hasSessionsArg ? (args?.sessions ?? []) : readLocalSessions();
+  // [Emergency Fix] 인자로 넘어온 경우에만 명시적으로 패치에 포함
+  // 로컬 데이터를 '기본값'으로 사용하는 방식을 제거하여, 로딩되지 않은 빈 데이터가 서버를 덮어씌우는 것을 원천적으로 차단합니다.
+  const teachers = hasTeachersArg ? (args?.teachers ?? []) : undefined;
+  const students = hasStudentsArg ? (args?.students ?? []) : undefined;
+  const sessions = hasSessionsArg ? (args?.sessions ?? []) : undefined;
   const stateKvPatch = hasStateKvArg ? toStateKv(args?.stateKv ?? {}) : undefined;
 
-  const internal = await fetchInternalSnapshot({
-    body: {
-      ...(includeTeachers ? { teachers: teachers ?? [] } : {}),
-      ...(includeStudents ? { students: students ?? [] } : {}),
-      ...(includeSessions ? { sessions: sessions ?? [] } : {}),
-      ...(hasStateKvArg ? { stateKv: stateKvPatch ?? {} } : {}),
-      ...(hasDropStateKeysArg ? { dropStateKeys: args?.dropStateKeys ?? [] } : {}),
-    },
-  });
+  const body: any = {};
+  if (hasTeachersArg && teachers) body.teachers = teachers;
+  if (hasStudentsArg && students) body.students = students;
+  if (hasSessionsArg && sessions) body.sessions = sessions;
+  if (hasStateKvArg) body.stateKv = stateKvPatch ?? {};
+  if (hasDropStateKeysArg) body.dropStateKeys = args?.dropStateKeys ?? [];
+
+  // 아무 데이터도 없으면 전송 중단
+  if (Object.keys(body).length === 0) {
+    return { sessionsSynced: true, stateKvSynced: true };
+  }
+
+  const internal = await fetchInternalSnapshot({ body });
   if (
     internal &&
     typeof internal.sessionsSynced === "boolean" &&
@@ -500,7 +502,7 @@ export async function pushSharedSnapshot(args?: {
   const cfg = getSupabaseConfig();
   if (!cfg) {
     return {
-      sessionsSynced: !includeSessions,
+      sessionsSynced: !hasSessionsArg,
       stateKvSynced: !touchesStateKv,
     };
   }
@@ -508,7 +510,7 @@ export async function pushSharedSnapshot(args?: {
   const headers = await getHeaders({ json: true });
   if (!headers) {
     return {
-      sessionsSynced: !includeSessions,
+      sessionsSynced: !hasSessionsArg,
       stateKvSynced: !touchesStateKv,
     };
   }
@@ -518,7 +520,7 @@ export async function pushSharedSnapshot(args?: {
     const readHeaders = await getHeaders();
     if (!readHeaders) {
       return {
-        sessionsSynced: !includeSessions,
+        sessionsSynced: !hasSessionsArg,
         stateKvSynced: false,
       };
     }
@@ -549,9 +551,9 @@ export async function pushSharedSnapshot(args?: {
     sessions?: Session[];
     state_kv?: Record<string, string>;
   } = { id: SNAPSHOT_KEY };
-  if (includeTeachers) fullPayload.teachers = teachers ?? [];
-  if (includeStudents) fullPayload.students = students ?? [];
-  if (includeSessions) fullPayload.sessions = sessions ?? [];
+  if (hasTeachersArg && teachers) fullPayload.teachers = teachers;
+  if (hasStudentsArg && students) fullPayload.students = students;
+  if (hasSessionsArg && sessions) fullPayload.sessions = sessions;
   if (touchesStateKv && stateKv) {
     fullPayload.state_kv = stateKv;
   }
@@ -570,7 +572,7 @@ export async function pushSharedSnapshot(args?: {
   }
 
   const text = fullResult.text;
-  const sessionsMissing = includeSessions && isMissingColumnError(text, "sessions");
+  const sessionsMissing = hasSessionsArg && isMissingColumnError(text, "sessions");
   const stateKvMissing = touchesStateKv && isMissingColumnError(text, "state_kv");
 
   if (!sessionsMissing && !stateKvMissing) {
@@ -584,9 +586,9 @@ export async function pushSharedSnapshot(args?: {
     sessions?: Session[];
     state_kv?: Record<string, string>;
   } = { id: SNAPSHOT_KEY };
-  if (includeTeachers) fallbackPayload.teachers = teachers ?? [];
-  if (includeStudents) fallbackPayload.students = students ?? [];
-  if (includeSessions && !sessionsMissing) fallbackPayload.sessions = sessions ?? [];
+  if (hasTeachersArg && teachers) fallbackPayload.teachers = teachers;
+  if (hasStudentsArg && students) fallbackPayload.students = students;
+  if (hasSessionsArg && sessions && !sessionsMissing) fallbackPayload.sessions = sessions;
   if (touchesStateKv && !stateKvMissing) fallbackPayload.state_kv = stateKv ?? {};
 
   const fallbackResult = await postSnapshotUpsertWithRetry({
@@ -603,7 +605,7 @@ export async function pushSharedSnapshot(args?: {
   }
 
   return {
-    sessionsSynced: !includeSessions || !sessionsMissing,
+    sessionsSynced: !hasSessionsArg || !sessionsMissing,
     stateKvSynced: !touchesStateKv || !stateKvMissing,
   };
 }
