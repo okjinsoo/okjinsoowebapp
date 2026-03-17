@@ -143,24 +143,24 @@ export default function RescueCenter() {
 
       const recoveredSessions = [...sessions];
       for (const st of updatedStudents) {
-        addLog(`${st.name} 학생 기록 분석 중...`);
+        addLog(`${st.name} 학생 역사 기록 정밀 분석 중...`);
         try {
-          // 03_숙제 제출 폴더 찾기
-          const hwRes = await requestDrive({
+          // 모든 관련 폴더 스캔 (01_수업 자료, 02_필기 기록, 03_숙제 제출)
+          const foldersToScan = ["01_수업 자료", "02_필기 기록", "03_숙제 제출"];
+          const folderRes = await requestDrive({
             token,
             method: "GET",
             path: "/files",
-            query: { q: `'${st.id}' in parents and name = '03_숙제 제출' and trashed = false` }
+            query: { q: `'${st.id}' in parents and (name = '01_수업 자료' or name = '02_필기 기록' or name = '03_숙제 제출') and trashed = false` }
           }) as { files: any[] };
 
-          if (hwRes.files.length > 0) {
-            const hwId = hwRes.files[0].id;
+          for (const parentFolder of folderRes.files) {
             // 회차별 폴더 스캔
             const sessionsRes = await requestDrive({
               token,
               method: "GET",
               path: "/files",
-              query: { q: `'${hwId}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false` }
+              query: { q: `'${parentFolder.id}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false` }
             }) as { files: any[] };
 
             for (const sFold of sessionsRes.files) {
@@ -177,7 +177,6 @@ export default function RescueCenter() {
 
               const leafIds: string[] = [];
               for (const cFold of cardsRes.files) {
-                // 제목으로 leafId 매칭
                 const matched = flatLeaves.find(l => l.title === cFold.name);
                 if (matched) leafIds.push(matched.leafId);
               }
@@ -185,7 +184,9 @@ export default function RescueCenter() {
               if (leafIds.length > 0) {
                 const targetSess = recoveredSessions.find(rs => rs.studentId === st.id && rs.index === sIdx);
                 if (targetSess) {
-                  targetSess.lectureLeafIds = leafIds;
+                  // 기존에 찾은 leafIds와 병합 (중복 제거)
+                  const existing = targetSess.lectureLeafIds || [];
+                  targetSess.lectureLeafIds = Array.from(new Set([...existing, ...leafIds]));
                 }
               }
             }
