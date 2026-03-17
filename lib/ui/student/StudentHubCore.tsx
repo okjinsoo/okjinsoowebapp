@@ -734,6 +734,35 @@ export default function StudentHubCore({
     );
   }
 
+  // [Rescue Mode] 주소창에 ?rescue=true 가 있을 때만 로컬 데이터 추출 UI 노출
+  const isRescueMode = typeof window !== "undefined" && window.location.search.includes("rescue=true");
+  const exportLocalData = () => {
+    const keys = ["tutorweb_sessions_v1", "tutorweb_students_v1", "tutorweb_teachers_v1"];
+    const exportData: Record<string, string | null> = {};
+    keys.forEach(k => { exportData[k] = localStorage.getItem(k); });
+    
+    // 추가로 모든 mk3:* (진도 정보) 추출
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k?.startsWith("mk3:")) {
+        exportData[k] = localStorage.getItem(k);
+      }
+    }
+    
+    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `tutorweb_rescue_${student.name}_${new Date().getTime()}.json`;
+    a.click();
+    
+    // 텍스트로도 복사할 수 있게 알림
+    const jsonStr = JSON.stringify(exportData);
+    navigator.clipboard.writeText(jsonStr).then(() => {
+      window.alert("📦 로컬 데이터가 성공적으로 추출되었습니다!\n\n1. 파일이 다운로드되었을 것입니다.\n2. 클립보드에도 복사되었습니다.\n\n이 텍스트를 저에게(채팅창) 붙여넣어 주시면 복구가 가능합니다.");
+    });
+  };
+
 
   function openScheduleEdit() {
     if (!student) return;
@@ -1671,6 +1700,41 @@ export default function StudentHubCore({
           </div>
         </div>
       ) : null}
+      {/* 긴급 복구 UI (숨겨진 모드) */}
+      {isRescueMode && (
+        <div style={{
+          position: "fixed",
+          bottom: 20,
+          right: 20,
+          zIndex: 9999,
+          padding: 20,
+          background: "#ff4d4f",
+          color: "white",
+          borderRadius: 20,
+          boxShadow: "0 10px 30px rgba(0,0,0,0.3)",
+          display: "flex",
+          flexDirection: "column",
+          gap: 10,
+          border: "4px solid white"
+        }}>
+          <div style={{ fontWeight: 800, fontSize: 16 }}>🚀 긴급 데이터 구조 모드</div>
+          <p style={{ fontSize: 12, opacity: 0.9 }}>서버에 의해 지워지기 전, 현재 화면의 모든 데이터를 안전하게 파일로 저장합니다.</p>
+          <button 
+            onClick={exportLocalData}
+            style={{
+              padding: "12px",
+              background: "white",
+              color: "#ff4d4f",
+              border: "none",
+              borderRadius: 12,
+              fontWeight: 900,
+              cursor: "pointer"
+            }}
+          >
+            지금 즉시 데이터 추출하기
+          </button>
+        </div>
+      )}
     </main>
   );
 }
