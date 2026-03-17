@@ -453,13 +453,15 @@ export async function readRemoteSharedStateKvValue(key: string): Promise<string 
   return stateKv[key] ?? null;
 }
 
-export async function pushSharedSnapshot(args?: {
-  teachers?: Teacher[];
+export type PushSharedSnapshotArgs = {
   students?: Student[];
   sessions?: Session[];
+  teachers?: Teacher[];
   stateKv?: Record<string, string>;
   dropStateKeys?: string[];
-}): Promise<PushSharedSnapshotResult> {
+  forceEmpty?: boolean; // [Safety] 의도적으로 빈 데이터를 보낼 때 사용
+};
+export async function pushSharedSnapshot(args?: PushSharedSnapshotArgs): Promise<PushSharedSnapshotResult> {
   const hasTeachersArg = Object.prototype.hasOwnProperty.call(args ?? {}, "teachers");
   const hasStudentsArg = Object.prototype.hasOwnProperty.call(args ?? {}, "students");
   const hasSessionsArg = Object.prototype.hasOwnProperty.call(args ?? {}, "sessions");
@@ -476,12 +478,10 @@ export async function pushSharedSnapshot(args?: {
   const stateKvPatch = hasStateKvArg ? toStateKv(args?.stateKv ?? {}) : undefined;
 
   // [CRITICAL SAFETY] 학생/세션 데이터가 로컬에 아예 없는데 서버로 보내려는 상황 차단
-  // `args.students`가 명시적으로 `[]`로 넘어오지 않는 한, `loadStudents()`를 통해 현재 로컬 데이터를 확인합니다.
-  // `forceEmpty`가 true인 경우에만 빈 학생 데이터 전송을 허용합니다.
-  const currentStudents = hasStudentsArg ? (args.students ?? []) : readLocalStudents();
+  const currentStudents = hasStudentsArg ? (args?.students ?? []) : readLocalStudents();
   if (currentStudents.length === 0 && !args?.forceEmpty) {
     console.warn("⚠️ [Safety Check] 전송할 학생 데이터가 비어있어 중단합니다. (Data Loss Prevention)");
-    return { sessionsSynced: false, stateKvSynced: false }; // Indicate that nothing was synced
+    return { sessionsSynced: false, stateKvSynced: false };
   }
 
   const body: any = {};
