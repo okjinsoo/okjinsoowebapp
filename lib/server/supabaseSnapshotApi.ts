@@ -420,6 +420,47 @@ export async function upsertSnapshotPatch(args: {
   const hasDropStateKeys = Object.prototype.hasOwnProperty.call(args.patch, "dropStateKeys");
   const touchesStateKv = hasStateKv || hasDropStateKeys;
 
+  // [Phase 23] 서버 사이드 권한/무결성 검증
+  // 1. 관리자만 선생님 정보를 수정할 수 있음
+  if (hasTeachers && viewer.role !== "admin") {
+    console.error(`[Security] Unauthorized teacher update attempt by ${viewer.email} (Role: ${viewer.role})`);
+    throw new Error("unauthorized_teacher_edit");
+  }
+
+  // 2. 학생 계정의 제약 사항
+  if (viewer.role === "student") {
+    if (hasStudents) {
+      // 학생은 본인의 정보만 수정 가능하며, 특정 필드(결제 횟수 등)는 수정 불가
+      const patchStudents = args.patch.students ?? [];
+      const isTryingToEditOthers = patchStudents.some(s => s.id !== viewer.studentId);
+      if (isTryingToEditOthers) {
+        throw new Error("unauthorized_student_edit_target");
+      }
+
+      // 중요 필드(planCount, paymentHistory) 조작 방지
+      // (기존 스냅샷 데이터를 가져와서 학생이 보낸 패치와 대조)
+      const currentStudent = viewer.snapshot.students.find(s => s.id === viewer.studentId);
+      if (currentStudent) {
+        for (const s of patchStudents) {
+          if (s.planCount !== currentStudent.planCount || 
+              JSON.stringify(s.paymentHistory) !== JSON.stringify(currentStudent.paymentHistory)) {
+             console.error(`[Security] Student ${viewer.email} tried to manipulate planCount/paymentHistory`);
+             throw new Error("unauthorized_field_manipulation");
+          }
+        }
+      }
+    }
+
+    if (hasSessions) {
+      // 학생은 본인의 세션만 업데이트 가능
+      const patchSessions = args.patch.sessions ?? [];
+      const hasOtherStudentSessions = patchSessions.some(s => s.studentId !== viewer.studentId);
+      if (hasOtherStudentSessions) {
+        throw new Error("unauthorized_session_edit_target");
+      }
+    }
+  }
+
   let mergedStateKv: Record<string, string> | undefined;
   if (touchesStateKv) {
     const currentResult = await fetchSnapshotRow({

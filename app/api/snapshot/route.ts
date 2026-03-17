@@ -51,8 +51,8 @@ export async function GET(request: NextRequest) {
       },
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "snapshot_read_failed";
-    return NextResponse.json({ error: message }, { status: 500 });
+    console.error("[API Error] Snapshot GET failed:", error);
+    return NextResponse.json({ error: "request_failed" }, { status: 500 });
   }
 }
 
@@ -81,8 +81,10 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ ok: true, ...result });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "snapshot_write_failed";
-    const status = message === "unauthorized" ? 401 : 500;
-    return NextResponse.json({ error: message }, { status });
+    console.error("[API Error] Snapshot POST failed:", error);
+    const message = error instanceof Error ? error.message : "";
+    const status = message.includes("unauthorized") ? 401 : 500;
+    const clientMessage = status === 401 ? "unauthorized" : "update_failed";
+    return NextResponse.json({ error: clientMessage }, { status });
   }
 }
