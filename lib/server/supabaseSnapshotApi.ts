@@ -463,7 +463,6 @@ export async function upsertSnapshotPatch(args: {
         throw new Error("unauthorized_session_edit_target");
       }
     }
-    }
   }
 
   // [CRITICAL SAFETY] 서버측 Majority Guard (대량 유실 방지)
