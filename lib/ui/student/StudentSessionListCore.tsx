@@ -361,11 +361,23 @@ export default function StudentSessionListCore({ role, token, prefix, hideTokenI
     applyHistory: async (recs: PaymentRecord[], patch?: Partial<Student>, skip?: boolean, opts?: { consultationRecords?: ConsultationRecord[] }) => {
       if (!student) return false;
       const nextConsultRecords = opts?.consultationRecords ?? consultRecords;
-      const updatedStudent = { ...student, ...patch, paymentHistory: recs };
-      // Simple session count update
-      const baseCount = student.planCount ?? 0;
-      const added = recs.reduce((sum: number, r: PaymentRecord) => sum + r.addedCount, 0);
-      updatedStudent.planCount = baseCount + added;
+       
+      // [버그 수정] 중복 합산 방지 로직
+      const currentHistory = student.paymentHistory ?? [];
+      const previousTotalAdded = currentHistory.reduce((sum, r) => sum + (r.addedCount || 0), 0);
+      const originalBaseCount = (student.planCount ?? 0) - previousTotalAdded;
+      
+      const newTotalAdded = recs.reduce((sum, r) => sum + (r.addedCount || 0), 0);
+      const finalPlanCount = originalBaseCount + newTotalAdded;
+
+      // [최적화] 물리적 세션 생성 로직 제거 (가상 회차 엔진이 UI에서 처리)
+
+      const updatedStudent = { 
+        ...student, 
+        ...patch, 
+        paymentHistory: recs,
+        planCount: finalPlanCount
+      };
 
       upsertStudent(updatedStudent);
       saveConsultationsByStudent(student.id, nextConsultRecords);

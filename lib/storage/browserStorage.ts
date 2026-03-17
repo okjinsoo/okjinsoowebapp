@@ -25,6 +25,9 @@ function getLocalStorage(): Storage | null {
 }
 
 class BrowserStorageImpl implements Storage {
+  private cache = new Map<string, { value: string | null; expiry: number }>();
+  private readonly CACHE_TTL = 50; // 50ms 초단기 기억
+
   get length(): number {
     const storage = getLocalStorage();
     if (storage) return storage.length;
@@ -32,6 +35,7 @@ class BrowserStorageImpl implements Storage {
   }
 
   clear(): void {
+    this.cache.clear();
     const storage = getLocalStorage();
     if (storage) {
       if (storage.length === 0) return;
@@ -45,9 +49,17 @@ class BrowserStorageImpl implements Storage {
   }
 
   getItem(key: string): string | null {
+    const now = Date.now();
+    const cached = this.cache.get(key);
+    if (cached && cached.expiry > now) {
+      return cached.value;
+    }
+
     const storage = getLocalStorage();
-    if (storage) return storage.getItem(key);
-    return memoryFallback.get(key) ?? null;
+    const value = storage ? storage.getItem(key) : (memoryFallback.get(key) ?? null);
+    
+    this.cache.set(key, { value, expiry: now + this.CACHE_TTL });
+    return value;
   }
 
   key(index: number): string | null {
@@ -58,6 +70,7 @@ class BrowserStorageImpl implements Storage {
   }
 
   removeItem(key: string): void {
+    this.cache.delete(key);
     const storage = getLocalStorage();
     if (storage) {
       const oldValue = storage.getItem(key);
@@ -73,6 +86,9 @@ class BrowserStorageImpl implements Storage {
   }
 
   setItem(key: string, value: string): void {
+    const now = Date.now();
+    this.cache.set(key, { value, expiry: now + this.CACHE_TTL });
+
     const storage = getLocalStorage();
     if (storage) {
       const oldValue = storage.getItem(key);

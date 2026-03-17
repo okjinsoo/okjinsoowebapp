@@ -214,18 +214,6 @@ export default function StudentNewClient(props: {
       scheduleChangeEvents: [],
     };
 
-    const nextOwnSessions: Session[] = [];
-    for (let i = 0; i < pc; i++) {
-      nextOwnSessions.push({
-        id: makeId(),
-        studentId: st.id,
-        index: i + 1,
-        displayAt: dates[i].toISOString(),
-        state: "normal",
-        createdAt: nowIso(),
-      });
-    }
-
     setSaving(true);
     try {
       const baseline = await loadLatestCoreSnapshotBaseline();
@@ -233,14 +221,12 @@ export default function StudentNewClient(props: {
       const baseSessions = baseline.sessions.length > 0 ? baseline.sessions : loadSessions();
 
       const nextStudents = [...baseStudents, st];
-      const nextSessions = [...baseSessions, ...nextOwnSessions];
 
       await pushSharedSnapshot({
         students: nextStudents,
-        sessions: nextSessions,
+        sessions: baseSessions, // 신규 세션 추가 없이 학생만 추가
       });
       saveStudents(nextStudents, { skipSharedSnapshot: true });
-      saveSessions(nextSessions, { skipSharedSnapshot: true });
       router.push(onDoneGoTo);
     } catch (err) {
       console.error("학생 생성 서버 저장 실패:", err);

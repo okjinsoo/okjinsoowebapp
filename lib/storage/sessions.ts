@@ -20,9 +20,22 @@ type SaveSessionsOptions = {
   snapshotMode?: "merge" | "replace";
 };
 
+let sessionsCache: { value: Session[]; expiry: number } | null = null;
+const SESSIONS_CACHE_TTL = 50;
+
 export function loadSessions(): Session[] {
   if (typeof window === "undefined") return [];
-  return safeParseJson<Session[]>(browserStorage.getItem(KEY), []);
+  
+  const now = Date.now();
+  if (sessionsCache && sessionsCache.expiry > now) {
+    return sessionsCache.value;
+  }
+
+  const raw = browserStorage.getItem(KEY);
+  const value = safeParseJson<Session[]>(raw, []);
+  
+  sessionsCache = { value, expiry: now + SESSIONS_CACHE_TTL };
+  return value;
 }
 
 function replaceSessionsLocal(list: Session[]): boolean {
@@ -259,9 +272,36 @@ export function removeSession(sessionId: string): Session[] {
 }
 
 export function sessionsByStudent(studentId: string): Session[] {
-  return loadSessions()
+  const allSessions = loadSessions();
+  const realSessions = allSessions
     .filter((x) => x.studentId === studentId)
     .sort((a, b) => a.index - b.index);
+
+  // 학생의 planCount를 확인하여 부족한 회차를 가상(Virtual)으로 채웁니다.
+  const student = readLocalStudents().find(s => s.id === studentId);
+  if (!student) return realSessions;
+
+  const planCount = student.planCount || 12;
+  const sessionsByIndex = new Map(realSessions.map(s => [s.index, s]));
+  
+  const results: Session[] = [];
+  for (let i = 1; i <= planCount; i++) {
+    const existing = sessionsByIndex.get(i);
+    if (existing) {
+      results.push(existing);
+    } else {
+      // 실재하지 않는 회차는 가상 객체로 생성 (DB 저장 안 함)
+      results.push({
+        id: `virtual_${studentId}_${i}`,
+        studentId,
+        index: i,
+        displayAt: "", // UI에서 computeEffectiveISO로 계산하므로 비워둠
+        state: "normal",
+      });
+    }
+  }
+
+  return results;
 }
 
 // -------------------- Student progress (mk3:* items) --------------------

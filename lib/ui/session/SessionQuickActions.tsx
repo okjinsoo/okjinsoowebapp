@@ -243,21 +243,30 @@ export default function SessionQuickActions({ role, token, index }: Props) {
   }
 
   const teacherDateTimes = useMemo(() => {
-    if (!canEdit || !draftOverrideDate) return [];
+    // [최적화] 변경 체크가 되어있지 않거나 날짜가 없으면 아예 계산 안 함 (Lazy)
+    if (!canEdit || !checkOverride || !draftOverrideDate) return [];
     if (!teacherId) return [];
+    
     const owned = students.filter((s) => (s.teacherId ?? null) === teacherId && s.token);
     const times: Array<{ time: string; name: string }> = [];
 
     for (const st of owned) {
-      const baseDatesISO = buildBaseDatesISOByToken(st.token, 60);
-      const metaMap = readMetaMap(st.token);
-      const sessions = sessionsByStudent(st.id);
-      for (const s of sessions) {
+      // 내 정보는 중복 체크에서 제외 (수정 중인 본인이므로)
+      const isSelf = st.token === token;
+      
+      const bDates = buildBaseDatesISOByToken(st.token, 60);
+      const mMap = readMetaMap(st.token);
+      const sessList = sessionsByStudent(st.id);
+      
+      for (const s of sessList) {
+        // 본인의 현재 수정 중인 회차는 건너뜀
+        if (isSelf && s.index === index) continue;
+
         const { effectiveISO } = computeEffectiveISO({
           token: st.token,
           index: s.index,
-          baseDatesISO,
-          metaMap,
+          baseDatesISO: bDates,
+          metaMap: mMap,
         });
         if (!effectiveISO) continue;
         const ymd = kstYmdFromISO(effectiveISO);
@@ -272,7 +281,7 @@ export default function SessionQuickActions({ role, token, index }: Props) {
       if (timeCmp !== 0) return timeCmp;
       return a.name.localeCompare(b.name, "ko");
     });
-  }, [canEdit, draftOverrideDate, teacherId, students]);
+  }, [canEdit, checkOverride, draftOverrideDate, teacherId, students, token, index]);
 
   const currentSession = useMemo(() => {
     void sessionsTick;

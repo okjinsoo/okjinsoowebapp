@@ -66,9 +66,22 @@ function syncSharedSnapshot(nextStudents: Student[], mode: "merge" | "replace"):
   });
 }
 
+let studentsCache: { value: Student[]; expiry: number } | null = null;
+const STUDENTS_CACHE_TTL = 50;
+
 export function loadStudents(): Student[] {
   if (typeof window === "undefined") return [];
-  return safeParseJson<Student[]>(browserStorage.getItem(KEY), []);
+  
+  const now = Date.now();
+  if (studentsCache && studentsCache.expiry > now) {
+    return studentsCache.value;
+  }
+
+  const raw = browserStorage.getItem(KEY);
+  const value = safeParseJson<Student[]>(raw, []);
+  
+  studentsCache = { value, expiry: now + STUDENTS_CACHE_TTL };
+  return value;
 }
 
 function dispatchStudentsUpdated() {

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import BrandHomeButton from "@/lib/ui/common/BrandHomeButton";
+import AuthControl from "@/lib/ui/common/AuthControl";
 import SharedSnapshotAgent from "@/lib/ui/common/SharedSnapshotAgent";
 import PageTitleAgent from "@/lib/ui/common/PageTitleAgent";
 import "./globals.css";
@@ -29,7 +30,11 @@ export default function RootLayout({
         <PageTitleAgent />
         <div className="app-topbar">
           <div className="app-topbar-inner">
+            <div /> {/* 좌측 공백 (중앙 정렬용) */}
             <BrandHomeButton />
+            <div className="flex justify-end">
+              <AuthControl />
+            </div>
           </div>
         </div>
         <div className="app-content">

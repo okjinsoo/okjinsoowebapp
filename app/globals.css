@@ -120,8 +120,8 @@ body {
   width: 980px;
   margin: 0 auto;
   padding: 8px 16px;
-  display: flex;
-  justify-content: center;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
   align-items: center;
 }
 
