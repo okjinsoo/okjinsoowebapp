@@ -53,12 +53,18 @@ export default function RescueCenter() {
           id: f.id, 
           name,
           cohort,
-          googleEmail: "", // 이메일은 캘린더나 드라이브 권한 목록에서 나중에 추출 가능
+          googleEmail: "",
           token: `restore-${f.id.slice(-8)}`,
-          status: "active",
+          status: "active" as const,
           memo: "자동 복구됨",
           planCount: 0,
           paymentHistory: [],
+          startDate: new Date().toISOString(),
+          scheduleRules: [],
+          studentPhone: "",
+          parentPhone: "",
+          school: "미정",
+          grade: "미정",
         };
       });
       setFoundStudents(students);
@@ -105,7 +111,8 @@ export default function RescueCenter() {
           memo: desc.match(/메모: (.*)/)?.[1]?.trim() || "",
           googleCalendarEventId: ev.id,
           googleCalendarId: appCalId,
-          googleCalendarStatus: "synced",
+          googleCalendarStatus: "synced" as const,
+          state: "normal" as const,
         };
       });
 
