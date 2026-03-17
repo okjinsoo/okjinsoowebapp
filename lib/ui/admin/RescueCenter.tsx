@@ -13,6 +13,8 @@ export default function RescueCenter() {
   const [logs, setLogs] = useState<string[]>([]);
   const [foundStudents, setFoundStudents] = useState<Student[]>([]);
   const [foundSessions, setFoundSessions] = useState<Session[]>([]);
+  const [manualJson, setManualJson] = useState("");
+  const [showManual, setShowManual] = useState(false);
 
   const addLog = (msg: string) => setLogs(prev => [...prev.slice(-10), `[${new Date().toLocaleTimeString()}] ${msg}`]);
 
@@ -264,13 +266,39 @@ export default function RescueCenter() {
         </div>
 
         {foundStudents.length > 0 && (
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-            {foundStudents.map((s, i) => (
-              <div key={i} className="p-2 bg-white border border-gray-100 rounded-xl text-xs flex items-center justify-between shadow-sm">
-                <span className="font-bold text-gray-700">{s.name}</span>
-                <span className="text-[10px] text-gray-400">{s.cohort}</span>
+          <div className="flex flex-col gap-2">
+            <button 
+              onClick={() => setShowManual(!showManual)}
+              className="text-xs text-blue-600 underline text-left px-2"
+            >
+              {showManual ? "접기" : "💡 패드에서 구출한 데이터 직접 넣기"}
+            </button>
+            
+            {showManual && (
+              <div className="p-3 bg-blue-50 border border-blue-200 rounded-2xl flex flex-col gap-2">
+                <textarea 
+                  value={manualJson}
+                  onChange={(e) => setManualJson(e.target.value)}
+                  placeholder="패드에서 복사한 내용을 여기에 붙여넣으세요..."
+                  className="w-full h-24 text-[10px] p-2 rounded-xl border-none font-mono"
+                />
+                <button 
+                  onClick={handleManualMerge}
+                  className="py-2 bg-blue-500 text-white rounded-xl text-xs font-bold"
+                >
+                  데이터 병합하기
+                </button>
               </div>
-            ))}
+            )}
+
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+              {foundStudents.map((s, i) => (
+                <div key={i} className="p-2 bg-white border border-gray-100 rounded-xl text-xs flex items-center justify-between shadow-sm">
+                  <span className="font-bold text-gray-700">{s.name}</span>
+                  <span className="text-[10px] text-gray-400">{s.cohort}</span>
+                </div>
+              ))}
+            </div>
           </div>
         )}
       </div>
