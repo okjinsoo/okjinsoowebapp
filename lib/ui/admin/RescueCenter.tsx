@@ -44,20 +44,20 @@ export default function RescueCenter() {
       }) as { files: { id: string; name: string }[] };
 
       const students: Student[] = driveRes.files.map(f => {
-        // "기수_이름" 형식 파싱 시도
-        const parts = f.name.split("_");
-        const name = parts[1] || parts[0];
-        const cohort = parts.length > 1 ? parts[0] : "미정";
+        // [Rescue V2] 기수(YYYY_NNNNNN)와 이름(_이름) 분리 정교화
+        const match = f.name.match(/^(\d{4}_\d{6})_?\s*(.*)$/);
+        const cohort = match ? match[1] : "미정";
+        const name = match && match[2] ? match[2].trim() : f.name;
         
         return {
           id: f.id, 
-          name,
+          name: name || "이름없음",
           cohort,
           googleEmail: "",
           token: `restore-${f.id.slice(-8)}`,
           status: "active" as const,
           memo: "자동 복구됨",
-          planCount: 0,
+          planCount: 40, // 복구 시 기본값 보강 (원장님 수정 가능)
           paymentHistory: [],
           startDate: new Date().toISOString(),
           scheduleRules: [],
@@ -127,13 +127,76 @@ export default function RescueCenter() {
 
       setFoundStudents(updatedStudents);
       setFoundSessions(sessions);
-      addLog(`수업 일정 ${sessions.length}개 복구 준비 완료.`);
+      addLog(`수업 일정 ${sessions.length}개 발견.`);
 
-    } catch (err) {
-      addLog(`에러 발생: ${err instanceof Error ? err.message : "복구 실패"}`);
-    } finally {
-      setIsBusy(false);
-    }
+      // [Rescue V2] 학습 기록 (강의 카드) 복구 로직 추가
+      addLog("4. '숙제 제출' 폴더 바탕으로 학습 기록 역추적 중...");
+      const lectureTreeRaw = await readRemoteSharedStateKvValue("mk3:lectureTree");
+      const lectureTree = lectureTreeRaw ? JSON.parse(lectureTreeRaw) : null;
+      
+      const flatLeaves: any[] = [];
+      const traverse = (node: any) => {
+        if (node.type === "leaf") flatLeaves.push(node);
+        else if (node.children) node.children.forEach(traverse);
+      };
+      if (lectureTree?.root) traverse(lectureTree.root);
+
+      const recoveredSessions = [...sessions];
+      for (const st of updatedStudents) {
+        addLog(`${st.name} 학생 기록 분석 중...`);
+        try {
+          // 03_숙제 제출 폴더 찾기
+          const hwRes = await requestDrive({
+            token,
+            method: "GET",
+            path: "/files",
+            query: { q: `'${st.id}' in parents and name = '03_숙제 제출' and trashed = false` }
+          }) as { files: any[] };
+
+          if (hwRes.files.length > 0) {
+            const hwId = hwRes.files[0].id;
+            // 회차별 폴더 스캔
+            const sessionsRes = await requestDrive({
+              token,
+              method: "GET",
+              path: "/files",
+              query: { q: `'${hwId}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false` }
+            }) as { files: any[] };
+
+            for (const sFold of sessionsRes.files) {
+              const sIdx = parseInt(sFold.name.replace("회차", ""));
+              if (isNaN(sIdx)) continue;
+
+              // 해당 회차의 강의 명칭 스캔
+              const cardsRes = await requestDrive({
+                token,
+                method: "GET",
+                path: "/files",
+                query: { q: `'${sFold.id}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false` }
+              }) as { files: any[] };
+
+              const leafIds: string[] = [];
+              for (const cFold of cardsRes.files) {
+                // 제목으로 leafId 매칭
+                const matched = flatLeaves.find(l => l.title === cFold.name);
+                if (matched) leafIds.push(matched.leafId);
+              }
+
+              if (leafIds.length > 0) {
+                const targetSess = recoveredSessions.find(rs => rs.studentId === st.id && rs.index === sIdx);
+                if (targetSess) {
+                  targetSess.lectureLeafIds = leafIds;
+                }
+              }
+            }
+          }
+        } catch (e) {
+          console.error(`학습 기록 복구 실패: ${st.name}`, e);
+        }
+      }
+
+      setFoundSessions([...recoveredSessions]);
+      addLog("🎉 학습 기록 복구 완료. 최종 적용을 눌러주세요.");
   };
 
   const handleApply = async () => {
