@@ -475,10 +475,19 @@ export async function pushSharedSnapshot(args?: {
   const sessions = hasSessionsArg ? (args?.sessions ?? []) : undefined;
   const stateKvPatch = hasStateKvArg ? toStateKv(args?.stateKv ?? {}) : undefined;
 
+  // [CRITICAL SAFETY] 학생/세션 데이터가 로컬에 아예 없는데 서버로 보내려는 상황 차단
+  // `args.students`가 명시적으로 `[]`로 넘어오지 않는 한, `loadStudents()`를 통해 현재 로컬 데이터를 확인합니다.
+  // `forceEmpty`가 true인 경우에만 빈 학생 데이터 전송을 허용합니다.
+  const currentStudents = hasStudentsArg ? (args.students ?? []) : readLocalStudents();
+  if (currentStudents.length === 0 && !args?.forceEmpty) {
+    console.warn("⚠️ [Safety Check] 전송할 학생 데이터가 비어있어 중단합니다. (Data Loss Prevention)");
+    return { sessionsSynced: false, stateKvSynced: false }; // Indicate that nothing was synced
+  }
+
   const body: any = {};
-  if (hasTeachersArg && teachers) body.teachers = teachers;
-  if (hasStudentsArg && students) body.students = students;
-  if (hasSessionsArg && sessions) body.sessions = sessions;
+  if (hasTeachersArg) body.teachers = teachers;
+  if (hasStudentsArg) body.students = students;
+  if (hasSessionsArg) body.sessions = sessions;
   if (hasStateKvArg) body.stateKv = stateKvPatch ?? {};
   if (hasDropStateKeysArg) body.dropStateKeys = args?.dropStateKeys ?? [];
 

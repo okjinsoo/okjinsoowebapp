@@ -46,20 +46,34 @@ export default function RescueCenter() {
       }) as { files: { id: string; name: string }[] };
 
       const students: Student[] = driveRes.files.map(f => {
-        // [Rescue V2] 기수(YYYY_NNNNNN)와 이름(_이름) 분리 정교화
-        const match = f.name.match(/^(\d{4}_\d{6})_?\s*(.*)$/);
-        const cohort = match ? match[1] : "미정";
-        const name = match && match[2] ? match[2].trim() : f.name;
+        // [Rescue V3.2] 이름 형식에 상관없이 최대한 정보를 추출
+        // 1. 2026_123456_이름 형태 시도
+        // 2. 99_이름 형태 시도
+        // 3. 그냥 이름 형태 시도
+        let cohort = "미정";
+        let name = f.name;
+
+        const cohortMatch = f.name.match(/^(\d{4}_\d{6})/);
+        if (cohortMatch) {
+          cohort = cohortMatch[1];
+          name = f.name.replace(cohort, "").replace(/^[_-\s]+/, "").trim();
+        } else {
+          const simpleMatch = f.name.match(/^(\d+)_?(.*)/);
+          if (simpleMatch) {
+            cohort = simpleMatch[1];
+            name = simpleMatch[2].trim() || f.name;
+          }
+        }
         
         return {
           id: f.id, 
-          name: name || "이름없음",
+          name: name || f.name,
           cohort,
           googleEmail: "",
           token: `restore-${f.id.slice(-8)}`,
           status: "active" as const,
           memo: "자동 복구됨",
-          planCount: 40, // 복구 시 기본값 보강 (원장님 수정 가능)
+          planCount: 40,
           paymentHistory: [],
           startDate: new Date().toISOString(),
           scheduleRules: [],
