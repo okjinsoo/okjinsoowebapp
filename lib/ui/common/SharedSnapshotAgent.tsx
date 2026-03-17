@@ -22,9 +22,6 @@ import { TUTORWEB_EVENTS } from "@/lib/events/tutorwebEvents";
 
 const PUSH_DEBOUNCE_MS = 700;
 const PUSH_RETRY_MS = 1500;
-// [전송량 최적화] 역할별 기본 주기 정의 (Edge Requests 감축을 위해 대폭 완화)
-const PULL_INTERVAL_STUDENT_MS = 300000; // 학생: 5분 (기존 1분)
-const PULL_INTERVAL_TEACHER_MS = 30000;  // 선생님/관리자: 30초 (기존 10초)
 const AUTH_KEY = "tutorweb_auth_session_v1";
 
 const PENING_LOCK_TIMEOUT_MS = 5000; 
@@ -117,52 +114,17 @@ export default function SharedSnapshotAgent() {
       void hydrate(true);
     };
 
-    // [Edge Requests 최적화] 탭이 활성화될 때만 주기 실행 (절전 모드)
-    const restartInterval = () => {
-      if (pullIntervalRef.current) {
-        clearInterval(pullIntervalRef.current);
-        pullIntervalRef.current = null;
-      }
-      
-      const auth = loadAuthSession();
-      if (!auth) return;
-
-      const role = window.location.pathname.startsWith("/a/") ? "a" :
-                   window.location.pathname.startsWith("/t/") ? "t" :
-                   window.location.pathname.startsWith("/s/") ? "s" : "guest";
-
-      const intervalMs = role === "s" ? PULL_INTERVAL_STUDENT_MS : 
-                         (role === "t" || role === "a") ? PULL_INTERVAL_TEACHER_MS : null;
-
-      if (intervalMs) {
-        console.log(`[Phase 21 실시간모드] ${role} 모드 동기화 시작 (${intervalMs / 1000}초 간격)`);
-        pullIntervalRef.current = setInterval(() => {
-          void hydrate(true);
-        }, intervalMs);
-      }
-    };
-
-    const stopInterval = () => {
-      if (pullIntervalRef.current) {
-        console.log("[Phase 21 절전모드] 백그라운드 전환 - 동기화 일시 정지");
-        clearInterval(pullIntervalRef.current);
-        pullIntervalRef.current = null;
-      }
-    };
-
+    // [Vercel 비용 최적화] 정기 폴링(Interval) 대신 탭 활성화 시 전용 동기화(Focus Sync)로 전환
     const handleVisibilityChange = () => {
       if (document.visibilityState === "visible") {
+        console.log("[Phase 21 On-Demand] 탭 활성화 감지 - 서버 데이터 갱신 시작");
         void hydrate(true); 
-        restartInterval();
-      } else {
-        stopInterval();
       }
     };
 
-    // 초기 실행
+    // 초기 실행 시 서버 데이터 동기화
     void hydrate(true);
     trySyncCalendarForCurrentLogin();
-    restartInterval();
 
     const onPageHide = () => {
       if (pushTimerRef.current) {
@@ -195,7 +157,6 @@ export default function SharedSnapshotAgent() {
     document.addEventListener("visibilitychange", handleVisibilityChange);
 
     return () => {
-      stopInterval();
       if (pushTimerRef.current) {
         clearTimeout(pushTimerRef.current);
         pushTimerRef.current = null;

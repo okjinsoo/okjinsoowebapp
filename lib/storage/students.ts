@@ -50,21 +50,6 @@ function syncStudentRoleBindings(previous: Student[], next: Student[]): void {
   });
 }
 
-function syncSharedSnapshot(nextStudents: Student[], mode: "merge" | "replace"): void {
-  void (async () => {
-    const baseline = await loadLatestCoreSnapshotBaseline();
-    const mergedStudents = mode === "replace"
-      ? nextStudents
-      : mergeById(baseline.students, nextStudents);
-
-    await pushSharedSnapshot({
-      teachers: baseline.teachers.length > 0 ? baseline.teachers : readLocalTeachers(),
-      students: mergedStudents,
-    });
-  })().catch((err) => {
-    console.error("공유 스냅샷 동기화 실패(students):", err);
-  });
-}
 
 let studentsCache: { value: Student[]; expiry: number } | null = null;
 const STUDENTS_CACHE_TTL = 50;
@@ -100,6 +85,7 @@ function replaceStudentsLocal(list: Student[]): boolean {
 
 export function saveStudents(list: Student[], options?: SaveStudentsOptions): void {
   if (typeof window === "undefined") return;
+  studentsCache = null; // 저장 시 캐시 무효화
   const previous = loadStudents();
   const changedEmailIds = changedStudentEmailIds(previous, list);
   browserStorage.setItem(KEY, JSON.stringify(list));
@@ -114,6 +100,7 @@ export function saveStudents(list: Student[], options?: SaveStudentsOptions): vo
 }
 
 export async function saveStudentsServerFirst(list: Student[]): Promise<void> {
+  studentsCache = null; // 저장 시 캐시 무효화
   await pushSharedSnapshot({
     teachers: readLocalTeachers(),
     students: list,
@@ -122,6 +109,7 @@ export async function saveStudentsServerFirst(list: Student[]): Promise<void> {
 }
 
 export function upsertStudent(student: Student): Student[] {
+  studentsCache = null; // 저장 시 캐시 무효화
   const list = loadStudents();
   const idx = list.findIndex((s) => s.id === student.id);
   if (idx >= 0) list[idx] = student;
@@ -131,12 +119,14 @@ export function upsertStudent(student: Student): Student[] {
 }
 
 export function removeStudent(studentId: string): Student[] {
+  studentsCache = null; // 저장 시 캐시 무효화
   const list = loadStudents().filter((s) => s.id !== studentId);
   saveStudents(list, { snapshotMode: "replace" });
   return list;
 }
 
 export function setStudentStatus(studentId: string, status: StudentStatus): Student[] {
+  studentsCache = null; // 저장 시 캐시 무효화
   const list = loadStudents().map((s) => (s.id === studentId ? { ...s, status } : s));
   saveStudents(list);
   return list;
@@ -155,4 +145,21 @@ export function clearStudents(): void {
   browserStorage.removeItem(KEY);
   syncStudentRoleBindings(previous, []);
   syncSharedSnapshot([], "replace");
+}
+
+function syncSharedSnapshot(nextStudents: Student[], mode: "merge" | "replace"): void {
+  void (async () => {
+    const baseline = await loadLatestCoreSnapshotBaseline();
+    const mergedStudents = mode === "replace"
+      ? nextStudents
+      : mergeById(baseline.students, nextStudents);
+
+    await pushSharedSnapshot({
+      teachers: baseline.teachers.length > 0 ? baseline.teachers : readLocalTeachers(),
+      students: mergedStudents,
+      forceEmpty: mode === "replace" && mergedStudents.length === 0, // [Safety] 의도적 삭제 명시
+    });
+  })().catch((err) => {
+    console.error("공유 스냅샷 동기화 실패(students):", err);
+  });
 }

@@ -464,6 +464,7 @@ type PushSharedSnapshotArgs = {
   stateKv?: Record<string, unknown>;
   dropStateKeys?: string[];
   forceEmpty?: boolean; // [Safety] 의도적으로 빈 데이터를 보낼 때 사용
+  manualBackupId?: string; // [Safety] 수동 백업 트리거용
 };
 
 const DAILY_BACKUP_KEY = "mk3:last_daily_backup_ts";
@@ -474,6 +475,19 @@ export async function pushSharedSnapshot(args?: PushSharedSnapshotArgs): Promise
   const hasSessionsArg = Object.prototype.hasOwnProperty.call(args ?? {}, "sessions");
   const hasStateKvArg = Object.prototype.hasOwnProperty.call(args ?? {}, "stateKv");
   const hasDropStateKeysArg = Object.prototype.hasOwnProperty.call(args ?? {}, "dropStateKeys");
+
+  // [Phase 25.1] 강력한 데이터 유실 방지 가드 (Strict Empty Guard)
+  // 의도적 비우기(forceEmpty)가 아닌데, 원래 데이터가 있었음에도 불구하고 []를 보내려 하면 즉시 차단한다.
+  if (!args?.forceEmpty) {
+    if (hasStudentsArg && (args?.students?.length ?? 0) === 0 && readLocalStudents().length > 0) {
+      console.error("⛔ [Safety Guard] 학생 데이터 유실 위험이 감지되어 업로드를 차단했습니다. (Empty Array Blocked)");
+      return { sessionsSynced: false, stateKvSynced: false };
+    }
+    if (hasSessionsArg && (args?.sessions?.length ?? 0) === 0 && readLocalSessions().length > 0) {
+      console.error("⛔ [Safety Guard] 수업 데이터 유실 위험이 감지되어 업로드를 차단했습니다. (Empty Array Blocked)");
+      return { sessionsSynced: false, stateKvSynced: false };
+    }
+  }
 
   const touchesStateKv = hasStateKvArg || hasDropStateKeysArg;
 
@@ -500,6 +514,28 @@ export async function pushSharedSnapshot(args?: PushSharedSnapshotArgs): Promise
 
   const internal = await fetchInternalSnapshot({ body });
   
+  // [Safety] 성공적으로 저장된 후, 수동 백업 요청이 왔다면 즉시 복제본 생성
+  if (args?.manualBackupId) {
+    try {
+      const backupId = args.manualBackupId;
+      await fetchInternalSnapshot({
+        body: {
+          stateKv: {
+            [`mk3:backup:${backupId}`]: JSON.stringify({
+              students: body.students || readLocalStudents(),
+              sessions: body.sessions || readLocalSessions(),
+              ts: Date.now(),
+              source: "manual_trigger"
+            })
+          }
+        }
+      });
+      console.log(`✅ [Safety] 수동 백업 생성 완료: ${backupId}`);
+    } catch (e) {
+      console.error("수동 백업 생성 실패:", e);
+    }
+  }
+
   // [Safety] 성공적으로 저장된 후, 24시간마다 자동 백업(Daily Snapshot) 생성 시도
   try {
     const lastBackup = localStorage.getItem(DAILY_BACKUP_KEY);
@@ -521,7 +557,7 @@ export async function pushSharedSnapshot(args?: PushSharedSnapshotArgs): Promise
       console.log(`✅ Daily snapshot created: ${snapshotDate}`);
     }
   } catch (e) {
-    console.warn("Daily backup failed (silent):", e);
+    console.warn("백그라운드 백업 생성 실패:", e);
   }
 
   if (

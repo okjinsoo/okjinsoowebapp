@@ -9,7 +9,7 @@ import {
   syncStudentGoogleCalendarMirror,
 } from "@/lib/integrations/googleCalendarSync";
 import { safeParseJson } from "@/lib/storage/safeParse";
-import { mergeById } from "@/lib/storage/safeSnapshotMerge";
+import { loadLatestCoreSnapshotBaseline, mergeById } from "@/lib/storage/safeSnapshotMerge";
 import type { Session } from "@/lib/types/index";
 
 const KEY = "tutorweb_sessions_v1";
@@ -40,6 +40,7 @@ export function loadSessions(): Session[] {
 
 function replaceSessionsLocal(list: Session[]): boolean {
   if (typeof window === "undefined") return false;
+  sessionsCache = null; // 저장 시 캐시 무효화
   const nextRaw = JSON.stringify(list);
   if (browserStorage.getItem(KEY) === nextRaw) return false;
   browserStorage.setItem(KEY, nextRaw);
@@ -47,32 +48,70 @@ function replaceSessionsLocal(list: Session[]): boolean {
   return true;
 }
 
-// [최적화] 서버에서 다시 pull하지 않고, 이미 로컬에 있는 데이터를 바로 사용하여 push 1회만 수행
-function syncSharedSnapshot(nextSessions: Session[], mode: "merge" | "replace"): void {
-  void (async () => {
-    // 로컬 데이터를 직접 사용 (서버 왕복 1번 절약)
-    const localSessions = readLocalSessions();
-    const mergedSessions = mode === "replace"
-      ? nextSessions
-      : mergeById(localSessions, nextSessions);
+/**
+ * [Safety First] 서버의 최신 데이터를 먼저 가져와서 로컬 변경사항과 병합 후 업로드
+ */
+async function syncSharedSnapshot(
+  nextSessions: Session[],
+  mode: "merge" | "replace"
+): Promise<void> {
+  try {
+    const baseline = await loadLatestCoreSnapshotBaseline();
+    const mergedSessions =
+      mode === "replace"
+        ? nextSessions
+        : mergeById(baseline.sessions, nextSessions);
 
     await pushSharedSnapshot({
-      teachers: readLocalTeachers(),
-      students: readLocalStudents(),
+      teachers:
+        baseline.teachers.length > 0 ? baseline.teachers : readLocalTeachers(),
+      students:
+        baseline.students.length > 0 ? baseline.students : readLocalStudents(),
       sessions: mergedSessions,
+      forceEmpty: mode === "replace" && mergedSessions.length === 0,
     });
-  })().catch((err) => {
+  } catch (err) {
     console.error("공유 스냅샷 동기화 실패(sessions):", err);
+  }
+}
+
+export function saveSessions(list: Session[], options?: SaveSessionsOptions): void {
+  if (typeof window === "undefined") return;
+  sessionsCache = null; // 저장 시 캐시 무효화
+  const previous = loadSessions();
+  
+  replaceSessionsLocal(list);
+  
+  if (!options?.skipSharedSnapshot) {
+    void syncSharedSnapshot(list, options?.snapshotMode ?? "merge");
+  }
+
+  if (options?.suppressCalendarSync) return;
+
+  scheduleGoogleCalendarSync({
+    previous,
+    next: list,
+    applyPatches: applySessionPatches,
   });
 }
 
-function persistSessions(list: Session[], options?: { skipSharedSnapshot?: boolean }): void {
-  if (typeof window === "undefined") return;
-  browserStorage.setItem(KEY, JSON.stringify(list));
-  window.dispatchEvent(new CustomEvent("tutorweb:sessionsUpdated"));
-  if (!options?.skipSharedSnapshot) {
-    syncSharedSnapshot(list, "merge");
-  }
+export async function saveSessionsServerFirst(
+  list: Session[],
+  options?: SaveSessionsOptions
+): Promise<void> {
+  sessionsCache = null; // 저장 시 캐시 무효화
+  const previous = loadSessions();
+  
+  await syncSharedSnapshot(list, options?.snapshotMode ?? "merge");
+  replaceSessionsLocal(list);
+
+  if (options?.suppressCalendarSync) return;
+
+  scheduleGoogleCalendarSync({
+    previous,
+    next: list,
+    applyPatches: applySessionPatches,
+  });
 }
 
 function applySessionPatches(patches: Array<{ id: string; patch: Partial<Session> }>): void {
@@ -103,7 +142,7 @@ function applySessionPatches(patches: Array<{ id: string; patch: Partial<Session
   });
 
   if (!changed) return;
-  persistSessions(next);
+  saveSessions(next, { skipSharedSnapshot: false });
 }
 
 function applyCalendarResyncPatch(args: {
@@ -144,43 +183,6 @@ function applyCalendarResyncPatch(args: {
 
   if (!changed) return;
   saveSessions(next);
-}
-
-export function saveSessions(list: Session[], options?: SaveSessionsOptions): void {
-  const previous = loadSessions();
-  persistSessions(list, { skipSharedSnapshot: true });
-  if (!options?.skipSharedSnapshot) {
-    syncSharedSnapshot(list, options?.snapshotMode ?? "merge");
-  }
-
-  if (options?.suppressCalendarSync) return;
-
-  scheduleGoogleCalendarSync({
-    previous,
-    next: list,
-    applyPatches: applySessionPatches,
-  });
-}
-
-export async function saveSessionsServerFirst(
-  list: Session[],
-  options?: SaveSessionsOptions
-): Promise<void> {
-  const previous = loadSessions();
-  await pushSharedSnapshot({
-    teachers: readLocalTeachers(),
-    students: readLocalStudents(),
-    sessions: list,
-  });
-  persistSessions(list, { skipSharedSnapshot: true });
-
-  if (options?.suppressCalendarSync) return;
-
-  scheduleGoogleCalendarSync({
-    previous,
-    next: list,
-    applyPatches: applySessionPatches,
-  });
 }
 
 export function syncGoogleCalendarForExistingSessions(): void {
@@ -241,14 +243,7 @@ export function requestCalendarResyncForTeacherIds(teacherIds: string[]): void {
   });
 }
 
-export function upsertSession(session: Session): Session[] {
-  const list = loadSessions();
-  const idx = list.findIndex((x) => x.id === session.id);
-  if (idx >= 0) list[idx] = session;
-  else list.push(session);
-  saveSessions(list);
-  return list;
-}
+// upsertSession은 이미 위에서 정의됨 (상단부 consolidated version 사용)
 
 // ✅ 아래 함수들을 lib/storage/sessions.ts에 추가하세요.
 // (기존 KEY / loadSessions / upsertSession 스타일을 그대로 따릅니다.)
