@@ -257,13 +257,13 @@ export default function TodaySessionsCard({
                   }}
                   onClick={() => saveCurrentStudentToken(r.token)}
                 >
-                  <div style={{ display: "flex", alignItems: "baseline", gap: 8, fontWeight: 700, whiteSpace: "nowrap" }}>
-                    <span style={{ fontSize: "1.1rem" }}>{r.studentName}</span>
-                    <span style={{ fontSize: "0.85rem", opacity: 0.6, fontWeight: 500 }}>{r.index}회차</span>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, fontWeight: 700, whiteSpace: "nowrap" }}>
+                    <span style={{ fontSize: "1rem" }}>{r.studentName}</span>
+                    <span style={{ fontSize: "1rem", opacity: 0.7, fontWeight: 600 }}>{r.index}회차</span>
                   </div>
-                  <div className="flex items-center gap-2 flex-wrap text-dim">
+                  <div className="flex items-center gap-2 flex-wrap text-dim" style={{ fontSize: "0.95rem" }}>
                     {/* 1. 날짜 및 시간 */}
-                    <div>
+                    <div style={{ marginRight: 4 }}>
                       {r.dateText} {r.timeText}
                     </div>
 
