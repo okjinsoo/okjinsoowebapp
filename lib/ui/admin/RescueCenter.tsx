@@ -197,6 +197,12 @@ export default function RescueCenter() {
 
       setFoundSessions([...recoveredSessions]);
       addLog("🎉 학습 기록 복구 완료. 최종 적용을 눌러주세요.");
+
+    } catch (err) {
+      addLog(`에러 발생: ${err instanceof Error ? err.message : "복구 실패"}`);
+    } finally {
+      setIsBusy(false);
+    }
   };
 
   const handleApply = async () => {
