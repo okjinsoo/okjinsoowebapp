@@ -707,6 +707,17 @@ export async function pullSharedSnapshotAndHydrateWithOptions(args?: {
       const sessions = Array.isArray(internalSnapshot.sessions) ? internalSnapshot.sessions : [];
       const stateKv = toStateKv(internalSnapshot.stateKv);
 
+      // [CRITICAL SAFETY] 역방향 오염 방지 (Cross-Check)
+      // 서버에서 가져온 명단이 0명인데, 로컬에는 이미 데이터가 있다면 적용을 거부하고 경고합니다.
+      const localStudents = readLocalStudents();
+      if (localStudents.length > 5 && students.length === 0) {
+        console.error("⚠️ [Safety Check] 서버 장부가 비어있습니다. 로컬 데이터를 보호하기 위해 동기화를 중단합니다.");
+        if (typeof window !== "undefined") {
+          window.alert("🚨 [데이터 보호 알림]\n\n서버의 학생 명단이 비어있는 상태입니다.\n로컬 데이터를 보호하기 위해 동기화가 일시 중단되었습니다.\n원장님께 문의하시거나 새로고침하여 다시 시도해 주세요.");
+        }
+        return { teachers: localStudents.length > 0 ? localStudents.map(s => ({} as any)) : [], students: localStudents, sessions: readLocalSessions() };
+      }
+
       applyLocalSnapshot({
         teachers,
         students,
