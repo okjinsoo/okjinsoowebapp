@@ -208,6 +208,34 @@ export default function RescueCenter() {
     }
   };
 
+  const handleManualMerge = () => {
+    try {
+      if (!manualJson.trim()) return;
+      const data = JSON.parse(manualJson);
+      
+      const targetId = data.studentId || foundStudents.find(s => s.name === "김시헌")?.id || "unknown";
+      
+      const updatedSessions = foundSessions.map(sess => {
+        if (sess.studentId === targetId && sess.index === data.sessionIndex) {
+          addLog(`${sess.index}회차 데이터 병합 중...`);
+          return {
+            ...sess,
+            lectureLeafIds: data.lectureLeafIds,
+          };
+        }
+        return sess;
+      });
+
+      setFoundSessions(updatedSessions);
+      addLog(`✅ 시헌이의 패드 데이터가 복구 목록에 병합되었습니다.`);
+      setManualJson("");
+      setShowManual(false);
+    } catch (err) {
+      console.error("Manual merge error:", err);
+      window.alert("데이터 형식이 올바르지 않습니다. 다시 확인해주세요.");
+    }
+  };
+
   const handleApply = async () => {
     if (!window.confirm(`발견된 학생 ${foundStudents.length}명과 수업 ${foundSessions.length}개를 서버에 저장할까요?`)) return;
     try {
