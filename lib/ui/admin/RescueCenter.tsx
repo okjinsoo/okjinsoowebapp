@@ -45,11 +45,7 @@ export default function RescueCenter() {
         }
       }) as { files: { id: string; name: string }[] };
 
-      const students: Student[] = driveRes.files.map(f => {
-        // [Rescue V3.2] 이름 형식에 상관없이 최대한 정보를 추출
-        // 1. 2026_123456_이름 형태 시도
-        // 2. 99_이름 형태 시도
-        // 3. 그냥 이름 형태 시도
+      const students: Student[] = await Promise.all(driveRes.files.map(async (f) => {
         let cohort = "미정";
         let name = f.name;
 
@@ -64,12 +60,29 @@ export default function RescueCenter() {
             name = simpleMatch[2].trim() || f.name;
           }
         }
+
+        // [Rescue V3.3] 폴더 권한에서 이메일 추출
+        let googleEmail = "";
+        try {
+          const permRes = await requestDrive({
+            token,
+            method: "GET",
+            path: `/files/${f.id}/permissions`,
+            query: { fields: "permissions(emailAddress,role)" }
+          }) as { permissions: { emailAddress: string; role: string }[] };
+          
+          // 원장님(owner)이 아닌 다른 사람(학생/reader)의 이메일 찾기
+          const studentPerm = permRes.permissions.find(p => p.role !== "owner" && p.emailAddress);
+          if (studentPerm) googleEmail = studentPerm.emailAddress;
+        } catch (e) {
+          console.error(`이메일 추출 실패: ${f.name}`, e);
+        }
         
         return {
           id: f.id, 
           name: name || f.name,
           cohort,
-          googleEmail: "",
+          googleEmail,
           token: `restore-${f.id.slice(-8)}`,
           status: "active" as const,
           memo: "자동 복구됨",
@@ -82,7 +95,7 @@ export default function RescueCenter() {
           school: "미정",
           grade: "미정",
         };
-      });
+      }));
       setFoundStudents(students);
       addLog(`학생 ${students.length}명 발견 완료.`);
 
