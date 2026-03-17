@@ -221,6 +221,58 @@ function dispatchLocalSnapshotUpdated(args?: { includeSessions?: boolean }) {
   }
 }
 
+function applyStateKv(stateKv: Record<string, string> | null | undefined): {
+  changed: boolean;
+  hadConsultations: boolean;
+  hadMetaMap: boolean;
+  hadLectureTree: boolean;
+} {
+  if (typeof window === "undefined" || !stateKv) {
+    return {
+      changed: false,
+      hadConsultations: false,
+      hadMetaMap: false,
+      hadLectureTree: false,
+    };
+  }
+
+  let changed = false;
+  let hadConsultations = false;
+  let hadMetaMap = false;
+  let hadLectureTree = false;
+
+  for (const [key, value] of Object.entries(stateKv)) {
+    if (!shouldPersistKey(key)) continue;
+    const current = localStorage.getItem(key);
+    if (current === value) continue;
+
+    if (key === SHARED_LECTURE_TREE_KEY) {
+      const currentMeta = lectureTreeMeta(current);
+      const incomingMeta = lectureTreeMeta(value);
+
+      if (currentMeta.leafCount === 0 && incomingMeta.leafCount > 0) {
+        // pass
+      } else if (currentMeta.leafCount > 0 && incomingMeta.leafCount === 0) {
+        continue;
+      } else {
+        const currentMs = currentMeta.updatedAtMs;
+        const incomingMs = incomingMeta.updatedAtMs;
+        if (currentMs !== null && incomingMs !== null && currentMs > incomingMs) {
+          continue;
+        }
+      }
+    }
+
+    localStorage.setItem(key, value);
+    changed = true;
+    if (key === SHARED_CONSULTATIONS_KEY) hadConsultations = true;
+    if (key === SHARED_LECTURE_TREE_KEY) hadLectureTree = true;
+    if (key.startsWith(SHARED_META_MAP_PREFIX)) hadMetaMap = true;
+  }
+
+  return { changed, hadConsultations, hadMetaMap, hadLectureTree };
+}
+
 function applyLocalSnapshot(args: {
   teachers: Teacher[];
   students: Student[];
