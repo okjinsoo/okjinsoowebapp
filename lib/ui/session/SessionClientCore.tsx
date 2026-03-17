@@ -1449,6 +1449,22 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
           }}>
             <div style={{ fontWeight: 800, fontSize: 16 }}>🚀 긴급 데이터 구조 모드 (Admin)</div>
             <p style={{ fontSize: 12, opacity: 0.9 }}>패드에 남은 시헌이의 소중한 기록을 안전하게 구출합니다.</p>
+            
+            <div style={{ background: "rgba(0,0,0,0.2)", padding: 10, borderRadius: 10 }}>
+              <div style={{ fontSize: 10, marginBottom: 5, color: "#fff" }}>현재 화면에 보이는 데이터 (복사해서 브레인에게 주세요):</div>
+              <textarea 
+                readOnly
+                value={JSON.stringify({
+                  token,
+                  sessionIndex,
+                  lectureLeafIds,
+                  progressByLeafId
+                }, null, 2)}
+                onClick={(e) => (e.target as HTMLTextAreaElement).select()}
+                style={{ width: "100%", height: "80px", fontSize: "10px", color: "#000", borderRadius: 5, padding: 5, fontFamily: "monospace" }}
+              />
+            </div>
+
             <button 
               onClick={exportLocalData}
               style={{
@@ -1461,7 +1477,7 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
                 cursor: "pointer"
               }}
             >
-              지금 즉시 데이터 추출하기
+              전체 스토리지 파일로 추출하기
             </button>
           </div>
         );
