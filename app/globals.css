@@ -48,6 +48,16 @@
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
 }
 
+@keyframes pulse-sync {
+  0% { box-shadow: 0 0 0 0 rgba(37, 99, 235, 0.4); }
+  70% { box-shadow: 0 0 0 10px rgba(37, 99, 235, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(37, 99, 235, 0); }
+}
+
+.pulse-sync {
+  animation: pulse-sync 2s infinite;
+}
+
 @media (prefers-color-scheme: dark) {
   :root {
     color-scheme: dark;

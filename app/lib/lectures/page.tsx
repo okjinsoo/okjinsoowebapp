@@ -29,7 +29,7 @@ import {
 import { SHARED_LECTURE_TREE_KEY } from "@/lib/storage/sharedStateKeys";
 import type { LectureTree } from "@/lib/types/index";
 
-const DB_SYNC_DEBOUNCE_MS = 500;
+// [Phase 24.4] 클라우드 동기화 최적화: 자동 저장 제거 및 수동 저장 도입
 
 function firstProblemUrl(leaf: LectureLeafNode): string {
   return leaf.problemUrls?.[0] ?? "";
@@ -48,9 +48,10 @@ export default function LecturesPage() {
   const [editingFolderId, setEditingFolderId] = useState<string | null>(null);
   const [editingFolderTitle, setEditingFolderTitle] = useState("");
 
+  const [isDirty, setIsDirty] = useState(false);
   const [dbSyncing, setDbSyncing] = useState(false);
   const [dbSyncError, setDbSyncError] = useState<string | null>(null);
-  const dbSyncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
 
   // ===== 파생 상태 =====
   const folders = useMemo(() => getFoldersFromTree(tree), [tree]);
@@ -83,6 +84,7 @@ export default function LecturesPage() {
       if (localCount > 0 && remoteCount === 0) {
         await pushSharedSnapshot({ stateKv: { [SHARED_LECTURE_TREE_KEY]: JSON.stringify(localTree) } });
       }
+      setIsDirty(false);
     } catch (err) {
       console.error("강의 저장소 원격 불러오기 실패:", err);
       setDbSyncError("DB에서 강의 목록을 불러오지 못했어요.");
@@ -95,10 +97,13 @@ export default function LecturesPage() {
     setDbSyncing(true);
     setDbSyncError(null);
     try {
+      const targetTree = treeOverride ?? loadLectureTree();
       const result = await pushSharedSnapshot({
-        stateKv: { [SHARED_LECTURE_TREE_KEY]: JSON.stringify(treeOverride ?? loadLectureTree()) },
+        stateKv: { [SHARED_LECTURE_TREE_KEY]: JSON.stringify(targetTree) },
       });
       if (!result.stateKvSynced) throw new Error("state_kv sync failed");
+      setIsDirty(false);
+      setLastSyncedAt(new Date().toLocaleTimeString());
     } catch (err) {
       console.error("강의 저장소 원격 저장 실패:", err);
       setDbSyncError("DB 저장에 실패했어요.");
@@ -107,41 +112,36 @@ export default function LecturesPage() {
     }
   }
 
-  function scheduleDbSync() {
-    if (dbSyncTimerRef.current) clearTimeout(dbSyncTimerRef.current);
-    dbSyncTimerRef.current = setTimeout(() => void pushTreeToDbNow(), DB_SYNC_DEBOUNCE_MS);
-  }
-
-  function persistTree(next: LectureTree, options?: { immediate?: boolean }) {
+  function persistTree(next: LectureTree) {
     const saved = saveLectureTree(next);
     setTree(saved);
-    if (options?.immediate) {
-      if (dbSyncTimerRef.current) { clearTimeout(dbSyncTimerRef.current); dbSyncTimerRef.current = null; }
-      void pushTreeToDbNow(saved);
-    } else {
-      scheduleDbSync();
-    }
+    setIsDirty(true);
     return saved;
   }
 
   useEffect(() => {
     const id = setTimeout(() => void loadFromRemoteSnapshot(), 0);
-    return () => {
-      clearTimeout(id);
-      if (dbSyncTimerRef.current) {
-        clearTimeout(dbSyncTimerRef.current);
-        void pushTreeToDbNow();
-        dbSyncTimerRef.current = null;
+
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (isDirty) {
+        e.preventDefault();
+        e.returnValue = "";
       }
     };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    window.addEventListener("beforeunload", handleBeforeUnload);
+
+    return () => {
+      clearTimeout(id);
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+    };
+  }, [isDirty]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ===== 폴더 핸들러 =====
   function handleAddFolder() {
     const title = newFolderTitle.trim();
     if (!title) { window.alert("폴더 제목을 입력해주세요."); return; }
     const next = addFolderToTree(tree, title);
-    const saved = persistTree(next, { immediate: true });
+    const saved = persistTree(next);
     const newFolder = getFoldersFromTree(saved).at(-1);
     if (newFolder) setSelectedFolderId(newFolder.id);
     setNewFolderTitle("");
@@ -154,14 +154,14 @@ export default function LecturesPage() {
       ? `"${selectedFolder.title}" 폴더와 안에 있는 강의 ${leafCount}개를 모두 삭제할까요?`
       : `"${selectedFolder.title}" 폴더를 삭제할까요?`;
     if (!window.confirm(msg)) return;
-    persistTree(removeFolderFromTree(tree, selectedFolder.id), { immediate: true });
+    persistTree(removeFolderFromTree(tree, selectedFolder.id));
     setSelectedFolderId(null);
     setSelectedLeafId(null);
   }
 
   function handleMoveFolder(offset: -1 | 1) {
     if (!selectedFolderId) return;
-    persistTree(moveFolderInTree(tree, selectedFolderId, offset), { immediate: true });
+    persistTree(moveFolderInTree(tree, selectedFolderId, offset));
   }
 
   function startEditFolder(folder: LectureFolderNode) {
@@ -182,7 +182,7 @@ export default function LecturesPage() {
     if (!title) { window.alert("강의 제목을 입력해주세요."); return; }
     const leaf = createLectureLeaf({ title });
     const next = addLeafToFolder(tree, selectedFolderId, leaf);
-    persistTree(next, { immediate: true });
+    persistTree(next);
     setSelectedLeafId(leaf.leafId);
     setNewLeafTitle("");
   }
@@ -193,7 +193,7 @@ export default function LecturesPage() {
     if (!code) { window.alert("강의 고유 코드를 입력해주세요."); return; }
     const result = importLeafByCode(tree, selectedFolderId, code);
     if (!result) { window.alert("해당 코드의 강의를 찾지 못했습니다.\n강의 상세에서 '고유코드 복사' 버튼을 눌러 올바른 코드를 붙여넣어 주세요."); return; }
-    persistTree(result.tree, { immediate: true });
+    persistTree(result.tree);
     setSelectedLeafId(result.newLeaf.leafId);
     setImportCode("");
     setShowImport(false);
@@ -213,14 +213,14 @@ export default function LecturesPage() {
     if (!selectedFolderId || !selectedLeaf) return;
     if (!window.confirm(`"${selectedLeaf.title || "제목 없는 강의"}" 강의를 삭제할까요?`)) return;
     const next = removeLeafFromFolder(tree, selectedFolderId, selectedLeaf.leafId);
-    persistTree(next, { immediate: true });
+    persistTree(next);
     const remaining = (getFoldersFromTree(next).find(f => f.id === selectedFolderId)?.children ?? []).filter(isLeaf);
     setSelectedLeafId((remaining[0] as LectureLeafNode | undefined)?.leafId ?? null);
   }
 
   function handleMoveLeaf(offset: -1 | 1) {
     if (!selectedFolderId || !selectedLeafId) return;
-    persistTree(moveLeafInFolder(tree, selectedFolderId, selectedLeafId, offset), { immediate: true });
+    persistTree(moveLeafInFolder(tree, selectedFolderId, selectedLeafId, offset));
   }
 
   function handleCopyLeafId(leafId: string) {
@@ -236,13 +236,29 @@ export default function LecturesPage() {
 
   return (
     <div className="p-6 space-y-6" style={{ maxWidth: 1100, margin: "0 auto" }}>
-      {/* 헤더 */}
-      <header>
-        <h1 className="page-title">강의 저장소</h1>
-        <p className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>
-          {dbSyncing ? "DB 동기화 중..." : dbSyncError ? dbSyncError : "DB 동기화 정상"}
-        </p>
+      <header className="flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <h1 className="page-title">강의 저장소</h1>
+          <p className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>
+            {dbSyncing ? "데이터 전송 중..." : dbSyncError ? dbSyncError : lastSyncedAt ? `마지막 클라우드 저장: ${lastSyncedAt}` : "수정 사항을 클라우드에 저장해주세요."}
+          </p>
+        </div>
+        <button
+          className={`px-6 py-3 rounded-xl font-bold text-sm shadow-sm transition-all flex items-center gap-2 ${
+            isDirty ? "bg-blue-600 text-white hover:bg-blue-700 pulse-sync" : "bg-gray-100 text-gray-400 cursor-not-allowed"
+          }`}
+          onClick={() => isDirty && !dbSyncing && void pushTreeToDbNow()}
+          disabled={!isDirty || dbSyncing}
+        >
+          {dbSyncing ? "🔄 저장 중..." : isDirty ? "☁️ 클라우드에 지금 저장" : "✅ 저장 완료"}
+        </button>
       </header>
+
+      {isDirty && (
+        <div className="bg-orange-50 border border-orange-200 text-orange-800 px-4 py-2 rounded-lg text-xs flex items-center gap-2 animate-in fade-in slide-in-from-top-1">
+          <span>⚠️ 아직 저장되지 않은 수정사항이 있습니다. 작업을 마치고 꼭 상단의 **[클라우드 저장]** 버튼을 눌러주세요.</span>
+        </div>
+      )}
 
       {/* ===== 폴더 섹션 (항상 표시) ===== */}
       <section className="space-y-3">
