@@ -259,11 +259,9 @@ export default function StudentSessionListCore({ role, token, prefix, hideTokenI
     });
   }, [student, token, sessions, consultRecords, baseDatesISO, metaMap]);
 
-  const computedPauseRefundRatio = useMemo<"" | RefundRatio>(() => {
-    if (!student) return "";
-    if (consultForm.purpose !== "pause_request" || consultForm.finalResult !== "pause_confirm") return "";
-    if (!consultForm.pauseEffectiveDate) return "";
-
+  // 실시간 환불 비율 계산용 헬퍼 (모달 주입용)
+  const getLiveRefundRatio = (pauseDate: string) => {
+    if (!student || !pauseDate) return "";
     const entries = sessions
       .map((s) => {
         const { effectiveISO } = computeEffectiveISO({
@@ -278,7 +276,7 @@ export default function StudentSessionListCore({ role, token, prefix, hideTokenI
       .filter((e) => !!e.ymd);
     if (entries.length === 0) return "";
 
-    const target = consultForm.pauseEffectiveDate;
+    const target = pauseDate;
     const same = entries.filter((e) => e.ymd === target).sort((a, b) => a.index - b.index);
     const future = entries.filter((e) => e.ymd > target).sort((a, b) => a.ymd.localeCompare(b.ymd));
     const past = entries.filter((e) => e.ymd < target).sort((a, b) => b.ymd.localeCompare(a.ymd));
@@ -288,7 +286,8 @@ export default function StudentSessionListCore({ role, token, prefix, hideTokenI
     const requestIndex = lastIdx + 1;
     const refundTarget = displayRecords.find((r) => requestIndex >= r.startIndex && requestIndex <= r.endIndex);
     return refundTarget ? computeRefundRatio(refundTarget, requestIndex, Boolean(refundTarget.isBase)) : "";
-  }, [student, consultForm.purpose, consultForm.finalResult, consultForm.pauseEffectiveDate, sessions, token, baseDatesISO, metaMap, displayRecords]);
+  };
+
 
   const ymdFromISO = (iso: string) => {
     if (!iso) return todayYmdKST();
@@ -391,14 +390,9 @@ export default function StudentSessionListCore({ role, token, prefix, hideTokenI
     },
   });
 
-  const saveConsultRecord = async () => {
+  const saveConsultRecord = async (finalForm: ConsultFormState) => {
     if (!student) return;
-    const formForSave =
-      consultForm.purpose === "pause_request" && consultForm.finalResult === "pause_confirm"
-        ? { ...consultForm, pauseRefundRatio: computedPauseRefundRatio }
-        : consultForm;
-
-    const res = await submitConsult(formForSave, consultEditingId);
+    const res = await submitConsult(finalForm, consultEditingId);
     if (res.error) {
       setConsultError(res.error);
       return;
@@ -660,18 +654,12 @@ export default function StudentSessionListCore({ role, token, prefix, hideTokenI
       <ConsultModal
         open={consultOpen}
         role={role}
-        state={{
-          ...consultForm,
-          pauseRefundRatio:
-            consultForm.purpose === "pause_request" && consultForm.finalResult === "pause_confirm"
-              ? computedPauseRefundRatio
-              : consultForm.pauseRefundRatio,
-        }}
+        state={consultForm}
         error={consultError}
-        onChange={setConsultForm}
         onClose={() => setConsultOpen(false)}
         onSave={saveConsultRecord}
         onDelete={consultEditingId ? deleteConsultRecord : undefined}
+        computeRefundRatioValue={getLiveRefundRatio}
       />
     </div>
   );

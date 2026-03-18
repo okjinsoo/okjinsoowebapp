@@ -160,42 +160,26 @@ export function useStudentConsult({
         persistConsultationState,
     });
 
-    useEffect(() => {
-        if (!student || consultForm.purpose !== "pause_request" || consultForm.finalResult !== "pause_confirm" || !consultForm.pauseEffectiveDate) return;
-
+    // 실시간 환불 비율 계산을 위한 헬퍼 (모달에 주입용)
+    const getLiveRefundRatio = (pauseDate: string) => {
+        if (!student || !pauseDate) return "";
         const lastIdx = findLastClassIndex({
             token,
             sessions,
             baseDatesISO,
             metaMap,
-            pauseEffectiveDate: consultForm.pauseEffectiveDate,
+            pauseEffectiveDate: pauseDate,
         });
-
-        if (!lastIdx) return;
+        if (!lastIdx) return "";
         const requestIndex = lastIdx + 1;
         const refundTarget = displayRecords.find((r) => requestIndex >= r.startIndex && requestIndex <= r.endIndex);
-        const nextRatio = refundTarget
+        return refundTarget
             ? computeRefundRatio(refundTarget, requestIndex, Boolean(refundTarget.isBase))
             : "";
+    };
 
-        if (consultForm.pauseRefundRatio !== nextRatio) {
-            setConsultForm((prev) => ({ ...prev, pauseRefundRatio: nextRatio as ConsultFormState["pauseRefundRatio"] }));
-        }
-    }, [
-        student,
-        consultForm.purpose,
-        consultForm.finalResult,
-        consultForm.pauseEffectiveDate,
-        consultForm.pauseRefundRatio,
-        token,
-        sessions,
-        baseDatesISO,
-        metaMap,
-        displayRecords,
-    ]);
-
-    async function saveConsultRecord() {
-        const res = await submitConsult(consultForm, consultEditingId);
+    async function saveConsultRecord(finalForm: ConsultFormState) {
+        const res = await submitConsult(finalForm, consultEditingId);
         if (res.error) {
             setConsultError(res.error);
             return;
@@ -249,6 +233,7 @@ export function useStudentConsult({
             openConsultForSession,
             saveConsultRecord,
             deleteConsultRecord,
+            getLiveRefundRatio,
         }
     };
 }

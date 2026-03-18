@@ -158,10 +158,10 @@ export function StudentConsultPanel({
                 role={accessRole}
                 state={state.consultForm}
                 error={state.consultError}
-                onChange={actions.setConsultForm}
                 onClose={() => actions.setConsultOpen(false)}
                 onSave={actions.saveConsultRecord}
                 onDelete={state.consultEditingId ? actions.deleteConsultRecord : undefined}
+                computeRefundRatioValue={actions.getLiveRefundRatio}
             />
         </>
     );

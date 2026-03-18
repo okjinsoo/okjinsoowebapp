@@ -1,5 +1,4 @@
-"use client";
-
+import React, { useEffect, useState } from "react";
 import AutoResizeTextarea from "@/lib/ui/common/AutoResizeTextarea";
 
 type Role = "a" | "t" | "s";
@@ -32,27 +31,68 @@ function refundRatioLabel(ratio: ConsultFormState["pauseRefundRatio"]) {
 export default function ConsultModal({
   open,
   role,
-  state,
+  state: initialState, // 초기값으로만 사용
   error,
-  onChange,
   onClose,
-  onSave,
+  onSave: parentOnSave,
   onDelete,
   title = "상담 기록",
   loading,
+  computeRefundRatioValue, // 실시간 계산기 주입
 }: {
   open: boolean;
   role: Role;
   state: ConsultFormState;
   error?: string;
-  onChange: (next: ConsultFormState) => void;
   onClose: () => void;
-  onSave: () => void;
+  onSave: (finalState: ConsultFormState) => void; // 최종 상태를 인자로 전달
   onDelete?: () => void;
   title?: string;
   loading?: boolean;
+  computeRefundRatioValue?: (pauseEffectiveDate: string) => string; // 실시간 계산기 주입
 }) {
+  const [localState, setLocalState] = useState<ConsultFormState>(initialState);
+
+  // 모달이 열릴 때마다 초기값을 로컬 상태에 복사
+  useEffect(() => {
+    if (open) {
+      setLocalState(initialState);
+    }
+  }, [open, initialState]);
+
+  // 실시간 환불 비율 계산 (휴회 확정 시)
+  useEffect(() => {
+    if (
+      localState.purpose === "pause_request" &&
+      localState.finalResult === "pause_confirm" &&
+      localState.pauseEffectiveDate &&
+      computeRefundRatioValue
+    ) {
+      const nextRatio = computeRefundRatioValue(localState.pauseEffectiveDate);
+      if (localState.pauseRefundRatio !== nextRatio) {
+        setLocalState((prev) => ({
+          ...prev,
+          pauseRefundRatio: nextRatio as ConsultFormState["pauseRefundRatio"],
+        }));
+      }
+    }
+  }, [
+    localState.purpose,
+    localState.finalResult,
+    localState.pauseEffectiveDate,
+    computeRefundRatioValue,
+    localState.pauseRefundRatio,
+  ]);
+
   if (!open) return null;
+
+  const handleChange = (next: ConsultFormState) => {
+    setLocalState(next);
+  };
+
+  const handleSave = () => {
+    parentOnSave(localState);
+  };
   const isAdmin = role === "a";
   const isTeacher = role === "t";
   const isReadOnly = role === "s";
@@ -81,8 +121,8 @@ export default function ConsultModal({
               type="date"
               className="rounded border border-neutral-300 px-2 py-1"
               style={baseFieldStyle}
-              value={state.date}
-              onChange={(e) => onChange({ ...state, date: e.target.value })}
+              value={localState.date}
+              onChange={(e) => handleChange({ ...localState, date: e.target.value })}
               disabled={baseDisabled}
             />
           </label>
@@ -92,13 +132,13 @@ export default function ConsultModal({
             <select
               className="rounded border border-neutral-300 px-2 py-1"
               style={baseFieldStyle}
-              value={state.purpose}
-              onChange={(e) => onChange({ ...state, purpose: e.target.value as ConsultFormState["purpose"] })}
+              value={localState.purpose}
+              onChange={(e) => handleChange({ ...localState, purpose: e.target.value as ConsultFormState["purpose"] })}
               onKeyDown={(e) => {
                 if (e.key === "Enter") {
                   e.preventDefault();
                   e.stopPropagation();
-                  onSave();
+                  handleSave();
                 }
               }}
               disabled={baseDisabled}
@@ -114,13 +154,13 @@ export default function ConsultModal({
             <select
               className="rounded border border-neutral-300 px-2 py-1"
               style={baseFieldStyle}
-              value={state.target}
-              onChange={(e) => onChange({ ...state, target: e.target.value as ConsultFormState["target"] })}
+              value={localState.target}
+              onChange={(e) => handleChange({ ...localState, target: e.target.value as ConsultFormState["target"] })}
               onKeyDown={(e) => {
                 if (e.key === "Enter") {
                   e.preventDefault();
                   e.stopPropagation();
-                  onSave();
+                  handleSave();
                 }
               }}
               disabled={baseDisabled}
@@ -135,13 +175,13 @@ export default function ConsultModal({
             <AutoResizeTextarea
               className="rounded border border-neutral-300 px-2 py-1"
               style={baseFieldStyle}
-              value={state.content}
-              onChange={(e) => onChange({ ...state, content: e.target.value })}
+              value={localState.content}
+              onChange={(e) => handleChange({ ...localState, content: e.target.value })}
               onKeyDown={(e) => {
                 if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
                   e.preventDefault();
                   e.stopPropagation();
-                  onSave();
+                  handleSave();
                 }
               }}
               placeholder="상담 내용을 입력해주세요"
@@ -149,22 +189,22 @@ export default function ConsultModal({
             />
           </label>
 
-          {state.purpose === "extension" ? (
+          {localState.purpose === "extension" ? (
             <>
               <label className="grid gap-1">
                 <div className="text-sm font-semibold">결과</div>
                 <select
                   className="rounded border border-neutral-300 px-2 py-1"
                   style={baseFieldStyle}
-                  value={state.extensionResult}
+                  value={localState.extensionResult}
                   onChange={(e) =>
-                    onChange({ ...state, extensionResult: e.target.value as ConsultFormState["extensionResult"] })
+                    handleChange({ ...localState, extensionResult: e.target.value as ConsultFormState["extensionResult"] })
                   }
                   onKeyDown={(e) => {
                     if (e.key === "Enter") {
                       e.preventDefault();
                       e.stopPropagation();
-                      onSave();
+                      handleSave();
                     }
                   }}
                   disabled={baseDisabled}
@@ -175,7 +215,7 @@ export default function ConsultModal({
                 </select>
               </label>
 
-              {state.extensionResult === "extended" ? (
+              {localState.extensionResult === "extended" ? (
                 <>
                   <label className="grid gap-1">
                     <div className="text-sm font-semibold">결제일</div>
@@ -183,13 +223,13 @@ export default function ConsultModal({
                       type="date"
                       className="rounded border border-neutral-300 px-2 py-1"
                       style={baseFieldStyle}
-                      value={state.extensionPaymentDate}
-                      onChange={(e) => onChange({ ...state, extensionPaymentDate: e.target.value })}
+                      value={localState.extensionPaymentDate}
+                      onChange={(e) => handleChange({ ...localState, extensionPaymentDate: e.target.value })}
                       onKeyDown={(e) => {
                         if (e.key === "Enter") {
                           e.preventDefault();
                           e.stopPropagation();
-                          onSave();
+                          handleSave();
                         }
                       }}
                       disabled={baseDisabled}
@@ -203,10 +243,10 @@ export default function ConsultModal({
                       min={1}
                       className="rounded border border-neutral-300 px-2 py-1"
                       style={baseFieldStyle}
-                      value={state.extensionAddedCount}
+                      value={localState.extensionAddedCount}
                       onChange={(e) =>
-                        onChange({
-                          ...state,
+                        handleChange({
+                          ...localState,
                           extensionAddedCount: Math.max(0, Math.floor(Number(e.target.value) || 0)),
                         })
                       }
@@ -214,7 +254,7 @@ export default function ConsultModal({
                         if (e.key === "Enter") {
                           e.preventDefault();
                           e.stopPropagation();
-                          onSave();
+                          handleSave();
                         }
                       }}
                       disabled={baseDisabled}
@@ -225,8 +265,8 @@ export default function ConsultModal({
                     <span className="text-sm font-semibold">결제 완료</span>
                     <input
                       type="checkbox"
-                      checked={state.extensionPaymentConfirmed}
-                      onChange={(e) => onChange({ ...state, extensionPaymentConfirmed: e.target.checked })}
+                      checked={localState.extensionPaymentConfirmed}
+                      onChange={(e) => handleChange({ ...localState, extensionPaymentConfirmed: e.target.checked })}
                       disabled={baseDisabled}
                     />
                   </label>
@@ -235,7 +275,7 @@ export default function ConsultModal({
             </>
           ) : null}
 
-          {state.purpose === "pause_request" ? (
+          {localState.purpose === "pause_request" ? (
             <>
               <label className="grid gap-1">
                 <div className="text-sm font-semibold">관리자 상담일</div>
@@ -243,13 +283,13 @@ export default function ConsultModal({
                   type="date"
                   className="rounded border border-neutral-300 px-2 py-1"
                   style={{ ...baseFieldStyle, ...lockedInputStyle }}
-                  value={state.adminConsultDate}
-                  onChange={(e) => onChange({ ...state, adminConsultDate: e.target.value })}
+                  value={localState.adminConsultDate}
+                  onChange={(e) => handleChange({ ...localState, adminConsultDate: e.target.value })}
                   onKeyDown={(e) => {
                     if (e.key === "Enter") {
                       e.preventDefault();
                       e.stopPropagation();
-                      onSave();
+                      handleSave();
                     }
                   }}
                   disabled={pauseAdminLocked}
@@ -261,15 +301,15 @@ export default function ConsultModal({
                 <select
                   className="rounded border border-neutral-300 px-2 py-1"
                   style={{ ...baseFieldStyle, ...lockedInputStyle }}
-                  value={state.finalResult}
+                  value={localState.finalResult}
                   onChange={(e) =>
-                    onChange({ ...state, finalResult: e.target.value as ConsultFormState["finalResult"] })
+                    handleChange({ ...localState, finalResult: e.target.value as ConsultFormState["finalResult"] })
                   }
                   onKeyDown={(e) => {
                     if (e.key === "Enter") {
                       e.preventDefault();
                       e.stopPropagation();
-                      onSave();
+                      handleSave();
                     }
                   }}
                   disabled={pauseAdminLocked}
@@ -285,13 +325,13 @@ export default function ConsultModal({
                 <AutoResizeTextarea
                   className="rounded border border-neutral-300 px-2 py-1"
                   style={{ ...baseFieldStyle, ...lockedInputStyle }}
-                  value={state.finalNote}
-                  onChange={(e) => onChange({ ...state, finalNote: e.target.value })}
+                  value={localState.finalNote}
+                  onChange={(e) => handleChange({ ...localState, finalNote: e.target.value })}
                   onKeyDown={(e) => {
                     if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
                       e.preventDefault();
                       e.stopPropagation();
-                      onSave();
+                      handleSave();
                     }
                   }}
                   placeholder="최종 상담 내용을 입력해주세요"
@@ -299,7 +339,7 @@ export default function ConsultModal({
                 />
               </label>
 
-              {state.finalResult === "pause_confirm" ? (
+              {localState.finalResult === "pause_confirm" ? (
                 <>
                   <label className="grid gap-1">
                     <div className="text-sm font-semibold">마지막 수업일</div>
@@ -307,13 +347,13 @@ export default function ConsultModal({
                       type="date"
                       className="rounded border border-neutral-300 px-2 py-1"
                       style={{ ...baseFieldStyle, ...lockedInputStyle }}
-                      value={state.pauseEffectiveDate}
-                      onChange={(e) => onChange({ ...state, pauseEffectiveDate: e.target.value })}
+                      value={localState.pauseEffectiveDate}
+                      onChange={(e) => handleChange({ ...localState, pauseEffectiveDate: e.target.value })}
                       onKeyDown={(e) => {
                         if (e.key === "Enter") {
                           e.preventDefault();
                           e.stopPropagation();
-                          onSave();
+                          handleSave();
                         }
                       }}
                       disabled={pauseAdminLocked}
@@ -330,7 +370,7 @@ export default function ConsultModal({
                         background: "var(--surface-hover)",
                         color: pauseAdminLocked ? "var(--text-muted)" : "var(--foreground)",
                       }}
-                      value={refundRatioLabel(state.pauseRefundRatio)}
+                      value={refundRatioLabel(localState.pauseRefundRatio)}
                       readOnly
                     />
                   </label>
@@ -339,8 +379,8 @@ export default function ConsultModal({
                     <span className="text-sm font-semibold">환불 완료</span>
                     <input
                       type="checkbox"
-                      checked={state.pauseRefundCompleted}
-                      onChange={(e) => onChange({ ...state, pauseRefundCompleted: e.target.checked })}
+                      checked={localState.pauseRefundCompleted}
+                      onChange={(e) => handleChange({ ...localState, pauseRefundCompleted: e.target.checked })}
                       disabled={pauseAdminLocked}
                     />
                   </label>
@@ -362,7 +402,7 @@ export default function ConsultModal({
             취소
           </button>
           {isReadOnly ? null : (
-            <button className="btn btn-bold" onClick={onSave} disabled={loading}>
+            <button className="btn btn-bold" onClick={handleSave} disabled={loading}>
               {loading ? "적용 중..." : "저장"}
             </button>
           )}

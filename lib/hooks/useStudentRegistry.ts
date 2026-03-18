@@ -37,6 +37,7 @@ export type StudentMetrics = {
   overdueDays: number;
   pauseLifecycle: ReturnType<typeof computePauseLifecycle>;
   latestPauseRequest: ConsultationRecord | null;
+  latestExtensionRequest: ConsultationRecord | null;
   consultIndex: number | null;
   lastClassIndex: number | null;
   sessions: EnhancedSession[];
@@ -121,18 +122,28 @@ export function useStudentRegistry() {
         })
         .at(-1) ?? null;
 
+      const latestExtensionRequest = [...consultations]
+        .filter((r) => r.purpose === "extension")
+        .sort((a, b) => {
+          const ad = `${a.date ?? ""}|${a.createdAt ?? ""}`;
+          const bd = `${b.date ?? ""}|${b.createdAt ?? ""}`;
+          return ad.localeCompare(bd);
+        })
+        .at(-1) ?? null;
+
       // consultIndex 계산 로직 (기존 AdminMainPage 로직 이관)
       let consultIndex: number | null = null;
-      if (latestPauseRequest?.date) {
+      const targetRequest = latestPauseRequest || latestExtensionRequest;
+      if (targetRequest?.date) {
         const entries = enhancedSessions
           .filter(e => e.effectiveISO)
           .map(e => ({ index: e.index, ms: new Date(e.effectiveISO!).getTime(), ymd: ymdFromISO_KST(e.effectiveISO!) ?? "" }));
         
         if (entries.length > 0) {
-          const same = entries.filter(e => e.ymd === latestPauseRequest.date).sort((a, b) => a.index - b.index);
+          const same = entries.filter(e => e.ymd === targetRequest.date).sort((a, b) => a.index - b.index);
           if (same.length > 0) consultIndex = same[0].index;
           else {
-            const targetMs = new Date(`${latestPauseRequest.date}T00:00:00+09:00`).getTime();
+            const targetMs = new Date(`${targetRequest.date}T00:00:00+09:00`).getTime();
             const future = entries.filter(e => e.ms >= targetMs).sort((a, b) => a.ms - b.ms);
             if (future.length > 0) consultIndex = future[0].index;
             else {
@@ -174,6 +185,7 @@ export function useStudentRegistry() {
         overdueDays,
         pauseLifecycle,
         latestPauseRequest,
+        latestExtensionRequest,
         consultIndex,
         lastClassIndex,
         sessions: enhancedSessions,
