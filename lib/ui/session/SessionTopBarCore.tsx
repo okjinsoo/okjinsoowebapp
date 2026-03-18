@@ -209,39 +209,22 @@ export default function SessionTopBarCore({ role, token, index }: Props) {
     return buildDisplayRecords(student, studentHistory).displayRecords;
   }, [student, studentHistory]);
 
-  useEffect(() => {
-    if (!student) return;
-    if (consultForm.purpose !== "pause_request" || consultForm.finalResult !== "pause_confirm") return;
-    if (!consultForm.pauseEffectiveDate) return;
-
+  const computeRefundRatioValue = (pauseEffectiveDate: string) => {
+    if (!student || consultForm.purpose !== "pause_request" || consultForm.finalResult !== "pause_confirm") return "";
     const lastIdx = findClassIndexByDatePreferFuture({
       token,
       sessions,
       baseDatesISO,
       metaMap: hydratedMetaMap,
-      targetDate: consultForm.pauseEffectiveDate,
+      targetDate: pauseEffectiveDate,
     });
-    if (!lastIdx) return;
+    if (!lastIdx) return "";
     const requestIndex = lastIdx + 1;
     const refundTarget = displayRecords.find((r) => requestIndex >= r.startIndex && requestIndex <= r.endIndex);
-    const nextRatio = refundTarget
+    return refundTarget
       ? computeRefundRatio(refundTarget, requestIndex, Boolean(refundTarget.isBase))
       : "";
-    if (consultForm.pauseRefundRatio !== nextRatio) {
-      setConsultForm((prev) => ({ ...prev, pauseRefundRatio: nextRatio }));
-    }
-  }, [
-    student,
-    consultForm.purpose,
-    consultForm.finalResult,
-    consultForm.pauseEffectiveDate,
-    consultForm.pauseRefundRatio,
-    token,
-    sessions,
-    baseDatesISO,
-    hydratedMetaMap,
-    displayRecords,
-  ]);
+  };
 
   const consultTag = pickPrimaryConsultTag(consultMap[index]);
 
@@ -395,11 +378,11 @@ export default function SessionTopBarCore({ role, token, index }: Props) {
     },
   });
 
-  const saveConsultRecord = async () => {
+  const saveConsultRecord = async (finalForm: ConsultFormState) => {
     if (isSaving) return;
     setIsSaving(true);
     try {
-      const res = await submitConsult(consultForm, consultEditingId);
+      const res = await submitConsult(finalForm, consultEditingId);
       if (res.error) {
         setConsultError(res.error);
         return;
@@ -975,11 +958,11 @@ export default function SessionTopBarCore({ role, token, index }: Props) {
         role={role}
         state={consultForm}
         error={consultError}
-        onChange={setConsultForm}
         onClose={() => setConsultOpen(false)}
         onSave={saveConsultRecord}
         onDelete={isAdmin ? deleteConsultRecord : undefined}
         loading={isSaving}
+        computeRefundRatioValue={computeRefundRatioValue}
       />
     </div>
   );

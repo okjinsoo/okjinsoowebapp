@@ -145,7 +145,7 @@ export default function TodaySessionsCard({
     setConsultOpen(true);
   }
 
-  async function saveConsult() {
+  async function saveConsult(finalForm: ConsultFormState) {
     if (!consultStudentId) return;
     const student = loadStudents().find((s) => s.id === consultStudentId);
     if (!student) return;
@@ -182,7 +182,7 @@ export default function TodaySessionsCard({
             return true;
           },
         },
-        consultForm,
+        finalForm,
         consultEditingId
       );
 
@@ -306,7 +306,6 @@ export default function TodaySessionsCard({
         role={role}
         state={consultForm}
         error={consultError}
-        onChange={setConsultForm}
         onClose={() => setConsultOpen(false)}
         onSave={saveConsult}
         onDelete={consultEditingId ? deleteConsult : undefined}
