@@ -18,12 +18,9 @@ import {
   canSeeSessionInternalFields,
   type SessionRole,
 } from "@/lib/policies/sessionRolePolicy";
-import { loadAuthSession } from "@/lib/auth/supabaseAuth";
-import { ensureFolder } from "@/lib/integrations/googleDriveSync";
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import type {
-  LectureLeafNode,
   LectureTree,
 } from "@/lib/types/index";
 import {
@@ -292,7 +289,18 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
     if (canEditProgress) {
       browserStorage.setItem(keyProgress(token, sessionIndex), JSON.stringify(progressByLeafId));
     }
-  }, [mounted, token, sessionIndex, lectureLeafIds, progressByLeafId, lastAddedLeafId, canAssignLectures, canEditProgress]);
+  }, [
+    mounted,
+    token,
+    sessionIndex,
+    lectureLeafIds,
+    progressByLeafId,
+    lastAddedLeafId,
+    canAssignLectures,
+    canEditProgress,
+    isHydrating,
+    isSaving,
+  ]);
 
   const usedLeafIds = useMemo(() => new Set(lectureLeafIds), [lectureLeafIds]);
 
@@ -308,38 +316,6 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
     });
   }
 
-  function resetSubmission(leafId: string) {
-    if (!canAssignLectures) return;
-    setProgressByLeafId((prev) => {
-      const cur = prev[leafId] ?? defaultProgress();
-      return {
-        ...prev,
-        [leafId]: {
-          ...defaultProgress(),
-        },
-      };
-    });
-  }
-
-  function removeLeaf(leafId: string) {
-    if (!canAssignLectures) return; // ✅ 학생은 실행 자체 불가
-
-    setLectureLeafIds((prev) => {
-      const next = prev.filter((id) => id !== leafId);
-      setLastAddedLeafId((prevLast) => {
-        if (prevLast !== leafId) return prevLast;
-        return next.length ? next[next.length - 1] : "";
-      });
-      return next;
-    });
-
-    setProgressByLeafId((prev) => {
-      const next = { ...prev };
-      delete next[leafId];
-      return next;
-    });
-  }
-
   function moveLeaf(idx: number, direction: "up" | "down") {
     if (!canAssignLectures) return;
     setLectureLeafIds((prev) => {
@@ -351,20 +327,6 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
       }
       return next;
     });
-  }
-
-  function addLectureLeaf(leaf: LectureLeafNode) {
-    if (!canAssignLectures) return; // ✅ 학생은 실행 자체 불가
-    if (usedLeafIds.has(leaf.leafId)) {
-      window.alert("이미 이 회차에 배치된 강의입니다. (중복 불가)");
-      return;
-    }
-    setLectureLeafIds((prev) => [...prev, leaf.leafId]);
-    setProgressByLeafId((prev) => ({
-      ...prev,
-      [leaf.leafId]: prev[leaf.leafId] ?? defaultProgress(),
-    }));
-    setLastAddedLeafId(leaf.leafId);
   }
 
   async function openPicker() {

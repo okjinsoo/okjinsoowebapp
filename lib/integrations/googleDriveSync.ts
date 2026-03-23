@@ -12,6 +12,12 @@ export type DriveFile = {
   mimeType: string;
 };
 
+type GoogleDriveErrorBody = {
+  error?: {
+    message?: string;
+  };
+};
+
 /**
  * 구글 API 요청을 위한 공용 래퍼
  */
@@ -61,7 +67,7 @@ export async function requestDrive(args: {
   }
 
   if (!res.ok) {
-    const errorData = body as any;
+    const errorData = body as GoogleDriveErrorBody | null;
     const message = errorData?.error?.message || "Google Drive API 오류";
     
   // 401 발생 시 토큰 만료 재시도 (googleCalendarSync와 동일 로직)

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import AutoResizeTextarea from "@/lib/ui/common/AutoResizeTextarea";
 
 type Role = "a" | "t" | "s";
@@ -20,6 +20,19 @@ export type ConsultFormState = {
   pauseRefundCompleted: boolean;
 };
 
+type ConsultModalProps = {
+  open: boolean;
+  role: Role;
+  state: ConsultFormState;
+  error?: string;
+  onClose: () => void;
+  onSave: (finalState: ConsultFormState) => void;
+  onDelete?: () => void;
+  title?: string;
+  loading?: boolean;
+  computeRefundRatioValue?: (pauseEffectiveDate: string) => string;
+};
+
 function refundRatioLabel(ratio: ConsultFormState["pauseRefundRatio"]) {
   if (ratio === "full") return "전액";
   if (ratio === "two_thirds") return "2/3";
@@ -28,70 +41,72 @@ function refundRatioLabel(ratio: ConsultFormState["pauseRefundRatio"]) {
   return "-";
 }
 
-export default function ConsultModal({
-  open,
+function normalizeRefundRatio(value: string): ConsultFormState["pauseRefundRatio"] {
+  if (value === "full") return "full";
+  if (value === "two_thirds") return "two_thirds";
+  if (value === "half") return "half";
+  if (value === "none") return "none";
+  return "";
+}
+
+function withComputedRefundRatio(
+  state: ConsultFormState,
+  computeRefundRatioValue?: (pauseEffectiveDate: string) => string
+): ConsultFormState {
+  if (
+    state.purpose === "pause_request" &&
+    state.finalResult === "pause_confirm" &&
+    state.pauseEffectiveDate &&
+    computeRefundRatioValue
+  ) {
+    const nextRatio = normalizeRefundRatio(computeRefundRatioValue(state.pauseEffectiveDate));
+    if (nextRatio !== state.pauseRefundRatio) {
+      return {
+        ...state,
+        pauseRefundRatio: nextRatio,
+      };
+    }
+  }
+  return state;
+}
+
+export default function ConsultModal(props: ConsultModalProps) {
+  if (!props.open) return null;
+  return (
+    <OpenedConsultModal
+      role={props.role}
+      state={props.state}
+      error={props.error}
+      onClose={props.onClose}
+      onSave={props.onSave}
+      onDelete={props.onDelete}
+      title={props.title}
+      loading={props.loading}
+      computeRefundRatioValue={props.computeRefundRatioValue}
+    />
+  );
+}
+
+function OpenedConsultModal({
   role,
-  state: initialState, // 초기값으로만 사용
+  state: initialState,
   error,
   onClose,
   onSave: parentOnSave,
   onDelete,
   title = "상담 기록",
   loading,
-  computeRefundRatioValue, // 실시간 계산기 주입
-}: {
-  open: boolean;
-  role: Role;
-  state: ConsultFormState;
-  error?: string;
-  onClose: () => void;
-  onSave: (finalState: ConsultFormState) => void; // 최종 상태를 인자로 전달
-  onDelete?: () => void;
-  title?: string;
-  loading?: boolean;
-  computeRefundRatioValue?: (pauseEffectiveDate: string) => string; // 실시간 계산기 주입
-}) {
+  computeRefundRatioValue,
+}: Omit<ConsultModalProps, "open">) {
   const [localState, setLocalState] = useState<ConsultFormState>(initialState);
-
-  // 모달이 열릴 때마다 초기값을 로컬 상태에 복사
-  useEffect(() => {
-    if (open) {
-      setLocalState(initialState);
-    }
-  }, [open, initialState]);
-
-  // 실시간 환불 비율 계산 (휴회 확정 시)
-  useEffect(() => {
-    if (
-      localState.purpose === "pause_request" &&
-      localState.finalResult === "pause_confirm" &&
-      localState.pauseEffectiveDate &&
-      computeRefundRatioValue
-    ) {
-      const nextRatio = computeRefundRatioValue(localState.pauseEffectiveDate);
-      if (localState.pauseRefundRatio !== nextRatio) {
-        setLocalState((prev) => ({
-          ...prev,
-          pauseRefundRatio: nextRatio as ConsultFormState["pauseRefundRatio"],
-        }));
-      }
-    }
-  }, [
-    localState.purpose,
-    localState.finalResult,
-    localState.pauseEffectiveDate,
-    computeRefundRatioValue,
-    localState.pauseRefundRatio,
-  ]);
-
-  if (!open) return null;
+  const finalState = withComputedRefundRatio(localState, computeRefundRatioValue);
 
   const handleChange = (next: ConsultFormState) => {
     setLocalState(next);
   };
 
   const handleSave = () => {
-    parentOnSave(localState);
+    parentOnSave(finalState);
   };
   const isAdmin = role === "a";
   const isTeacher = role === "t";
@@ -370,7 +385,7 @@ export default function ConsultModal({
                         background: "var(--surface-hover)",
                         color: pauseAdminLocked ? "var(--text-muted)" : "var(--foreground)",
                       }}
-                      value={refundRatioLabel(localState.pauseRefundRatio)}
+                      value={refundRatioLabel(finalState.pauseRefundRatio)}
                       readOnly
                     />
                   </label>

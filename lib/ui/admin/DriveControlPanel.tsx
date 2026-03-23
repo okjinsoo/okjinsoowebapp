@@ -4,9 +4,8 @@ import React, { useState, useEffect } from "react";
 import { loadAuthSession, buildGoogleAuthUrl } from "@/lib/auth/supabaseAuth";
 import { ensureFolder, requestDrive, shareFolderWithEmail } from "@/lib/integrations/googleDriveSync";
 import { pushSharedSnapshot, readRemoteSharedStateKvValue } from "@/lib/storage/sharedSnapshot";
+import { readTeachersServerFirst } from "@/lib/storage/serverRead";
 import { SHARED_DRIVE_ROOT_ID_KEY } from "@/lib/storage/sharedStateKeys";
-import { loadTeachers } from "@/lib/storage/teachers";
-import { loadStudents, saveStudentsServerFirst } from "@/lib/storage/students";
 
 export default function DriveControlPanel() {
   const [driveRootId, setDriveRootId] = useState<string | null>(null);
@@ -38,7 +37,7 @@ export default function DriveControlPanel() {
       setDriveRootId(studentsId);
 
       setBatchProgress("선생님들과 권한을 공유하는 중...");
-      const allTeachers = loadTeachers();
+      const allTeachers = (await readTeachersServerFirst()).teachers;
       for (const t of allTeachers) {
         if (t.email?.includes("@")) {
           await shareFolderWithEmail({ token: providerToken, fileId: studentsId, email: t.email });
@@ -78,7 +77,7 @@ export default function DriveControlPanel() {
       setDriveRootId(targetId);
 
       setBatchProgress("선생님 공유 중...");
-      const allTeachers = loadTeachers();
+      const allTeachers = (await readTeachersServerFirst()).teachers;
       for (const t of allTeachers) {
         if (t.email?.includes("@")) {
           await shareFolderWithEmail({ token: providerToken, fileId: targetId, email: t.email });

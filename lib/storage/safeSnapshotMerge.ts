@@ -30,6 +30,18 @@ export async function loadLatestCoreSnapshotBaseline(): Promise<CoreSnapshotBase
   };
 }
 
+export async function loadLatestCoreSnapshotBaselineServerRequired(): Promise<CoreSnapshotBaseline> {
+  const remote = await pullSharedSnapshotAndHydrateWithOptions({ forceRemote: true });
+  if (!remote) {
+    throw new Error("server_snapshot_unavailable");
+  }
+  return {
+    teachers: remote.teachers,
+    students: remote.students,
+    sessions: remote.sessions,
+  };
+}
+
 export function mergeById<T extends WithId>(base: T[], patch: T[]): T[] {
   const map = new Map<string, T>();
   for (const row of base) {

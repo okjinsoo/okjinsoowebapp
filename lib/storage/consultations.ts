@@ -35,17 +35,6 @@ function saveAll(next: Store, options?: SaveConsultationsOptions) {
   }
 }
 
-function replaceByStudentLocal(studentId: Id, list: ConsultationRecord[]): boolean {
-  if (typeof window === "undefined") return false;
-  const all = loadAll();
-  const prevRaw = JSON.stringify(all[studentId] ?? []);
-  const nextRaw = JSON.stringify(list);
-  if (prevRaw === nextRaw) return false;
-  all[studentId] = list;
-  saveAll(all);
-  return true;
-}
-
 export function loadConsultationsByStudent(studentId: Id): ConsultationRecord[] {
   const all = loadAll();
   return all[studentId] ?? [];

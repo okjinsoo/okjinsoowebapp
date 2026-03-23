@@ -4,10 +4,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { AUTH_EVENT } from "@/lib/auth/supabaseAuth";
 import { resolveSelectionForRole } from "@/lib/auth/loginSelection";
-import { loadStudents } from "@/lib/storage/students";
 import {
   clearCurrentTeacherId,
-  loadTeachers,
   loadCurrentTeacherId,
   saveCurrentTeacherId,
   TEACHERS_EVENT,
@@ -21,7 +19,7 @@ import {
   loadCurrentStudentToken,
   saveCurrentStudentToken,
 } from "@/lib/ui/common/roleGateStorage";
-import { pullSharedSnapshotAndHydrateWithOptions } from "@/lib/storage/sharedSnapshot";
+import { readRosterServerFirst } from "@/lib/storage/serverRead";
 
 export default function StudentMainClient({ role }: { role: "a" | "t" | "s" }) {
   const [hydrated, setHydrated] = useState(false);
@@ -52,51 +50,34 @@ export default function StudentMainClient({ role }: { role: "a" | "t" | "s" }) {
   useEffect(() => {
     let cancelled = false;
 
-    async function bootstrap() {
-      // 1) 즉시 로컬 데이터로 화면 표시 (체감 속도 개선)
-      const localStudents = loadStudents();
-      const localTeachers = loadTeachers();
-      if (!cancelled) {
-        setStudents(localStudents);
-        setTeachers(localTeachers);
-        applySelection(localStudents, localTeachers);
-        setHydrated(true);
-      }
-
-      // 2) 서버 최신 데이터 반영
-      const snapshot = await pullSharedSnapshotAndHydrateWithOptions({ forceRemote: true });
+    const refreshRoster = async () => {
+      const next = await readRosterServerFirst();
       if (cancelled) return;
-      if (snapshot) {
-        setStudents(snapshot.students);
-        setTeachers(snapshot.teachers);
-        applySelection(snapshot.students, snapshot.teachers);
-      }
-    }
+      setStudents(next.students);
+      setTeachers(next.teachers);
+      applySelection(next.students, next.teachers);
+      setHydrated(true);
+    };
 
-    void bootstrap();
+    void refreshRoster();
     return () => {
       cancelled = true;
     };
   }, [applySelection]);
 
   useEffect(() => {
-    const onGate = async () => {
-      const localStudents = loadStudents();
-      const localTeachers = loadTeachers();
-      setStudents(localStudents);
-      setTeachers(localTeachers);
-      applySelection(localStudents, localTeachers);
+    let cancelled = false;
 
-      const snapshot = await pullSharedSnapshotAndHydrateWithOptions({ forceRemote: true });
-      if (snapshot) {
-        setStudents(snapshot.students);
-        setTeachers(snapshot.teachers);
-        applySelection(snapshot.students, snapshot.teachers);
-      }
+    const refreshRoster = async () => {
+      const next = await readRosterServerFirst();
+      if (cancelled) return;
+      setStudents(next.students);
+      setTeachers(next.teachers);
+      applySelection(next.students, next.teachers);
     };
 
     const requestGateRefresh = () => {
-      void onGate();
+      void refreshRoster();
     };
 
     window.addEventListener(GATE_EVENT, requestGateRefresh);
@@ -104,6 +85,7 @@ export default function StudentMainClient({ role }: { role: "a" | "t" | "s" }) {
     window.addEventListener("tutorweb:studentsUpdated", requestGateRefresh);
     window.addEventListener(TEACHERS_EVENT, requestGateRefresh);
     return () => {
+      cancelled = true;
       window.removeEventListener(GATE_EVENT, requestGateRefresh);
       window.removeEventListener(AUTH_EVENT, requestGateRefresh);
       window.removeEventListener("tutorweb:studentsUpdated", requestGateRefresh);

@@ -1,12 +1,11 @@
 "use client";
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import type { LectureLeafNode, LectureFolderNode } from "@/lib/types/index";
 import {
   addFolderToTree,
   addLeafToFolder,
   createLectureLeaf,
-  flattenLeavesWithContext,
   getFoldersFromTree,
   importLeafByCode,
   isLeaf,
@@ -134,7 +133,7 @@ export default function LecturesPage() {
       clearTimeout(id);
       window.removeEventListener("beforeunload", handleBeforeUnload);
     };
-  }, [isDirty]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isDirty]);
 
   // ===== 폴더 핸들러 =====
   function handleAddFolder() {
@@ -402,7 +401,7 @@ export default function LecturesPage() {
                 />
                 <button className="px-3 py-2 rounded-lg border text-sm btn-white" onClick={handleImportLeaf}>불러오기</button>
                 <span className="text-xs" style={{ color: "var(--text-muted)" }}>
-                  다른 폴더 강의 상세에서 '고유코드 복사' 버튼을 누른 후 붙여넣으세요.
+                  다른 폴더 강의 상세에서 &apos;고유코드 복사&apos; 버튼을 누른 후 붙여넣으세요.
                 </span>
               </div>
             )}

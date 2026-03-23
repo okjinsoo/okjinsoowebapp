@@ -6,12 +6,11 @@ import { TUTORWEB_EVENTS } from "@/lib/events/tutorwebEvents";
 import { pushSharedSnapshot } from "@/lib/storage/sharedSnapshot";
 
 import type { ScheduleRule, Student } from "@/lib/types/index";
-import { findStudentByToken } from "@/lib/storage/students";
 
 /**
  * ✅ 단일화 규칙(고정)
  * - 원천 데이터: student + sessions + metaMap
- * - baseDatesISO: buildBaseDatesISO(student) 또는 buildBaseDatesISOByToken(token)만 사용
+ * - baseDatesISO: buildBaseDatesISO(student)만 사용
  * - 날짜 계산: computeEffectiveISO()만 사용
  * - 배지 계산: buildBadges()만 사용
  * - 저장: upsertMeta()만 사용 (직접 browserStorage set 금지)
@@ -429,12 +428,6 @@ export function buildBaseDatesISO(student: Student, extra = 60): string[] {
   const pc = Math.max(0, safeInt(student.planCount ?? 0, 0));
   const need = pc + Math.max(0, extra);
   return buildBaseDatesISOFromRules(student, need);
-}
-
-export function buildBaseDatesISOByToken(token: string, extra = 60): string[] {
-  const st = findStudentByToken(token);
-  if (!st) return [];
-  return buildBaseDatesISO(st, extra);
 }
 
 function toMeta(v: unknown): Partial<SessionMeta> | null {

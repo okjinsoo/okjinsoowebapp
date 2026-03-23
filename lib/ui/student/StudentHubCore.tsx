@@ -5,22 +5,17 @@ import { loadAuthSession } from "@/lib/auth/supabaseAuth";
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { findStudentByToken, loadStudents, saveStudents, saveStudentsServerFirst } from "@/lib/storage/students";
-import { loadTeachers, TEACHERS_EVENT } from "@/lib/storage/teachers";
+import { saveStudents, saveStudentsServerFirst } from "@/lib/storage/students";
 import {
-  loadAllConsultationsStore,
-  loadConsultationsByStudent,
   saveAllConsultationsStore,
 } from "@/lib/storage/consultations";
-import { buildConsultationMap, pickPrimaryConsultTag, type ConsultTag } from "@/lib/ui/session/consultationMap";
-import { findClassIndexByDatePreferFuture, findLastClassIndex } from "@/lib/ui/session/pauseHelpers";
+import { buildConsultationMap, pickPrimaryConsultTag } from "@/lib/ui/session/consultationMap";
+import { findLastClassIndex } from "@/lib/ui/session/pauseHelpers";
 import { formatGrade, formatPhone, formatSchedule } from "@/lib/ui/student/formatters";
 import AchievementBadge from "@/lib/ui/common/AchievementBadge";
 import {
-  loadSessions,
   rebuildTeacherGoogleCalendarForStudentIds,
   saveSessions,
-  sessionsByStudent,
   syncStudentGoogleCalendarMirrorForStudentIds,
 } from "@/lib/storage/sessions";
 import {
@@ -37,9 +32,7 @@ import {
   buildDisplayRecords,
   computeBaseCount,
   normalizePaymentHistoryRanges,
-  computeRefundRatio,
 } from "@/lib/factories/lessonStatusFactory";
-import { buildConsultationRecord, normalizeConsultPurpose, validateConsultForm } from "@/lib/factories/consultationFactory";
 import {
   computePauseLifecycle,
   computeStudentStatusFromMetrics,
@@ -56,7 +49,6 @@ import type {
 import { fmtKST_yyyyMMdd_HHmm_noSeconds } from "@/lib/ui/session/format";
 import Badge from "@/lib/ui/common/Badge";
 import SessionQuickActions from "@/lib/ui/session/SessionQuickActions";
-import AutoResizeTextarea from "@/lib/ui/common/AutoResizeTextarea";
 import { ConsultBadge, ConsultButton } from "@/lib/ui/common/ConsultParts";
 // REMOVED: import { getAchievementBadgeStyle } from "@/lib/ui/common/achievementBadge";
 import { getSessionStatusBadge } from "@/lib/ui/common/sessionStatusBadge";
@@ -82,9 +74,16 @@ import {
 } from "@/lib/storage/sharedSnapshot";
 import { SHARED_CONSULTATIONS_KEY, SHARED_DRIVE_ROOT_ID_KEY } from "@/lib/storage/sharedStateKeys";
 import { ensureFolder, shareFolderWithEmail } from "@/lib/integrations/googleDriveSync";
-import { loadLatestCoreSnapshotBaseline } from "@/lib/storage/safeSnapshotMerge";
+import { loadLatestCoreSnapshotBaselineServerRequired } from "@/lib/storage/safeSnapshotMerge";
 import { makeId } from "@/lib/utils/id";
 import { kstDateMs, nowIso, todayYmdKST } from "@/lib/utils/date";
+import { buildStudentSessionsFromRows, readSnapshotServerRequired } from "@/lib/storage/serverRead";
+import { useStudentSessionContext } from "@/lib/hooks/useStudentSessionContext";
+import { useTeachersServerFirst } from "@/lib/hooks/useTeachersServerFirst";
+import {
+  SERVER_LOAD_RETRY_MESSAGE,
+  SERVER_SAVE_RETRY_MESSAGE,
+} from "@/lib/messages/serverMessages";
 
 type Role = SessionRole;
 
@@ -145,21 +144,6 @@ function isoFromKst(ymd: string, hour: number, minute: number): string {
   return `${ymd}T${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}:00+09:00`;
 }
 
-function hmFromISO_KST(iso?: string): { hour: number; minute: number } | null {
-  if (!iso) return null;
-  const d = new Date(iso);
-  if (!Number.isFinite(d.getTime())) return null;
-  const parts = new Intl.DateTimeFormat("en-GB", {
-    timeZone: "Asia/Seoul",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).formatToParts(d);
-  const hour = Number(parts.find((p) => p.type === "hour")?.value ?? "0");
-  const minute = Number(parts.find((p) => p.type === "minute")?.value ?? "0");
-  return { hour, minute };
-}
-
 function rulesForIndex(student: Student, index: number): ScheduleRule[] {
   const changes = [...(student.scheduleChangeEvents ?? [])].sort((a, b) => a.startIndex - b.startIndex);
   let rules = [...(student.scheduleRules ?? [])];
@@ -213,8 +197,17 @@ export default function StudentHubCore({
   const accessRole: Role = role;
   const isAdmin = accessRole === "a";
   const [mounted, setMounted] = useState(false);
-  const [refreshTick, setRefreshTick] = useState(0);
-  const [teachers, setTeachers] = useState(() => loadTeachers());
+  const { teachers } = useTeachersServerFirst();
+  const {
+    student,
+    sessions,
+    consultRecords,
+    isInitialLoaded,
+    refresh: refreshStudentContext,
+    setStudent,
+    setSessions,
+    setConsultRecords,
+  } = useStudentSessionContext(token);
 
   const [scheduleEditOpen, setScheduleEditOpen] = useState(false);
   const [scheduleStartIndex, setScheduleStartIndex] = useState(1);
@@ -227,7 +220,6 @@ export default function StudentHubCore({
     }
   );
   const [scheduleError, setScheduleError] = useState("");
-  const [actionMode, setActionMode] = useState<null | "edit" | "refundRequest" | "refundProcess">(null);
   const [progressTick, setProgressTick] = useState(0);
   const [calendarSyncing, setCalendarSyncing] = useState(false);
   const [calendarSyncMessage, setCalendarSyncMessage] = useState("");
@@ -239,16 +231,16 @@ export default function StudentHubCore({
   }, []);
 
   useEffect(() => {
-    const bump = () => setRefreshTick((x) => x + 1);
-
-    const onStudents = () => bump();
-    const onSessions = () => bump();
-    const onTeachers = () => setTeachers(loadTeachers());
     const onStorage: EventListener = (e) => {
       const se = e as StorageEvent;
       if (!se.key) return;
-      if (se.key === "tutorweb_students_v1" || se.key === "tutorweb_sessions_v1") bump();
-      if (se.key === "tutorweb_teachers_v1") setTeachers(loadTeachers());
+      if (
+        se.key === "tutorweb_students_v1" ||
+        se.key === "tutorweb_sessions_v1" ||
+        se.key === "tutorweb_consultations_v1"
+      ) {
+        void refreshStudentContext();
+      }
     };
     const onProgressChanged: EventListener = (event) => {
       const ce = event as CustomEvent<{ key?: string | null }>;
@@ -258,29 +250,15 @@ export default function StudentHubCore({
       setProgressTick((x) => x + 1);
     };
 
-    window.addEventListener(TUTORWEB_EVENTS.studentsUpdated, onStudents);
-    window.addEventListener(TUTORWEB_EVENTS.sessionsUpdated, onSessions);
-    window.addEventListener(TEACHERS_EVENT, onTeachers);
     window.addEventListener("storage", onStorage);
     window.addEventListener(BROWSER_STORAGE_EVENT, onProgressChanged);
 
     return () => {
-      window.removeEventListener(TUTORWEB_EVENTS.studentsUpdated, onStudents);
-      window.removeEventListener(TUTORWEB_EVENTS.sessionsUpdated, onSessions);
-      window.removeEventListener(TEACHERS_EVENT, onTeachers);
       window.removeEventListener("storage", onStorage);
       window.removeEventListener(BROWSER_STORAGE_EVENT, onProgressChanged);
     };
-  }, [token]);
+  }, [token, refreshStudentContext]);
 
-  const student = useMemo<Student | null>(() => {
-    void refreshTick;
-    return token ? (findStudentByToken(token) ?? null) : null;
-  }, [token, refreshTick]);
-  const sessions = useMemo(() => {
-    void refreshTick;
-    return student ? sessionsByStudent(student.id) : [];
-  }, [student, refreshTick]);
   const metaMap = useMetaMap(token);
   const baseDatesISO = useMemo(() => (student ? buildBaseDatesISO(student, 60) : []), [student]);
   const currentCount = useMemo(() => {
@@ -331,24 +309,6 @@ export default function StudentHubCore({
     if (pr === "father") return "부";
     if (pr === "mother") return "모";
     return "-";
-  }, [student]);
-  const [consultRecords, setConsultRecords] = useState<ConsultationRecord[]>([]);
-
-  useEffect(() => {
-    if (!student) {
-      setConsultRecords([]);
-      return;
-    }
-    setConsultRecords(loadConsultationsByStudent(student.id));
-  }, [student]);
-
-  useEffect(() => {
-    const onConsult = () => {
-      if (!student) return;
-      setConsultRecords(loadConsultationsByStudent(student.id));
-    };
-    window.addEventListener(TUTORWEB_EVENTS.consultationsUpdated, onConsult);
-    return () => window.removeEventListener(TUTORWEB_EVENTS.consultationsUpdated, onConsult);
   }, [student]);
 
   const studentStatusView = useMemo(() => {
@@ -478,25 +438,32 @@ export default function StudentHubCore({
     }
 
     window.setTimeout(() => {
-      if (isStudentSelf) {
-        setCalendarSyncMessage("학생 본인 캘린더 동기화 요청을 마쳤어요. 구글 캘린더 앱에서 '옥진수학' 캘린더를 확인해주세요.");
+      void (async () => {
+        if (isStudentSelf) {
+          setCalendarSyncMessage("학생 본인 캘린더 동기화 요청을 마쳤어요. 구글 캘린더 앱에서 '옥진수학' 캘린더를 확인해주세요.");
+          setCalendarSyncing(false);
+          return;
+        }
+        try {
+          const baseline = await loadLatestCoreSnapshotBaselineServerRequired();
+          const rows = baseline.sessions.filter((s) => s.studentId === student.id);
+          const synced = rows.filter((s) => s.googleCalendarStatus === "synced").length;
+          const pendingCount = rows.filter((s) => s.googleCalendarStatus === "pending").length;
+          const errored = rows.filter((s) => s.googleCalendarStatus === "error");
+          const firstError = errored.find((s) => (s.googleCalendarError ?? "").trim())?.googleCalendarError ?? "";
+          if (errored.length > 0) {
+            setCalendarSyncMessage(
+              `동기화 결과: 성공 ${synced}개, 대기 ${pendingCount}개, 오류 ${errored.length}개. ${firstError ? `오류: ${firstError}` : ""
+              }`
+            );
+          } else {
+            setCalendarSyncMessage(`동기화 결과: 성공 ${synced}개, 대기 ${pendingCount}개, 오류 0개.`);
+          }
+        } catch {
+          setCalendarSyncMessage("동기화 요청은 전송했지만 서버 결과 확인에 실패했어요. 잠시 뒤 새로고침 해주세요.");
+        }
         setCalendarSyncing(false);
-        return;
-      }
-      const rows = loadSessions().filter((s) => s.studentId === student.id);
-      const synced = rows.filter((s) => s.googleCalendarStatus === "synced").length;
-      const pendingCount = rows.filter((s) => s.googleCalendarStatus === "pending").length;
-      const errored = rows.filter((s) => s.googleCalendarStatus === "error");
-      const firstError = errored.find((s) => (s.googleCalendarError ?? "").trim())?.googleCalendarError ?? "";
-      if (errored.length > 0) {
-        setCalendarSyncMessage(
-          `동기화 결과: 성공 ${synced}개, 대기 ${pendingCount}개, 오류 ${errored.length}개. ${firstError ? `오류: ${firstError}` : ""
-          }`
-        );
-      } else {
-        setCalendarSyncMessage(`동기화 결과: 성공 ${synced}개, 대기 ${pendingCount}개, 오류 0개.`);
-      }
-      setCalendarSyncing(false);
+      })();
     }, 2200);
   }
   
@@ -531,8 +498,13 @@ export default function StudentHubCore({
       }
 
       // 5. 서버에 폴더 ID 저장 및 동기화
-      const nextStudents = loadStudents().map(s => s.id === student.id ? { ...s, driveFolderId: fid } : s);
+      const baseline = await loadLatestCoreSnapshotBaselineServerRequired();
+      const nextStudents = buildNextStudentsList(
+        { ...student, driveFolderId: fid },
+        baseline.students
+      );
       await saveStudentsServerFirst(nextStudents);
+      setStudent((prev) => (prev ? { ...prev, driveFolderId: fid } : prev));
       
       window.alert(`사물함 정비 완료! ✨\n\n- 폴더 이름: ${folderName}\n- 배정 ID: ${fid}\n\n이제 사진을 제출하면 이 폴더로 안전하게 배달됩니다.`);
     } catch (err) {
@@ -706,11 +678,12 @@ export default function StudentHubCore({
   });
 
   useEffect(() => {
-    if (mounted && !student && (accessRole === "a" || accessRole === "t")) {
+    if (!mounted || !isInitialLoaded) return;
+    if (!student && (accessRole === "a" || accessRole === "t")) {
       console.warn("학생 데이터를 찾을 수 없어 목록으로 이동합니다.");
       router.push(accessRole === "a" ? "/a/students" : "/t/tmain");
     }
-  }, [mounted, student, accessRole, router]);
+  }, [mounted, isInitialLoaded, student, accessRole, router]);
 
   if (!mounted) return null;
 
@@ -719,6 +692,15 @@ export default function StudentHubCore({
       <main style={{ padding: 20, maxWidth: 980, margin: "0 auto" }}>
         <h1 className="page-title">학생 페이지</h1>
         <p style={{ marginTop: 8, color: "var(--text-muted)" }}>token이 없습니다.</p>
+      </main>
+    );
+  }
+
+  if (!isInitialLoaded) {
+    return (
+      <main style={{ padding: 20, maxWidth: 980, margin: "0 auto" }}>
+        <h1 className="page-title">학생 페이지</h1>
+        <p style={{ marginTop: 8, color: "var(--text-muted)" }}>학생 정보를 불러오는 중입니다...</p>
       </main>
     );
   }
@@ -786,8 +768,8 @@ export default function StudentHubCore({
     setScheduleError("");
   }
 
-  function buildNextStudentsList(updatedStudent: Student, sourceStudents?: Student[]): Student[] {
-    const currentStudents = sourceStudents ?? loadStudents();
+  function buildNextStudentsList(updatedStudent: Student, sourceStudents: Student[]): Student[] {
+    const currentStudents = sourceStudents;
     return currentStudents.some((row) => row.id === updatedStudent.id)
       ? currentStudents.map((row) => (row.id === updatedStudent.id ? updatedStudent : row))
       : [...currentStudents, updatedStudent];
@@ -795,10 +777,10 @@ export default function StudentHubCore({
 
   function buildSyncedSessionsForStudent(
     updatedStudent: Student,
-    sourceSessions?: Session[],
+    sourceSessions: Session[],
     options?: { force?: boolean }
   ): { list: Session[]; changed: boolean } {
-    const all = sourceSessions ?? loadSessions();
+    const all = sourceSessions;
     const own = all.filter((session) => String(session.studentId) === String(updatedStudent.id));
     if (own.length === 0) {
       console.warn("[Debug] No sessions found for student:", updatedStudent.id);
@@ -838,7 +820,13 @@ export default function StudentHubCore({
     updatedStudent: Student,
     clearExtensionFromIndex?: number
   ): Promise<boolean> {
-    const baseline = await loadLatestCoreSnapshotBaseline();
+    let baseline: Awaited<ReturnType<typeof loadLatestCoreSnapshotBaselineServerRequired>>;
+    try {
+      baseline = await loadLatestCoreSnapshotBaselineServerRequired();
+    } catch (err) {
+      console.error("시간 변경 서버 기준 데이터 로드 실패:", err);
+      return false;
+    }
     const nextStudents = buildNextStudentsList(updatedStudent, baseline.students);
 
     // ✅ 시간 변경 시작 회차 이후의 extension override(연장 결제 자동 설정 날짜)를 초기화
@@ -872,7 +860,7 @@ export default function StudentHubCore({
     // metaMap이 초기화된 뒤 세션 날짜를 재계산
     const { list: nextSessions, changed: sessionsChanged } = buildSyncedSessionsForStudent(
       updatedStudent,
-      undefined,
+      baseline.sessions,
       { force: clearExtensionFromIndex !== undefined }
     );
 
@@ -888,7 +876,15 @@ export default function StudentHubCore({
       saveStudents(nextStudents, { skipSharedSnapshot: true });
       if (sessionsChanged) {
         saveSessions(nextSessions, { skipSharedSnapshot: true });
+        setSessions(
+          buildStudentSessionsFromRows({
+            student: updatedStudent,
+            allSessions: nextSessions,
+          })
+        );
       }
+      setStudent(updatedStudent);
+      void refreshStudentContext();
       return true;
     } catch (err) {
       console.error("시간 변경 서버 저장 실패:", err);
@@ -899,13 +895,19 @@ export default function StudentHubCore({
   async function persistConsultationState(nextConsultRecords: ConsultationRecord[], nextStudentOverride?: Student): Promise<boolean> {
     if (!student) return false;
 
+    let serverSnapshot: Awaited<ReturnType<typeof readSnapshotServerRequired>>;
+    try {
+      serverSnapshot = await readSnapshotServerRequired();
+    } catch (err) {
+      console.error("상담 저장용 서버 기준 데이터 로드 실패:", err);
+      return false;
+    }
     const nextStore = {
-      ...loadAllConsultationsStore(),
+      ...serverSnapshot.consultations,
       [student.id]: nextConsultRecords,
     };
-    const baseline = nextStudentOverride ? await loadLatestCoreSnapshotBaseline() : null;
     const nextStudents = nextStudentOverride
-      ? buildNextStudentsList(nextStudentOverride, baseline?.students)
+      ? buildNextStudentsList(nextStudentOverride, serverSnapshot.students)
       : null;
 
     try {
@@ -918,9 +920,11 @@ export default function StudentHubCore({
 
       if (nextStudents) {
         saveStudents(nextStudents, { skipSharedSnapshot: true });
+        setStudent(nextStudentOverride ?? null);
       }
       saveAllConsultationsStore(nextStore, { skipSharedSnapshot: true });
       setConsultRecords(nextConsultRecords);
+      void refreshStudentContext();
       return true;
     } catch (err) {
       console.error("상담 서버 저장 실패:", err);
@@ -985,7 +989,7 @@ export default function StudentHubCore({
 
     const ok = await persistScheduleState({ ...student, scheduleChangeEvents: nextEvents }, startIndex);
     if (!ok) {
-      setScheduleError("서버 저장에 실패했어요. 잠시 뒤 다시 시도해주세요.");
+      setScheduleError(SERVER_SAVE_RETRY_MESSAGE);
       return;
     }
     closeScheduleEdit();
@@ -1005,6 +1009,15 @@ export default function StudentHubCore({
   ): Promise<boolean> {
     if (!student) return false;
 
+    let serverSnapshot: Awaited<ReturnType<typeof readSnapshotServerRequired>>;
+    try {
+      serverSnapshot = await readSnapshotServerRequired();
+    } catch (err) {
+      console.error("결제/환불 저장용 서버 기준 데이터 로드 실패:", err);
+      alert(SERVER_LOAD_RETRY_MESSAGE);
+      return false;
+    }
+
     const normalized = normalizePaymentHistoryRanges(records, baseCount);
     const nextTotal = baseCount + normalized.reduce((sum, r) => sum + r.addedCount, 0);
     const updatedStudent = {
@@ -1014,17 +1027,13 @@ export default function StudentHubCore({
       paymentHistory: normalized,
     } as Student;
 
-    const baseline = await loadLatestCoreSnapshotBaseline();
-    const currentStudents = baseline.students.length > 0 ? baseline.students : loadStudents();
-    const nextStudents = currentStudents.some((row) => String(row.id) === String(updatedStudent.id))
-      ? currentStudents.map((row) => (String(row.id) === String(updatedStudent.id) ? updatedStudent : row))
-      : [...currentStudents, updatedStudent];
+    const nextStudents = buildNextStudentsList(updatedStudent, serverSnapshot.students);
 
-    let nextAllSessions = baseline.sessions.length > 0 ? baseline.sessions : loadSessions();
+    let nextAllSessions = serverSnapshot.sessions;
     let nextMetaMap = readMetaMap(token);
     const nextConsultStore = options?.consultationRecords
       ? {
-        ...loadAllConsultationsStore(),
+        ...serverSnapshot.consultations,
         [student.id]: options.consultationRecords,
       }
       : null;
@@ -1063,7 +1072,7 @@ export default function StudentHubCore({
     };
 
     if (!skipSessions) {
-      const all = baseline.sessions.length > 0 ? baseline.sessions : loadSessions();
+      const all = serverSnapshot.sessions;
       const prevStudentSessions = all.filter((s) => s.studentId === updatedStudent.id);
       const prevMaxIndex = prevStudentSessions.reduce((m, s) => Math.max(m, s.index), 0);
       const kept = all.filter((s) => s.studentId !== updatedStudent.id || s.index <= nextTotal);
@@ -1164,11 +1173,20 @@ export default function StudentHubCore({
         setConsultRecords(options.consultationRecords);
       }
 
-      setRefreshTick((x) => x + 1);
+      setStudent(updatedStudent);
+      if (!skipSessions) {
+        setSessions(
+          buildStudentSessionsFromRows({
+            student: updatedStudent,
+            allSessions: nextAllSessions,
+          })
+        );
+      }
+      void refreshStudentContext();
       return true;
     } catch (err) {
       console.error("결제/환불 서버 저장 실패:", err);
-      alert("서버 저장에 실패했어요. 잠시 뒤 다시 시도해주세요.");
+      alert(SERVER_SAVE_RETRY_MESSAGE);
       return false;
     }
   }

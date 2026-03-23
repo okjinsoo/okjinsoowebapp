@@ -106,6 +106,7 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
   font-size: 15px;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .app-topbar {
@@ -179,6 +180,9 @@ button {
   padding: 4px 8px !important;
   border-radius: 8px !important;
   border: 1px solid var(--control-border) !important;
+  cursor: pointer !important;
+  user-select: none !important;
+  touch-action: manipulation;
 }
 
 .brand-home-btn {

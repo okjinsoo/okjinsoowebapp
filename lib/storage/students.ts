@@ -7,7 +7,11 @@ import { syncRoleBindingEmails } from "@/lib/auth/roleBindings";
 import { pushSharedSnapshot, readLocalTeachers } from "@/lib/storage/sharedSnapshot";
 import { requestCalendarResyncForStudentIds } from "@/lib/storage/sessions";
 import { safeParseJson } from "@/lib/storage/safeParse";
-import { loadLatestCoreSnapshotBaseline, mergeById } from "@/lib/storage/safeSnapshotMerge";
+import {
+  loadLatestCoreSnapshotBaseline,
+  loadLatestCoreSnapshotBaselineServerRequired,
+  mergeById,
+} from "@/lib/storage/safeSnapshotMerge";
 import type { Student, StudentStatus } from "@/lib/types/index";
 
 const KEY = "tutorweb_students_v1";
@@ -15,6 +19,11 @@ const KEY = "tutorweb_students_v1";
 type SaveStudentsOptions = {
   skipSharedSnapshot?: boolean;
   snapshotMode?: "merge" | "replace";
+  serverRequired?: boolean;
+};
+
+type LoadStudentsOptions = {
+  forceFresh?: boolean;
 };
 
 function extractStudentEmails(list: Student[]): string[] {
@@ -54,9 +63,13 @@ function syncStudentRoleBindings(previous: Student[], next: Student[]): void {
 let studentsCache: { value: Student[]; expiry: number } | null = null;
 const STUDENTS_CACHE_TTL = 50;
 
-export function loadStudents(): Student[] {
+export function loadStudents(options?: LoadStudentsOptions): Student[] {
   if (typeof window === "undefined") return [];
-  
+
+  if (options?.forceFresh) {
+    studentsCache = null;
+  }
+
   const now = Date.now();
   if (studentsCache && studentsCache.expiry > now) {
     return studentsCache.value;
@@ -74,15 +87,6 @@ function dispatchStudentsUpdated() {
   window.dispatchEvent(new CustomEvent("tutorweb:studentsUpdated"));
 }
 
-function replaceStudentsLocal(list: Student[]): boolean {
-  if (typeof window === "undefined") return false;
-  const nextRaw = JSON.stringify(list);
-  if (browserStorage.getItem(KEY) === nextRaw) return false;
-  browserStorage.setItem(KEY, nextRaw);
-  dispatchStudentsUpdated();
-  return true;
-}
-
 export function saveStudents(list: Student[], options?: SaveStudentsOptions): void {
   if (typeof window === "undefined") return;
   studentsCache = null; // 저장 시 캐시 무효화
@@ -92,7 +96,7 @@ export function saveStudents(list: Student[], options?: SaveStudentsOptions): vo
   dispatchStudentsUpdated();
   syncStudentRoleBindings(previous, list);
   if (!options?.skipSharedSnapshot) {
-    syncSharedSnapshot(list, options?.snapshotMode ?? "merge");
+    syncSharedSnapshot(list, options?.snapshotMode ?? "merge", options?.serverRequired ?? false);
   }
   if (changedEmailIds.length > 0) {
     requestCalendarResyncForStudentIds(changedEmailIds);
@@ -101,8 +105,9 @@ export function saveStudents(list: Student[], options?: SaveStudentsOptions): vo
 
 export async function saveStudentsServerFirst(list: Student[]): Promise<void> {
   studentsCache = null; // 저장 시 캐시 무효화
+  const baseline = await loadLatestCoreSnapshotBaselineServerRequired();
   await pushSharedSnapshot({
-    teachers: readLocalTeachers(),
+    teachers: baseline.teachers,
     students: list,
   });
   saveStudents(list, { skipSharedSnapshot: true });
@@ -114,21 +119,21 @@ export function upsertStudent(student: Student): Student[] {
   const idx = list.findIndex((s) => s.id === student.id);
   if (idx >= 0) list[idx] = student;
   else list.push(student);
-  saveStudents(list);
+  saveStudents(list, { serverRequired: true });
   return list;
 }
 
 export function removeStudent(studentId: string): Student[] {
   studentsCache = null; // 저장 시 캐시 무효화
   const list = loadStudents().filter((s) => s.id !== studentId);
-  saveStudents(list, { snapshotMode: "replace" });
+  saveStudents(list, { snapshotMode: "replace", serverRequired: true });
   return list;
 }
 
 export function setStudentStatus(studentId: string, status: StudentStatus): Student[] {
   studentsCache = null; // 저장 시 캐시 무효화
   const list = loadStudents().map((s) => (s.id === studentId ? { ...s, status } : s));
-  saveStudents(list);
+  saveStudents(list, { serverRequired: true });
   return list;
 }
 
@@ -144,22 +149,36 @@ export function clearStudents(): void {
   const previous = loadStudents();
   browserStorage.removeItem(KEY);
   syncStudentRoleBindings(previous, []);
-  syncSharedSnapshot([], "replace");
+  syncSharedSnapshot([], "replace", false);
 }
 
-function syncSharedSnapshot(nextStudents: Student[], mode: "merge" | "replace"): void {
+function syncSharedSnapshot(
+  nextStudents: Student[],
+  mode: "merge" | "replace",
+  serverRequired: boolean
+): void {
   void (async () => {
-    const baseline = await loadLatestCoreSnapshotBaseline();
+    const baseline = serverRequired
+      ? await loadLatestCoreSnapshotBaselineServerRequired()
+      : await loadLatestCoreSnapshotBaseline();
     const mergedStudents = mode === "replace"
       ? nextStudents
       : mergeById(baseline.students, nextStudents);
+    const teachers = serverRequired
+      ? baseline.teachers
+      : baseline.teachers.length > 0
+        ? baseline.teachers
+        : readLocalTeachers();
 
     await pushSharedSnapshot({
-      teachers: baseline.teachers.length > 0 ? baseline.teachers : readLocalTeachers(),
+      teachers,
       students: mergedStudents,
       forceEmpty: mode === "replace" && mergedStudents.length === 0, // [Safety] 의도적 삭제 명시
     });
   })().catch((err) => {
-    console.error("공유 스냅샷 동기화 실패(students):", err);
+    console.error(
+      `공유 스냅샷 동기화 실패(students${serverRequired ? ":server-required" : ""}):`,
+      err
+    );
   });
 }

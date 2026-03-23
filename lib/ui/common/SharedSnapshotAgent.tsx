@@ -29,7 +29,6 @@ const PENING_LOCK_TIMEOUT_MS = 5000;
 export default function SharedSnapshotAgent() {
   const hydratingRef = useRef(false);
   const pushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const pullIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pendingStateKvRef = useRef<Record<string, string>>({});
   const pendingLockedAtRef = useRef<number | null>(null); 
   const calendarSyncKeyRef = useRef("");

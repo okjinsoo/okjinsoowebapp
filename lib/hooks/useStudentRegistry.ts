@@ -1,12 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { loadStudents } from "@/lib/storage/students";
-import { loadTeachers, TEACHERS_EVENT } from "@/lib/storage/teachers";
-import { loadSessions, sessionsByStudent } from "@/lib/storage/sessions";
-import { loadConsultationsByStudent } from "@/lib/storage/consultations";
+import { TEACHERS_EVENT } from "@/lib/storage/teachers";
+import { buildStudentSessionsFromRows, readSnapshotServerFirst } from "@/lib/storage/serverRead";
 import {
-  buildBaseDatesISOByToken,
+  buildBaseDatesISO,
   computeEffectiveISO,
   readMetaMap,
 } from "@/lib/factories/sessionFactories";
@@ -45,28 +43,47 @@ export type StudentMetrics = {
 
 export function useStudentRegistry() {
   const [tick, setTick] = useState(0);
-  const [students, setStudents] = useState<Student[]>(() => loadStudents());
-  const [teachers, setTeachers] = useState<Teacher[]>(() => loadTeachers());
+  const [students, setStudents] = useState<Student[]>([]);
+  const [teachers, setTeachers] = useState<Teacher[]>([]);
+  const [allSessions, setAllSessions] = useState<Session[]>([]);
+  const [consultationsByStudent, setConsultationsByStudent] = useState<
+    Record<string, ConsultationRecord[]>
+  >({});
 
   useEffect(() => {
-    const refresh = () => {
-      setStudents(loadStudents());
-      setTeachers(loadTeachers());
+    let cancelled = false;
+
+    const refreshSnapshot = async () => {
+      const next = await readSnapshotServerFirst();
+      if (cancelled) return;
+      setStudents(next.students);
+      setTeachers(next.teachers);
+      setAllSessions(next.sessions);
+      setConsultationsByStudent(next.consultations);
       setTick((t) => t + 1);
     };
 
-    window.addEventListener(TUTORWEB_EVENTS.studentsUpdated, refresh);
-    window.addEventListener(TUTORWEB_EVENTS.sessionsUpdated, refresh);
-    window.addEventListener(TUTORWEB_EVENTS.consultationsUpdated, refresh);
-    window.addEventListener(TUTORWEB_EVENTS.metaMapUpdated, refresh);
-    window.addEventListener(TEACHERS_EVENT, refresh);
+    const requestSnapshotRefresh = () => {
+      void refreshSnapshot();
+    };
+    const bumpTick = () => {
+      setTick((t) => t + 1);
+    };
+
+    void refreshSnapshot();
+    window.addEventListener(TUTORWEB_EVENTS.studentsUpdated, requestSnapshotRefresh);
+    window.addEventListener(TEACHERS_EVENT, requestSnapshotRefresh);
+    window.addEventListener(TUTORWEB_EVENTS.sessionsUpdated, requestSnapshotRefresh);
+    window.addEventListener(TUTORWEB_EVENTS.consultationsUpdated, requestSnapshotRefresh);
+    window.addEventListener(TUTORWEB_EVENTS.metaMapUpdated, bumpTick);
 
     return () => {
-      window.removeEventListener(TUTORWEB_EVENTS.studentsUpdated, refresh);
-      window.removeEventListener(TUTORWEB_EVENTS.sessionsUpdated, refresh);
-      window.removeEventListener(TUTORWEB_EVENTS.consultationsUpdated, refresh);
-      window.removeEventListener(TUTORWEB_EVENTS.metaMapUpdated, refresh);
-      window.removeEventListener(TEACHERS_EVENT, refresh);
+      cancelled = true;
+      window.removeEventListener(TUTORWEB_EVENTS.studentsUpdated, requestSnapshotRefresh);
+      window.removeEventListener(TEACHERS_EVENT, requestSnapshotRefresh);
+      window.removeEventListener(TUTORWEB_EVENTS.sessionsUpdated, requestSnapshotRefresh);
+      window.removeEventListener(TUTORWEB_EVENTS.consultationsUpdated, requestSnapshotRefresh);
+      window.removeEventListener(TUTORWEB_EVENTS.metaMapUpdated, bumpTick);
     };
   }, []);
 
@@ -79,10 +96,13 @@ export function useStudentRegistry() {
       if (!st.token) continue;
       
       const teacher = teachers.find((t) => t.id === st.teacherId) ?? null;
-      const rawSessions = sessionsByStudent(st.id);
-      const baseDatesISO = buildBaseDatesISOByToken(st.token, 60);
+      const rawSessions = buildStudentSessionsFromRows({
+        student: st,
+        allSessions,
+      });
+      const baseDatesISO = buildBaseDatesISO(st, 60);
       const metaMap = readMetaMap(st.token);
-      const consultations = loadConsultationsByStudent(st.id);
+      const consultations = consultationsByStudent[st.id] ?? [];
 
       let passedCount = 0;
       let lastSessionISO: string | null = null;
@@ -198,7 +218,7 @@ export function useStudentRegistry() {
       metricsMap,
       tick,
     };
-  }, [students, teachers, tick]);
+  }, [students, teachers, allSessions, consultationsByStudent, tick]);
 
   return registry;
 }

@@ -1,13 +1,13 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { ConsultationRecord, PaymentRecord, Session, Student } from "@/lib/types/index";
 import { ConsultFormState } from "@/lib/ui/common/ConsultModal";
-import { makeId } from "@/lib/utils/id";
-import { nowIso, todayYmdKST } from "@/lib/utils/date";
+import { todayYmdKST } from "@/lib/utils/date";
 import { normalizeConsultPurpose } from "@/lib/factories/consultationFactory";
 import { useMetaMap } from "@/lib/factories/sessionFactories";
 import { computePauseLifecycle } from "@/lib/factories/studentStatusFactory";
 import { findLastClassIndex } from "@/lib/ui/session/pauseHelpers";
 import { computeRefundRatio } from "@/lib/factories/lessonStatusFactory";
+import { SERVER_SAVE_RETRY_MESSAGE } from "@/lib/messages/serverMessages";
 import { useConsultationSubmit } from "./useConsultationSubmit";
 
 export interface UseStudentConsultProps {
@@ -212,7 +212,7 @@ export function useStudentConsult({
             if (!ok) return;
         } else {
             const ok = await persistConsultationState(updated, nextStudentOverride);
-            if (!ok) return setConsultError("서버 저장에 실패했어요. 잠시 뒤 다시 시도해주세요.");
+            if (!ok) return setConsultError(SERVER_SAVE_RETRY_MESSAGE);
         }
 
         setConsultOpen(false);

@@ -3,14 +3,14 @@
 
 import React, { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import type { Id, Student, Teacher, ScheduleRule, Weekday, Session } from "@/lib/types/index";
-import { loadStudents, saveStudents } from "@/lib/storage/students";
-import { loadSessions, saveSessions } from "@/lib/storage/sessions";
+import type { Id, Student, Teacher, ScheduleRule, Weekday } from "@/lib/types/index";
+import { saveStudents } from "@/lib/storage/students";
 import { pushSharedSnapshot } from "@/lib/storage/sharedSnapshot";
-import { loadLatestCoreSnapshotBaseline } from "@/lib/storage/safeSnapshotMerge";
+import { loadLatestCoreSnapshotBaselineServerRequired } from "@/lib/storage/safeSnapshotMerge";
 import { makeId, makeToken } from "@/lib/utils/id";
 import { nowIso, todayYmdLocal } from "@/lib/utils/date";
 import { normalizePhoneDigits } from "@/lib/utils/phone";
+import { SERVER_SAVE_RETRY_MESSAGE } from "@/lib/messages/serverMessages";
 
 // cohort 자동 생성: "년도_랜덤6자리수"
 function makeCohortId() {
@@ -216,9 +216,9 @@ export default function StudentNewClient(props: {
 
     setSaving(true);
     try {
-      const baseline = await loadLatestCoreSnapshotBaseline();
-      const baseStudents = baseline.students.length > 0 ? baseline.students : loadStudents();
-      const baseSessions = baseline.sessions.length > 0 ? baseline.sessions : loadSessions();
+      const baseline = await loadLatestCoreSnapshotBaselineServerRequired();
+      const baseStudents = baseline.students;
+      const baseSessions = baseline.sessions;
 
       const nextStudents = [...baseStudents, st];
 
@@ -230,7 +230,7 @@ export default function StudentNewClient(props: {
       router.push(onDoneGoTo);
     } catch (err) {
       console.error("학생 생성 서버 저장 실패:", err);
-      setError("서버 저장에 실패했어요. 잠시 뒤 다시 시도해주세요.");
+      setError(SERVER_SAVE_RETRY_MESSAGE);
     } finally {
       setSaving(false);
     }

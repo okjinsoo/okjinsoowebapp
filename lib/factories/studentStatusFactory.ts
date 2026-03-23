@@ -11,7 +11,7 @@ export type StudentStatusKind =
 import type { ConsultationRecord, Student } from "@/lib/types/index";
 import { loadConsultationsByStudent } from "@/lib/storage/consultations";
 import { sessionsByStudent } from "@/lib/storage/sessions";
-import { buildBaseDatesISOByToken, computeEffectiveISO, readMetaMap } from "@/lib/factories/sessionFactories";
+import { buildBaseDatesISO, computeEffectiveISO, readMetaMap } from "@/lib/factories/sessionFactories";
 import { kstDateMs, todayYmdKST, ymdFromISO_KST } from "@/lib/utils/date";
 
 /**
@@ -70,7 +70,7 @@ export function computeStudentStatus(student: Student): StudentStatusKind {
   }
 
   const sessions = sessionsByStudent(student.id);
-  const baseDatesISO = buildBaseDatesISOByToken(student.token, 60);
+  const baseDatesISO = buildBaseDatesISO(student, 60);
   const metaMap = readMetaMap(student.token);
   let passedCount = 0;
   let lastSessionISO: string | null = null;

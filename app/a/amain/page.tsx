@@ -1,13 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { syncRoleBindingEmails } from "@/lib/auth/roleBindings";
-import {
-  pushSharedSnapshot,
-  readLocalSharedStateKv,
-} from "@/lib/storage/sharedSnapshot";
-import { loadSessions } from "@/lib/storage/sessions";
 import { saveCurrentStudentToken } from "@/lib/ui/common/roleGateStorage";
 import {
   getStudentStatusMeta,
@@ -16,7 +10,6 @@ import {
 } from "@/lib/factories/studentStatusFactory";
 import { fmtKST_yyyyMMdd_HHmm_noSeconds } from "@/lib/ui/session/format";
 import Badge from "@/lib/ui/common/Badge";
-import { ensureAuthSession, getSupabaseConfig } from "@/lib/auth/supabaseAuth";
 import { saveCurrentTeacherId } from "@/lib/storage/teachers";
 import { useStudentRegistry } from "@/lib/hooks/useStudentRegistry";
 import DriveControlPanel from "@/lib/ui/admin/DriveControlPanel";
@@ -24,9 +17,7 @@ import { ymdFromISO_KST } from "@/lib/utils/date";
 
 export default function AdminMainPage() {
   const router = useRouter();
-  const { students, teachers, metricsMap } = useStudentRegistry();
-  const [syncingRoles, setSyncingRoles] = useState(false);
-  const [syncResult, setSyncResult] = useState("");
+  const { metricsMap } = useStudentRegistry();
 
   const statusCards = useMemo(() => {
     return Array.from(metricsMap.values()).map(({ student, teacher, status, passedCount, remainingCount, lastSessionISO }) => ({

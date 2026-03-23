@@ -115,7 +115,7 @@ export default function PolicyPage() {
                             <li>회사는 관련 법령에 따라 서비스 종료 후 1년간 개인정보를 보관한 뒤 지체 없이 안전하게 파기합니다.</li>
                             <li><strong>Google 캘린더 연동 및 데이터 사용 목적</strong>: 본 서비스(`okjinsoomath`)는 원활한 화상 수업 일정 관리 및 Google Meet 링크 자동 생성을 위해, 제한된 권한이 부여된 이용자(원장, 강사 등 관리자)에 한하여 Google 캘린더 연동(OAuth)을 제공합니다.</li>
                             <li>
-                                <strong>수집 권한 및 활용 범위</strong>: 회사는 Google 캘린더 연동을 통해 수집된 권한(`.../auth/calendar`, `.../auth/calendar.events`)을 오직 <strong>'옥진수학 학원 내부 스케줄 동기화 및 수업 일정 생성/수정' 목적으로만 사용</strong>합니다. 이용자의 개인 캘린더 일정을 무단으로 열람하거나, 시스템과 무관한 일정을 삭제 또는 타 마케팅 목적으로 활용하지 않습니다.
+                                <strong>수집 권한 및 활용 범위</strong>: 회사는 Google 캘린더 연동을 통해 수집된 권한(`.../auth/calendar`, `.../auth/calendar.events`)을 오직 <strong>&apos;옥진수학 학원 내부 스케줄 동기화 및 수업 일정 생성/수정&apos; 목적으로만 사용</strong>합니다. 이용자의 개인 캘린더 일정을 무단으로 열람하거나, 시스템과 무관한 일정을 삭제 또는 타 마케팅 목적으로 활용하지 않습니다.
                             </li>
                             <li><strong>제한적 사용 요건(Limited Use) 준수</strong>: 본 서비스가 Google API로부터 수신한 정보의 사용 및 다른 앱으로의 전송은 <a href="https://developers.google.com/terms/api-services-user-data-policy" target="_blank" rel="noopener noreferrer" className="underline font-semibold hover:text-blue-700">Google API 서비스 사용자 데이터 정책(Google API Services User Data Policy)</a>의 제한적 사용 방침(Limited Use requirements)을 엄격히 준수합니다.</li>
                             <li>해당 연동 권한은 로그인한 사용자가 언제든지 Google 계정의 보안 설정(내 계정 접속 허용된 타사 앱) 메뉴에서 클릭 한 번으로 철회할 수 있습니다.</li>

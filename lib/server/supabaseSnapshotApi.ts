@@ -2,22 +2,22 @@ import "server-only";
 
 import type { NextRequest } from "next/server";
 
+import {
+  fetchSupabaseAuthUser,
+  getSupabaseAnonConfigFromEnv,
+  normalizeEmail,
+  resolveAccessTokenFromRequest,
+} from "@/lib/security/requestAuth";
+import { logSecurityEvent } from "@/lib/security/securityLog";
 import { SHARED_CONSULTATIONS_KEY, isSharedStateKvKey } from "@/lib/storage/sharedStateKeys";
 import type { ConsultationRecord, Session, Student, Teacher } from "@/lib/types/index";
 
 const SNAPSHOT_KEY = "main";
-const AUTH_COOKIE_KEY = "tutorweb_auth_session_bridge_v1";
 const FIXED_ADMIN_EMAILS = new Set(["rapah0310@gmail.com"]);
 
 type SupabaseConfig = {
   url: string;
   anonKey: string;
-};
-
-type AuthCookieSession = {
-  accessToken?: string;
-  userId?: string | null;
-  email?: string | null;
 };
 
 type SnapshotRow = {
@@ -91,39 +91,15 @@ export function calculateSnapshotDigest(snapshot: NormalizedSnapshot): string {
 }
 
 function getSupabaseServerConfig(): SupabaseConfig | null {
-  const url = (process.env.NEXT_PUBLIC_SUPABASE_URL ?? "").trim();
-  const anonKey = (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "").trim();
-  if (!url || !anonKey) return null;
-  return { url, anonKey };
+  return getSupabaseAnonConfigFromEnv();
 }
 
-function normalizeEmail(email: string | null | undefined): string {
-  return (email ?? "").trim().toLowerCase();
-}
-
-function parseAuthCookie(request: NextRequest): AuthCookieSession | null {
-  const fromCookie = request.cookies.get(AUTH_COOKIE_KEY)?.value ?? null;
-  if (fromCookie) {
-    try {
-      const parsed = JSON.parse(fromCookie) as AuthCookieSession;
-      if (parsed && typeof parsed.accessToken === "string" && parsed.accessToken.trim()) {
-        return parsed;
-      }
-    } catch {
-      // invalid cookie -> ignore
-    }
-  }
-
-  const authHeader = request.headers.get("authorization") ?? "";
-  if (authHeader.toLowerCase().startsWith("bearer ")) {
-    return {
-      accessToken: authHeader.slice(7).trim(),
-      userId: null,
-      email: null,
-    };
-  }
-
-  return null;
+function requestIdOf(request: NextRequest): string {
+  return (
+    request.headers.get("x-vercel-id") ??
+    request.headers.get("x-request-id") ??
+    `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+  );
 }
 
 function buildHeaders(args: {
@@ -171,27 +147,6 @@ function toStateKv(raw: unknown): Record<string, string> {
     out[key] = normalized;
   }
   return out;
-}
-
-async function fetchSupabaseUser(args: {
-  cfg: SupabaseConfig;
-  accessToken: string;
-}): Promise<{ id: string | null; email: string | null }> {
-  const res = await fetch(`${args.cfg.url}/auth/v1/user`, {
-    method: "GET",
-    headers: buildHeaders({ cfg: args.cfg, accessToken: args.accessToken }),
-    cache: "no-store",
-  });
-
-  if (!res.ok) {
-    throw new Error(await res.text());
-  }
-
-  const body = (await res.json()) as { id?: string; email?: string };
-  return {
-    id: typeof body.id === "string" ? body.id : null,
-    email: typeof body.email === "string" ? body.email : null,
-  };
 }
 
 async function fetchRoleBinding(args: {
@@ -291,28 +246,45 @@ function resolveTeacherId(email: string, snapshot: NormalizedSnapshot): string |
   return teacher?.id ?? null;
 }
 
+function hasDriveFolder(student: Student): boolean {
+  return Boolean((student.driveFolderId ?? "").trim());
+}
+
+function pickBestStudentByEmail(students: Student[], email: string): Student | null {
+  const matched = students.filter((student) => normalizeEmail(student.googleEmail) === email);
+  if (matched.length === 0) return null;
+
+  const activeWithLocker = matched.find((student) => student.status === "active" && hasDriveFolder(student));
+  if (activeWithLocker) return activeWithLocker;
+
+  const withLocker = matched.find((student) => hasDriveFolder(student));
+  if (withLocker) return withLocker;
+
+  const active = matched.find((student) => student.status === "active");
+  return active ?? matched[0] ?? null;
+}
+
 function resolveStudentId(email: string, snapshot: NormalizedSnapshot): string | null {
   if (!email) return null;
-  const student = snapshot.students.find((row) => normalizeEmail(row.googleEmail) === email);
+  const student = pickBestStudentByEmail(snapshot.students, email);
   return student?.id ?? null;
 }
 
 export async function resolveViewerContext(request: NextRequest): Promise<ViewerContext | null> {
   const cfg = getSupabaseServerConfig();
-  const auth = parseAuthCookie(request);
-  const accessToken = auth?.accessToken?.trim() ?? "";
+  const accessToken =
+    (await resolveAccessTokenFromRequest(request, {
+      allowAuthorizationHeader: true,
+      allowLegacyCookieJson: true,
+    })) ?? "";
   if (!cfg || !accessToken) return null;
 
-  let user: { id: string | null; email: string | null };
-  try {
-    user = await fetchSupabaseUser({ cfg, accessToken });
-  } catch {
-    return null;
-  }
+  const user = await fetchSupabaseAuthUser({ cfg, accessToken });
+  if (!user) return null;
 
   const snapshotResult = await fetchSnapshotRow({ cfg, accessToken });
   const snapshot = normalizeSnapshot(snapshotResult.row, snapshotResult.missing);
-  const normalizedEmail = normalizeEmail(user.email ?? auth?.email ?? "");
+  const normalizedEmail = normalizeEmail(user.email);
   const email = normalizedEmail || null;
 
   let role: ViewerRole = "guest";
@@ -416,6 +388,22 @@ export async function upsertSnapshotPatch(args: {
   if (!cfg || !viewer) {
     throw new Error("unauthorized");
   }
+  const requestId = requestIdOf(args.request);
+  const route = args.request.nextUrl.pathname;
+  const logGuard = (reason: string, extra?: Record<string, unknown>) => {
+    logSecurityEvent({
+      level: "error",
+      message: "Snapshot patch blocked",
+      requestId,
+      route,
+      reason,
+      actorEmail: viewer.email,
+      extra: {
+        role: viewer.role,
+        ...(extra ?? {}),
+      },
+    });
+  };
 
   const hasTeachers = Object.prototype.hasOwnProperty.call(args.patch, "teachers");
   const hasStudents = Object.prototype.hasOwnProperty.call(args.patch, "students");
@@ -427,7 +415,7 @@ export async function upsertSnapshotPatch(args: {
   // [Phase 23] 서버 사이드 권한/무결성 검증
   // 1. 관리자만 선생님 정보를 수정할 수 있음
   if (hasTeachers && viewer.role !== "admin") {
-    console.error(`[Security] Unauthorized teacher update attempt by ${viewer.email} (Role: ${viewer.role})`);
+    logGuard("UNAUTHORIZED_TEACHER_EDIT");
     throw new Error("unauthorized_teacher_edit");
   }
 
@@ -438,6 +426,10 @@ export async function upsertSnapshotPatch(args: {
       const patchStudents = args.patch.students ?? [];
       const isTryingToEditOthers = patchStudents.some(s => s.id !== viewer.studentId);
       if (isTryingToEditOthers) {
+        logGuard("UNAUTHORIZED_STUDENT_EDIT_TARGET", {
+          patchStudentCount: patchStudents.length,
+          viewerStudentId: viewer.studentId,
+        });
         throw new Error("unauthorized_student_edit_target");
       }
 
@@ -448,7 +440,9 @@ export async function upsertSnapshotPatch(args: {
         for (const s of patchStudents) {
           if (s.planCount !== currentStudent.planCount || 
               JSON.stringify(s.paymentHistory) !== JSON.stringify(currentStudent.paymentHistory)) {
-             console.error(`[Security] Student ${viewer.email} tried to manipulate planCount/paymentHistory`);
+             logGuard("UNAUTHORIZED_STUDENT_FIELD_MANIPULATION", {
+               studentId: s.id,
+             });
              throw new Error("unauthorized_field_manipulation");
           }
         }
@@ -460,6 +454,10 @@ export async function upsertSnapshotPatch(args: {
       const patchSessions = args.patch.sessions ?? [];
       const hasOtherStudentSessions = patchSessions.some(s => s.studentId !== viewer.studentId);
       if (hasOtherStudentSessions) {
+        logGuard("UNAUTHORIZED_SESSION_EDIT_TARGET", {
+          patchSessionCount: patchSessions.length,
+          viewerStudentId: viewer.studentId,
+        });
         throw new Error("unauthorized_session_edit_target");
       }
     }
@@ -469,7 +467,10 @@ export async function upsertSnapshotPatch(args: {
     const patchStudents = args.patch.students ?? [];
     const currentStudents = viewer.snapshot.students;
     if (currentStudents.length > 5 && patchStudents.length < currentStudents.length * 0.5) {
-       console.error(`[Security Guard] Blocked mass deletion attempt by ${viewer.email}: ${currentStudents.length} -> ${patchStudents.length}`);
+       logGuard("MASS_DELETION_BLOCKED", {
+         beforeCount: currentStudents.length,
+         afterCount: patchStudents.length,
+       });
        throw new Error("server_blocked_mass_deletion");
     }
   }
@@ -507,6 +508,7 @@ export async function upsertSnapshotPatch(args: {
     // 1. 자신의 학생 정보만 수정 가능 (전체 학생 명단 수정 시도 차단)
     if (hasStudents) {
       if (!args.patch.students || args.patch.students.length > 1 || args.patch.students[0]?.id !== viewer.studentId) {
+        logGuard("UNAUTHORIZED_STUDENT_DATA_MANIPULATION");
         throw new Error("unauthorized_student_data_manipulation");
       }
       // 2. 민감 정보(결제, 횟수 등) 수정 시도 차단
@@ -515,16 +517,24 @@ export async function upsertSnapshotPatch(args: {
       if (currentStudent && patchStudent) {
         if (patchStudent.planCount !== currentStudent.planCount || 
             JSON.stringify(patchStudent.paymentHistory) !== JSON.stringify(currentStudent.paymentHistory)) {
+          logGuard("UNAUTHORIZED_FINANCIAL_DATA_MANIPULATION", {
+            studentId: patchStudent.id,
+          });
           throw new Error("unauthorized_financial_data_manipulation");
         }
       }
     }
     // 3. 수업(sessions) 및 선생님 정보 수정 차단
     if (hasSessions || hasTeachers) {
+      logGuard("UNAUTHORIZED_SESSION_OR_TEACHER_MANIPULATION", {
+        hasSessions,
+        hasTeachers,
+      });
       throw new Error("unauthorized_session_or_teacher_manipulation");
     }
     // 4. 전역 설정(stateKv) 수정 차단
     if (touchesStateKv) {
+       logGuard("UNAUTHORIZED_METADATA_MANIPULATION");
        throw new Error("unauthorized_metadata_manipulation");
     }
   }

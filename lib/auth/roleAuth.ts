@@ -1,12 +1,15 @@
 "use client";
 
+import {
+  canAccessRole as canAccessRoleByPolicy,
+  type RequiredRole,
+} from "@/lib/auth/accessPolicy";
 import { fetchRoleBinding } from "@/lib/auth/roleBindings";
 import { browserStorage } from "@/lib/storage/browserStorage";
-import { loadStudents } from "@/lib/storage/students";
-import { loadTeachers } from "@/lib/storage/teachers";
+import type { Student, Teacher } from "@/lib/types/index";
 
 export type UserRole = "guest" | "student" | "teacher" | "admin";
-export type RequiredRole = "student" | "teacher" | "admin";
+export type { RequiredRole } from "@/lib/auth/accessPolicy";
 
 // 요청 반영: 관리자 기본 계정 고정
 const FIXED_ADMIN_EMAILS = ["rapah0310@gmail.com"];
@@ -19,19 +22,42 @@ function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
 }
 
-function resolveLocalRoleByEmail(email: string): UserRole | null {
-  if (!email) return null;
+type SnapshotResponse = {
+  snapshot?: {
+    teachers?: Teacher[];
+    students?: Student[];
+  };
+};
 
-  const teachers = loadTeachers();
-  if (teachers.some((teacher) => normalizeEmail(teacher.email ?? "") === email)) {
-    return "teacher";
+async function resolveSnapshotRoleByEmail(args: {
+  email: string;
+  accessToken: string;
+}): Promise<UserRole | null> {
+  if (typeof window === "undefined") return null;
+
+  try {
+    const res = await fetch("/api/snapshot", {
+      method: "GET",
+      credentials: "same-origin",
+      headers: {
+        Authorization: `Bearer ${args.accessToken}`,
+      },
+    });
+    if (!res.ok) return null;
+
+    const body = (await res.json()) as SnapshotResponse;
+    const teachers = Array.isArray(body.snapshot?.teachers) ? body.snapshot?.teachers : [];
+    if (teachers.some((teacher) => normalizeEmail(teacher.email ?? "") === args.email)) {
+      return "teacher";
+    }
+
+    const students = Array.isArray(body.snapshot?.students) ? body.snapshot?.students : [];
+    if (students.some((student) => normalizeEmail(student.googleEmail ?? "") === args.email)) {
+      return "student";
+    }
+  } catch {
+    return null;
   }
-
-  const students = loadStudents();
-  if (students.some((student) => normalizeEmail(student.googleEmail ?? "") === email)) {
-    return "student";
-  }
-
   return null;
 }
 
@@ -56,7 +82,7 @@ function writeRoleCache(next: RoleCacheMap): void {
   browserStorage.setItem(ROLE_CACHE_KEY, JSON.stringify(next));
 }
 
-function loadCachedRole(email: string): UserRole | null {
+export function loadCachedRole(email: string): UserRole | null {
   if (!email) return null;
   const cache = readRoleCache();
   const row = cache[email];
@@ -93,6 +119,10 @@ export async function resolveUserRole(args: {
     return "admin";
   }
   if (!accessToken) return "guest";
+  
+  // [최적화] 캐시가 있으면 즉시 반환하여 UI 속도 향상 (SWR 방식)
+  const cached = loadCachedRole(normalized);
+  if (cached) return cached;
 
   try {
     const role = await fetchRoleBinding({ email: normalized, accessToken });
@@ -101,19 +131,25 @@ export async function resolveUserRole(args: {
       return role;
     }
 
-    // role_bindings 지연 반영 시 로컬 데이터로 1차 보강
-    const localRole = resolveLocalRoleByEmail(normalized);
-    if (localRole) {
-      saveCachedRole(normalized, localRole);
-      return localRole;
+    // role_bindings 지연 반영 시 서버 스냅샷 데이터로 1차 보강
+    const snapshotRole = await resolveSnapshotRoleByEmail({
+      email: normalized,
+      accessToken,
+    });
+    if (snapshotRole) {
+      saveCachedRole(normalized, snapshotRole);
+      return snapshotRole;
     }
 
     clearCachedRole(normalized);
   } catch {
-    const localRole = resolveLocalRoleByEmail(normalized);
-    if (localRole) {
-      saveCachedRole(normalized, localRole);
-      return localRole;
+    const snapshotRole = await resolveSnapshotRoleByEmail({
+      email: normalized,
+      accessToken,
+    });
+    if (snapshotRole) {
+      saveCachedRole(normalized, snapshotRole);
+      return snapshotRole;
     }
 
     const cached = loadCachedRole(normalized);
@@ -131,8 +167,5 @@ export function roleLabel(role: UserRole): string {
 }
 
 export function canAccessRole(role: UserRole, required: RequiredRole): boolean {
-  if (role === "guest") return false;
-  if (required === "student") return true;
-  if (required === "teacher") return role === "teacher" || role === "admin";
-  return role === "admin";
+  return canAccessRoleByPolicy(role, required);
 }

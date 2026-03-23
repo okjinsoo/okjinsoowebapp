@@ -6,6 +6,7 @@ import { ConsultFormState } from "@/lib/ui/common/ConsultModal";
 import { validateConsultForm, buildConsultationRecord } from "@/lib/factories/consultationFactory";
 import { nowIso } from "@/lib/utils/date";
 import { makeId } from "@/lib/utils/id";
+import { SERVER_SAVE_RETRY_MESSAGE } from "@/lib/messages/serverMessages";
 import { applyPauseStateFromConsultations } from "./useStudentConsult";
 
 export interface ConsultationSubmitContext {
@@ -149,7 +150,7 @@ export async function submitConsultation(ctx: ConsultationSubmitContext, form: C
 
     // Case 3: Just persisting consultation records (Regular consults, Unpaid extensions, etc.)
     const ok = await persistConsultationState(nextConsultRecords, nextStudentOverride);
-    if (!ok) return { ok: false, error: "서버 저장에 실패했습니다. 인터넷 연결을 확인해주시거나 잠시 후 다시 시도해주세요." };
+    if (!ok) return { ok: false, error: SERVER_SAVE_RETRY_MESSAGE };
     return { ok: true };
 }
 

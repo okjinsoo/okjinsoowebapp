@@ -5,7 +5,7 @@ import { browserStorage } from "@/lib/storage/browserStorage";
 export const AUTH_STORAGE_KEY = "tutorweb_auth_session_v1";
 export const AUTH_EVENT = "tutorweb:authUpdated";
 const AUTH_COOKIE_KEY = "tutorweb_auth_session_bridge_v1";
-const AUTH_COOKIE_MAX_AGE_SEC = 60 * 60 * 24 * 14;
+const BRIDGE_SYNC_COOLDOWN_MS = 5000;
 
 export type AuthSession = {
   accessToken: string;
@@ -45,10 +45,16 @@ type RefreshTokenResponse = {
   };
 };
 
+type AuthBridgeCookie = {
+  accessToken: string;
+};
+
 const REFRESH_SKEW_MS = 60 * 1000;
 const REFRESH_FAILURE_COOLDOWN_MS = 30 * 1000;
 let refreshInFlight: Promise<AuthSession | null> | null = null;
 let lastRefreshFailureAt = 0;
+let lastBridgeSyncPayloadKey = "";
+let lastBridgeSyncAt = 0;
 
 function parseAuthSessionRaw(raw: string | null): AuthSession | null {
   if (!raw) return null;
@@ -74,19 +80,47 @@ function readCookie(name: string): string | null {
   return null;
 }
 
-function writeCookie(name: string, value: string, maxAgeSec: number): void {
-  if (typeof document === "undefined") return;
-  const secure = typeof window !== "undefined" && window.location.protocol === "https:" ? "; Secure" : "";
-  document.cookie = `${encodeURIComponent(name)}=${encodeURIComponent(value)}; Path=/; Max-Age=${Math.max(
-    0,
-    Math.floor(maxAgeSec)
-  )}; SameSite=Lax${secure}`;
-}
-
 function clearCookie(name: string): void {
   if (typeof document === "undefined") return;
   const secure = typeof window !== "undefined" && window.location.protocol === "https:" ? "; Secure" : "";
   document.cookie = `${encodeURIComponent(name)}=; Path=/; Max-Age=0; SameSite=Lax${secure}`;
+}
+
+function buildAuthBridgeCookiePayload(session: AuthSession): AuthBridgeCookie {
+  const payload: AuthBridgeCookie = {
+    accessToken: session.accessToken.trim(),
+  };
+  return payload;
+}
+
+function syncAuthBridgeCookieServer(payload: AuthBridgeCookie | null): void {
+  if (typeof window === "undefined") return;
+  const method = payload ? "POST" : "DELETE";
+  const body = payload ? JSON.stringify(payload) : undefined;
+
+  void fetch("/api/auth/bridge", {
+    method,
+    headers: payload ? { "Content-Type": "application/json" } : undefined,
+    body,
+    credentials: "same-origin",
+    keepalive: true,
+  }).catch(() => {
+    // 브리지 쿠키 서버 동기화 실패 시에도 로그인 UX는 유지합니다.
+  });
+}
+
+function syncAuthBridgeCookieServerDedup(payload: AuthBridgeCookie | null): void {
+  const payloadKey = payload ? JSON.stringify(payload) : "__EMPTY__";
+  const now = Date.now();
+  if (
+    payloadKey === lastBridgeSyncPayloadKey &&
+    now - lastBridgeSyncAt < BRIDGE_SYNC_COOLDOWN_MS
+  ) {
+    return;
+  }
+  lastBridgeSyncPayloadKey = payloadKey;
+  lastBridgeSyncAt = now;
+  syncAuthBridgeCookieServer(payload);
 }
 
 function sessionRank(session: AuthSession | null): number {
@@ -214,19 +248,19 @@ function isAuthSession(v: unknown): v is AuthSession {
 export function loadAuthSession(): AuthSession | null {
   if (typeof window === "undefined") return null;
   const storageRaw = browserStorage.getItem(AUTH_STORAGE_KEY);
+  // 레거시 호환: 과거에는 전체 세션을 쿠키에 저장했기 때문에 1회 마이그레이션 용도로만 읽습니다.
+  // 현재 브리지 쿠키는 서버에서 서명/검증하므로 클라이언트가 직접 읽거나 쓰지 않습니다.
   const cookieRaw = readCookie(AUTH_COOKIE_KEY);
   const storageSession = parseAuthSessionRaw(storageRaw);
-  const cookieSession = parseAuthSessionRaw(cookieRaw);
-  const picked = pickPreferredSession(storageSession, cookieSession);
+  const legacyCookieSession = parseAuthSessionRaw(cookieRaw);
+  const picked = pickPreferredSession(storageSession, legacyCookieSession);
   if (!picked) return null;
 
   const pickedRaw = JSON.stringify(picked);
   if (storageRaw !== pickedRaw) {
     browserStorage.setItem(AUTH_STORAGE_KEY, pickedRaw);
   }
-  if (cookieRaw !== pickedRaw) {
-    writeCookie(AUTH_COOKIE_KEY, pickedRaw, AUTH_COOKIE_MAX_AGE_SEC);
-  }
+  syncAuthBridgeCookieServerDedup(buildAuthBridgeCookiePayload(picked));
   return picked;
 }
 
@@ -234,14 +268,16 @@ export function saveAuthSession(session: AuthSession): void {
   if (typeof window === "undefined") return;
   const raw = JSON.stringify(session);
   browserStorage.setItem(AUTH_STORAGE_KEY, raw);
-  writeCookie(AUTH_COOKIE_KEY, raw, AUTH_COOKIE_MAX_AGE_SEC);
+  syncAuthBridgeCookieServerDedup(buildAuthBridgeCookiePayload(session));
   dispatchAuthUpdated();
 }
 
 export function clearAuthSession(): void {
   if (typeof window === "undefined") return;
   browserStorage.removeItem(AUTH_STORAGE_KEY);
+  // 구버전(클라이언트 작성 쿠키) 잔재 정리
   clearCookie(AUTH_COOKIE_KEY);
+  syncAuthBridgeCookieServerDedup(null);
   dispatchAuthUpdated();
 }
 

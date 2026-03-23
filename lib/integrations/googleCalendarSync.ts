@@ -1,12 +1,10 @@
 "use client";
 
 import { loadAuthSession } from "@/lib/auth/supabaseAuth";
-import { loadStudents } from "@/lib/storage/students";
-import { loadTeachers } from "@/lib/storage/teachers";
+import { readSnapshotServerFirst } from "@/lib/storage/serverRead";
 import type { Session, Student, Teacher } from "@/lib/types/index";
 import {
   buildBaseDatesISO,
-  buildBaseDatesISOByToken,
   readMetaMap,
   getSessionVisibility,
   computeEffectiveISO,
@@ -22,7 +20,7 @@ function filterVisibleSessions(student: Student, sessions: Session[]): Session[]
     return sessions;
   }
 
-  const baseDatesISO = buildBaseDatesISOByToken(student.token, 60);
+  const baseDatesISO = buildBaseDatesISO(student, 60);
   const metaMap = readMetaMap(student.token);
 
   const lastClassIndex = findLastClassIndex({
@@ -1012,6 +1010,10 @@ async function runStudentMirrorSync(args: {
   studentIds: string[];
   sessions: Session[];
 }): Promise<void> {
+  void args;
+  // 현재는 mirror 생성을 비활성화했지만, 복구 시 참고를 위해 함수 구현은 보존한다.
+  void purgeManagedEventsForStudent;
+  void upsertStudentMirrorEvent;
   // [26.03.10] 선생님의 메인 코어 이벤트가 자동 참석자 초대를 통해 단일 Event(Singluar Truth)로 기능하므로,
   // 강제로 학생 측 캘린더에 별도의 'Mirror(보조 일정)'을 생성하여 Google Meet 채널이 두 개로 갈라지는 증상을 방지하기 위해 로직을 무력화합니다.
   return;
@@ -1041,8 +1043,9 @@ async function runTeacherCalendarRebuild(args: {
   );
   if (targetStudentIds.size === 0) return;
 
-  const students = loadStudents();
-  const teachers = loadTeachers();
+  const snapshot = await readSnapshotServerFirst();
+  const students = snapshot.students;
+  const teachers = snapshot.teachers;
   const studentById = new Map(students.map((student) => [student.id, student] as const));
   const teacherById = new Map(teachers.map((teacher) => [teacher.id, teacher] as const));
   const sessionsByStudent = new Map<string, Session[]>();
@@ -1239,7 +1242,8 @@ export function rebuildTeacherGoogleCalendar(args: {
 }
 
 async function runSync(args: SyncArgs): Promise<void> {
-  const students = loadStudents();
+  const snapshot = await readSnapshotServerFirst();
+  const students = snapshot.students;
   const studentById = new Map(students.map((s) => [s.id, s] as const));
 
   // 모든 세션에 대해 실시간 계산된 '진짜 날짜'를 먼저 입힙니다.
@@ -1294,7 +1298,7 @@ async function runSync(args: SyncArgs): Promise<void> {
     return;
   }
 
-  const teachers = loadTeachers();
+  const teachers = snapshot.teachers;
   const teacherById = new Map(teachers.map((t) => [t.id, t] as const));
   const patches: SessionPatch[] = [];
 

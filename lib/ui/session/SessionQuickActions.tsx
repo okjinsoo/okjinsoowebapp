@@ -3,12 +3,10 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { TUTORWEB_EVENTS } from "@/lib/events/tutorwebEvents";
-import { loadStudents } from "@/lib/storage/students";
-import { pullSharedSnapshotAndHydrateWithOptions } from "@/lib/storage/sharedSnapshot";
 import { loadCurrentTeacherId } from "@/lib/storage/teachers";
-import { sessionsByStudent } from "@/lib/storage/sessions";
+import { buildStudentSessionsFromRows, readSnapshotServerFirst } from "@/lib/storage/serverRead";
 import {
-  buildBaseDatesISOByToken,
+  buildBaseDatesISO,
   computeEffectiveISO,
   upsertMeta,
   useMetaMap,
@@ -16,6 +14,8 @@ import {
 } from "@/lib/factories/sessionFactories";
 import { syncSessionDisplayAtByToken } from "@/lib/ui/session/syncSessionDisplayAt";
 import { canEditSessionMeta, type SessionRole } from "@/lib/policies/sessionRolePolicy";
+import type { SessionMeta } from "@/lib/factories/sessionFactories";
+import type { Session, Student } from "@/lib/types/index";
 
 type Props = {
   role: SessionRole;
@@ -40,40 +40,42 @@ export default function SessionQuickActions({ role, token, index }: Props) {
   const canEdit = canEditSessionMeta(role);
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
-  const [students, setStudents] = useState(() => loadStudents());
+  const [students, setStudents] = useState<Student[]>([]);
+  const [allSessions, setAllSessions] = useState<Session[]>([]);
   const [teacherId, setTeacherId] = useState<string | null>(null);
-  const [sessionsTick, setSessionsTick] = useState(0);
 
   useEffect(() => {
-    const id = setTimeout(() => {
-      setStudents(loadStudents());
+    let cancelled = false;
+
+    const refreshSnapshot = async () => {
+      const next = await readSnapshotServerFirst();
+      if (cancelled) return;
+      setStudents(next.students);
+      setAllSessions(next.sessions);
       setTeacherId(loadCurrentTeacherId());
-    }, 0);
-    void pullSharedSnapshotAndHydrateWithOptions({ forceRemote: true })
-      .then((snapshot) => {
-        if (snapshot) setStudents(snapshot.students);
-      })
-      .catch((err) => {
-        console.error("학생 목록 서버 새로고침 실패(quick actions):", err);
-      });
-    return () => clearTimeout(id);
-  }, []);
+    };
 
-  useEffect(() => {
-    const onStudents = () => setStudents(loadStudents());
-    window.addEventListener(TUTORWEB_EVENTS.studentsUpdated, onStudents);
-    return () => window.removeEventListener(TUTORWEB_EVENTS.studentsUpdated, onStudents);
-  }, []);
+    const requestRefresh = () => {
+      void refreshSnapshot();
+    };
 
-  useEffect(() => {
-    const onSessions = () => setSessionsTick((x) => x + 1);
-    window.addEventListener(TUTORWEB_EVENTS.sessionsUpdated, onSessions);
-    return () => window.removeEventListener(TUTORWEB_EVENTS.sessionsUpdated, onSessions);
+    void refreshSnapshot();
+    window.addEventListener(TUTORWEB_EVENTS.studentsUpdated, requestRefresh);
+    window.addEventListener(TUTORWEB_EVENTS.sessionsUpdated, requestRefresh);
+    return () => {
+      cancelled = true;
+      window.removeEventListener(TUTORWEB_EVENTS.studentsUpdated, requestRefresh);
+      window.removeEventListener(TUTORWEB_EVENTS.sessionsUpdated, requestRefresh);
+    };
   }, []);
 
   const metaMap = useMetaMap(token);
   const hydratedMetaMap = useMemo(() => (mounted ? metaMap : {}), [mounted, metaMap]);
-  const baseDatesISO = useMemo(() => buildBaseDatesISOByToken(token, 60), [token]);
+  const currentStudent = useMemo(
+    () => students.find((student) => student.token === token) ?? null,
+    [students, token]
+  );
+  const baseDatesISO = useMemo(() => (currentStudent ? buildBaseDatesISO(currentStudent, 60) : []), [currentStudent]);
 
   const { meta } = useMemo(() => {
     return computeEffectiveISO({
@@ -122,56 +124,14 @@ export default function SessionQuickActions({ role, token, index }: Props) {
     setOpen(true);
   };
 
-  function kstYmdFromISO(iso: string): string | null {
-    try {
-      const dt = new Date(iso);
-      if (!Number.isFinite(dt.getTime())) return null;
-      const parts = new Intl.DateTimeFormat("en-CA", {
-        timeZone: "Asia/Seoul",
-        year: "numeric",
-        month: "2-digit",
-        day: "2-digit",
-      }).formatToParts(dt);
-      const y = parts.find((p) => p.type === "year")?.value ?? "1970";
-      const m = parts.find((p) => p.type === "month")?.value ?? "01";
-      const d = parts.find((p) => p.type === "day")?.value ?? "01";
-      return `${y}-${m}-${d}`;
-    } catch {
-      return null;
-    }
-  }
-
-  function kstTimeFromISO(iso: string): string | null {
-    try {
-      const dt = new Date(iso);
-      if (!Number.isFinite(dt.getTime())) return null;
-      const parts = new Intl.DateTimeFormat("en-CA", {
-        timeZone: "Asia/Seoul",
-        hour: "2-digit",
-        minute: "2-digit",
-        hour12: false,
-      }).formatToParts(dt);
-      const hh = parts.find((p) => p.type === "hour")?.value ?? "00";
-      const mm = parts.find((p) => p.type === "minute")?.value ?? "00";
-      return `${hh}시 ${mm}분`;
-    } catch {
-      return null;
-    }
-  }
-
-  function formatYmdKor(ymd: string) {
-    const [, m, d] = ymd.split("-");
-    const mm = String(Number(m ?? "0"));
-    const dd = String(Number(d ?? "0"));
-    return `${mm}월 ${dd}일`;
-  }
-
   const currentSession = useMemo(() => {
-    void sessionsTick;
-    const owner = students.find((s) => s.token === token);
+    const owner = currentStudent;
     if (!owner) return null;
-    return sessionsByStudent(owner.id).find((s) => s.index === index) ?? null;
-  }, [sessionsTick, students, token, index]);
+    return buildStudentSessionsFromRows({
+      student: owner,
+      allSessions,
+    }).find((session) => session.index === index) ?? null;
+  }, [currentStudent, allSessions, index]);
 
   const meetUrl = typeof currentSession?.googleMeetUrl === "string" ? currentSession.googleMeetUrl.trim() : "";
   const calendarStatus = currentSession?.googleCalendarStatus ?? "pending";
@@ -198,14 +158,14 @@ export default function SessionQuickActions({ role, token, index }: Props) {
 
   const onCancel = () => setOpen(false);
 
-  const onSave = async (finalData: any) => {
+  const onSave = async (finalData: Partial<SessionMeta>) => {
     setIsSaving(true);
     try {
       await upsertMeta(token, index, {
         ...finalData,
         overrideSource: finalData.overrideDate ? "manual" : "",
       });
-      syncSessionDisplayAtByToken(token);
+      await syncSessionDisplayAtByToken(token);
       setOpen(false);
     } finally {
       setIsSaving(false);
@@ -252,6 +212,7 @@ export default function SessionQuickActions({ role, token, index }: Props) {
           index={index}
           teacherId={teacherId}
           students={students}
+          allSessions={allSessions}
           onCancel={onCancel}
           onSave={onSave}
           isSaving={isSaving}
@@ -269,18 +230,20 @@ function AdjustmentModalContent({
   index,
   teacherId,
   students,
+  allSessions,
   onCancel,
   onSave,
   isSaving,
 }: {
   mode: "edit" | "absent";
-  meta: any;
+  meta: SessionMeta;
   token: string;
   index: number;
   teacherId: string | null;
-  students: any[];
+  students: Student[];
+  allSessions: Session[];
   onCancel: () => void;
-  onSave: (finalData: any) => Promise<void>;
+  onSave: (finalData: Partial<SessionMeta>) => Promise<void>;
   isSaving: boolean;
 }) {
   const [checkPresent, setCheckPresent] = useState(meta.status === "present");
@@ -338,9 +301,12 @@ function AdjustmentModalContent({
 
     for (const st of owned) {
       const isSelf = st.token === token;
-      const bDates = buildBaseDatesISOByToken(st.token, 60);
+      const bDates = buildBaseDatesISO(st, 60);
       const mMap = readMetaMap(st.token);
-      const sessList = sessionsByStudent(st.id);
+      const sessList = buildStudentSessionsFromRows({
+        student: st,
+        allSessions,
+      });
 
       for (const s of sessList) {
         if (isSelf && s.index === index) continue;
@@ -358,7 +324,7 @@ function AdjustmentModalContent({
       }
     }
     return times.sort((a, b) => a.time.localeCompare(b.time, "ko") || a.name.localeCompare(b.name, "ko"));
-  }, [checkOverride, draftOverrideDate, teacherId, students, token, index]);
+  }, [checkOverride, draftOverrideDate, teacherId, students, allSessions, token, index]);
 
   const needReasonUI = checkAbsent || checkOverride || checkCarry;
 

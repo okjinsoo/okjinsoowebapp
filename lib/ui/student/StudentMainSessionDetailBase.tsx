@@ -5,13 +5,11 @@ import { useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { AUTH_EVENT } from "@/lib/auth/supabaseAuth";
 import { resolveSelectionForRole } from "@/lib/auth/loginSelection";
-import { loadStudents } from "@/lib/storage/students";
-import { pullSharedSnapshotAndHydrateWithOptions } from "@/lib/storage/sharedSnapshot";
 import {
   clearCurrentTeacherId,
-  loadTeachers,
   loadCurrentTeacherId,
   saveCurrentTeacherId,
+  TEACHERS_EVENT,
 } from "@/lib/storage/teachers";
 import type { Student, Teacher } from "@/lib/types/index";
 import SessionTopBarCore from "@/lib/ui/session/SessionTopBarCore";
@@ -23,6 +21,7 @@ import {
   loadCurrentStudentToken,
   saveCurrentStudentToken,
 } from "@/lib/ui/common/roleGateStorage";
+import { readRosterServerFirst } from "@/lib/storage/serverRead";
 
 export default function StudentMainSessionDetailBase({ role }: { role: "a" | "t" | "s" }) {
   const params = useParams();
@@ -45,8 +44,6 @@ export default function StudentMainSessionDetailBase({ role }: { role: "a" | "t"
     setToken(selection.studentToken);
     setTeacherId(selection.teacherId);
 
-    const selectedStudent = nextStudents.find((student) => student.token === selection.studentToken);
-
     if (selection.studentToken) saveCurrentStudentToken(selection.studentToken);
     else clearCurrentStudentToken();
 
@@ -57,59 +54,45 @@ export default function StudentMainSessionDetailBase({ role }: { role: "a" | "t"
   useEffect(() => {
     let cancelled = false;
 
-    async function bootstrap() {
-      const localStudents = loadStudents();
-      const localTeachers = loadTeachers();
-      if (!cancelled) {
-        setStudents(localStudents);
-        setTeachers(localTeachers);
-        applySelection(localStudents, localTeachers);
-      }
-
-      const snapshot = await pullSharedSnapshotAndHydrateWithOptions({ forceRemote: true });
+    const refreshRoster = async () => {
+      const next = await readRosterServerFirst();
       if (cancelled) return;
-      if (snapshot) {
-        setStudents(snapshot.students);
-        setTeachers(snapshot.teachers);
-        applySelection(snapshot.students, snapshot.teachers);
-      }
-    }
+      setStudents(next.students);
+      setTeachers(next.teachers);
+      applySelection(next.students, next.teachers);
+    };
 
-    void bootstrap();
+    void refreshRoster();
     return () => {
       cancelled = true;
     };
   }, [applySelection]);
 
   useEffect(() => {
-    const onGate = async () => {
-      const localStudents = loadStudents();
-      const localTeachers = loadTeachers();
-      setStudents(localStudents);
-      setTeachers(localTeachers);
-      applySelection(localStudents, localTeachers);
+    let cancelled = false;
 
-      const snapshot = await pullSharedSnapshotAndHydrateWithOptions({ forceRemote: true });
-      if (snapshot) {
-        setStudents(snapshot.students);
-        setTeachers(snapshot.teachers);
-        applySelection(snapshot.students, snapshot.teachers);
-      }
+    const refreshRoster = async () => {
+      const next = await readRosterServerFirst();
+      if (cancelled) return;
+      setStudents(next.students);
+      setTeachers(next.teachers);
+      applySelection(next.students, next.teachers);
     };
 
     const requestGateRefresh = () => {
-      void onGate();
+      void refreshRoster();
     };
 
     window.addEventListener(GATE_EVENT, requestGateRefresh);
     window.addEventListener(AUTH_EVENT, requestGateRefresh);
     window.addEventListener("tutorweb:studentsUpdated", requestGateRefresh);
-    window.addEventListener("tutorweb:teachersUpdated", requestGateRefresh);
+    window.addEventListener(TEACHERS_EVENT, requestGateRefresh);
     return () => {
+      cancelled = true;
       window.removeEventListener(GATE_EVENT, requestGateRefresh);
       window.removeEventListener(AUTH_EVENT, requestGateRefresh);
       window.removeEventListener("tutorweb:studentsUpdated", requestGateRefresh);
-      window.removeEventListener("tutorweb:teachersUpdated", requestGateRefresh);
+      window.removeEventListener(TEACHERS_EVENT, requestGateRefresh);
     };
   }, [applySelection]);
 

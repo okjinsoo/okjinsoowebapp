@@ -8,14 +8,16 @@ import {
   deleteFileFromDrive, 
   DriveFile 
 } from "@/lib/integrations/googleDriveSync";
-import { findStudentByToken, loadStudents } from "@/lib/storage/students";
 import { loadAuthSession } from "@/lib/auth/supabaseAuth";
 import {
-  pullSharedSnapshotAndHydrateWithOptions,
   readRemoteSharedStateKvValue,
 } from "@/lib/storage/sharedSnapshot";
 import { SHARED_DRIVE_ROOT_ID_KEY } from "@/lib/storage/sharedStateKeys";
 import type { Student } from "@/lib/types/index";
+import {
+  readStudentContextServerRequired,
+  readStudentsServerRequired,
+} from "@/lib/storage/serverRead";
 
 type Props = {
   open: boolean;
@@ -29,13 +31,34 @@ type Props = {
   onComplete: (driveLink: string) => void;
 };
 
+function normalizeEmail(email: string | null | undefined): string {
+  return (email ?? "").trim().toLowerCase();
+}
+
+function hasDriveFolderId(student: Student | null | undefined): student is Student {
+  return Boolean((student?.driveFolderId ?? "").trim());
+}
+
+function pickBestStudentByEmail(students: Student[], email: string): Student | null {
+  const matched = students.filter((student) => normalizeEmail(student.googleEmail) === email);
+  if (matched.length === 0) return null;
+
+  const activeWithLocker = matched.find((student) => student.status === "active" && hasDriveFolderId(student));
+  if (activeWithLocker) return activeWithLocker;
+
+  const withLocker = matched.find((student) => hasDriveFolderId(student));
+  if (withLocker) return withLocker;
+
+  const active = matched.find((student) => student.status === "active");
+  return active ?? matched[0] ?? null;
+}
+
 export default function DriveUploadModal({
   open,
   token,
   sessionIndex,
   contentTitle,
   submitType,
-  initialValue,
   rootFolderId,
   onClose,
   onComplete,
@@ -58,25 +81,24 @@ export default function DriveUploadModal({
     
     void (async () => {
       try {
-        const student = findStudentByToken(token);
+        const context = await readStudentContextServerRequired(token);
+        const student = context.student;
         if (!student) throw new Error("학생 정보를 찾을 수 없습니다.");
 
         const auth = loadAuthSession();
         const providerToken = auth?.providerAccessToken;
         if (!providerToken) throw new Error("구글 드라이브 연결 권한이 없습니다. 다시 로그인 해주세요.");
 
-        // 0. 최신 사물함 ID(Student 데이터) 실시간 동기화
-        // 원장님이 방금 설정했어도 학생이 페이지를 새로고침하지 않았을 수 있으므로 강제 pull 수행
-        try {
-          await pullSharedSnapshotAndHydrateWithOptions({ forceRemote: true });
-        } catch (pullErr) {
-          console.error("최신 설정 동기화 실패(무시하고 진행):", pullErr);
-        }
+        // 최신 학생 목록을 서버 우선으로 다시 조회 (사물함 배정 직후 반영용)
+        const allStudents = await readStudentsServerRequired();
+        const latestStudentById = allStudents.find((row) => row.id === student.id);
+        const latestStudentByToken = allStudents.find((row) => row.token === token);
+        const loginEmail = normalizeEmail(auth?.email);
+        const emailMatchedStudent = loginEmail ? pickBestStudentByEmail(allStudents, loginEmail) : null;
 
-        // 최 최신의 학생 정보를 다시 가져옴 (driveFolderId 반영 확인용)
-        const allStudents = loadStudents();
-        const latestStudent = allStudents.find(s => s.id === student.id);
-        const effectiveDriveFolderId = latestStudent?.driveFolderId || student.driveFolderId;
+        const candidateStudents = [latestStudentById, latestStudentByToken, emailMatchedStudent, student];
+        const bestCandidate = candidateStudents.find((row) => hasDriveFolderId(row)) ?? null;
+        const effectiveDriveFolderId = bestCandidate?.driveFolderId ?? "";
 
         if (!effectiveDriveFolderId) {
           throw new Error("원장님이 사물함을 아직 배정하지 않았습니다. 원장님께 [학생 사물함 일괄 정비]를 요청해 주세요.");
@@ -110,7 +132,7 @@ export default function DriveUploadModal({
         setLoading(false);
       }
     })();
-  }, [open, token, sessionIndex, contentTitle, submitType]);
+  }, [open, token, sessionIndex, contentTitle, submitType, rootFolderId]);
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFiles = e.target.files;
@@ -136,7 +158,7 @@ export default function DriveUploadModal({
       // 목록 새로고침
       const nextFiles = await listFiles({ token: providerToken, folderId });
       setFiles(nextFiles);
-    } catch (err) {
+    } catch {
       setError("업로드 중 오류가 발생했습니다.");
     } finally {
       setUploading(false);
@@ -155,7 +177,7 @@ export default function DriveUploadModal({
     try {
       await deleteFileFromDrive({ token: providerToken, fileId });
       setFiles(prev => prev.filter(f => f.id !== fileId));
-    } catch (err) {
+    } catch {
       setError("삭제 중 오류가 발생했습니다.");
     }
   };
@@ -209,7 +231,7 @@ export default function DriveUploadModal({
               <p>{error}</p>
               {error.includes("만료") && (
                 <p className="mt-2 font-bold text-red-800">
-                  ⚠️ 홈 화면에서 로그아웃 후 다시 로그인하여 'Drive 권한'을 승인해 주세요.
+                  ⚠️ 홈 화면에서 로그아웃 후 다시 로그인하여 &apos;Drive 권한&apos;을 승인해 주세요.
                 </p>
               )}
               <button 

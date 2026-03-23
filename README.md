@@ -1,36 +1,121 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# TutorWEB v1 (옥진수학)
 
-## Getting Started
+옥진수학의 관리자(a) / 선생님(t) / 학생(s) 권한 기반 수업 관리 웹앱입니다.
 
-First, run the development server:
+핵심 목표:
+- 구글 로그인으로 빠르게 접속
+- 역할별 화면 분리 (`/a`, `/t`, `/s`)
+- 학생/선생님/회차/상담 데이터를 로컬 + Supabase 스냅샷으로 동기화
+
+## 1) 기술 스택
+
+- Next.js 16 (App Router)
+- React 19
+- TypeScript (strict)
+- Tailwind CSS v4
+- Supabase (Auth + PostgREST)
+- Vitest, ESLint
+
+## 2) 빠른 시작
+
+### 2-1. 설치
+
+```bash
+npm install
+```
+
+### 2-2. 환경변수 설정
+
+`.env.local`을 만들고 아래 값을 넣어주세요.
+
+```bash
+NEXT_PUBLIC_SUPABASE_URL=https://YOUR_PROJECT_REF.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=YOUR_SUPABASE_ANON_KEY
+SUPABASE_SERVICE_ROLE_KEY=YOUR_SUPABASE_SERVICE_ROLE_KEY
+AUTH_BRIDGE_COOKIE_SECRET=SET_A_LONG_RANDOM_SECRET_FOR_AUTH_BRIDGE
+CRON_BACKUP_SECRET=SET_A_LONG_RANDOM_SECRET
+```
+
+참고:
+- `CRON_BACKUP_SECRET`은 일일 백업 API 보호용입니다.
+- `AUTH_BRIDGE_COOKIE_SECRET`은 브리지 쿠키 위변조 방지(HMAC 서명)용입니다.
+- 코드에서는 `CRON_SECRET`도 fallback으로 읽습니다.
+
+### 2-3. 개발 서버 실행
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+브라우저에서 `http://localhost:3000` 접속
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## 3) 주요 명령어
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+npm run dev       # 개발 서버
+npm run build     # 프로덕션 빌드
+npm run start     # 프로덕션 실행
+npm run lint      # ESLint
+npm test          # Vitest watch
+npm run test:run  # Vitest 1회 실행
+```
 
-## Learn More
+## 4) 폴더 구조
 
-To learn more about Next.js, take a look at the following resources:
+```text
+app/                  # App Router 페이지 + API 라우트
+  api/                # 내부 API
+  a/ t/ s/            # 역할별 화면
+lib/
+  auth/               # 로그인/권한 처리
+  server/             # 서버 전용 Supabase 접근
+  storage/            # 로컬 저장 + 공유 스냅샷 동기화
+  ui/                 # 공용/역할별 UI
+db/migrations/        # Supabase SQL 마이그레이션
+docs/                 # 운영/배포/체크리스트 문서
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## 5) 라우트 개요
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+### 페이지
 
-## Deploy on Vercel
+- `/` 홈/로그인
+- `/auth/callback` OAuth 복귀
+- `/a/*` 관리자
+- `/t/*` 선생님
+- `/s/*` 학생
+- `/policy`
+- `/lib/lectures`
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+### API
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- `/api/auth/bridge` (브리지 쿠키 동기화)
+- `/api/auth/me`
+- `/api/snapshot`
+- `/api/students`
+- `/api/students/[id]/sessions`
+- `/api/students/[id]/consultations`
+- `/api/teachers`
+- `/api/ops/backup/daily`
+
+## 6) 권한 규칙(요약)
+
+- 관리자: 코드에 고정된 이메일(`rapah0310@gmail.com`)
+- 선생님/학생: `role_bindings` + 스냅샷 fallback
+- 경로 보호:
+  - 미들웨어: `/a`, `/t`, `/s` 1차 차단
+  - 클라이언트 가드: `RoleRouteGuard`로 2차 확인
+  - API: `resolveViewerContext`로 최종 권한 확인
+
+## 7) 운영 문서
+
+- [Supabase + Google 로그인 설정](docs/supabase-google-login-setup.md)
+- [일일 자동 백업 설정](docs/daily-backup-setup.md)
+- [수동 회귀 테스트 체크리스트](docs/manual-regression-checklist.md)
+- [인증 보안 우선순위](docs/auth-security-priority-2026-03-21.md)
+
+## 8) 현재 주의사항
+
+- 기본 `README`를 실제 구조에 맞게 갱신한 상태입니다.
+- 인증 보안 개선 우선순위는 `docs/auth-security-priority-2026-03-21.md`에 정리되어 있습니다.
+- `docs/api-auth-matrix.md`는 일부 엔드포인트가 현재 코드와 다를 수 있어, 다음 리팩터링 때 동기화가 필요합니다.

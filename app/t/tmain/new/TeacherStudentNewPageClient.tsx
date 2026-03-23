@@ -1,13 +1,11 @@
 // app/t/tmain/new/TeacherStudentNewPageClient.tsx
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import type { Teacher } from "@/lib/types/index";
 import { findTeacherByLoginEmail } from "@/lib/auth/loginSelection";
-import { pullSharedSnapshotAndHydrate } from "@/lib/storage/sharedSnapshot";
+import { useTeachersServerFirst } from "@/lib/hooks/useTeachersServerFirst";
 import {
-  loadTeachers,
   saveCurrentTeacherId,
   loadCurrentTeacherId,
 } from "@/lib/storage/teachers";
@@ -16,46 +14,28 @@ import StudentNewClient from "@/lib/ui/student/StudentNewClient";
 export default function TeacherStudentNewPageClient({ basePath = "/t/tmain" }: { basePath?: string }) {
   const router = useRouter();
 
-  const [teachers, setTeachers] = useState<Teacher[]>(() => loadTeachers());
-  const [teacherId, setTeacherId] = useState<string | null>(null);
-  const [hydrated, setHydrated] = useState(false);
+  const { teachers, loaded } = useTeachersServerFirst();
+  const matchedTeacherId = useMemo(() => {
+    if (!loaded) return null;
+    return findTeacherByLoginEmail(teachers)?.id ?? null;
+  }, [loaded, teachers]);
 
   useEffect(() => {
-    let cancelled = false;
+    if (!matchedTeacherId) return;
+    saveCurrentTeacherId(matchedTeacherId);
+  }, [matchedTeacherId]);
 
-    async function bootstrap() {
-      try {
-        await pullSharedSnapshotAndHydrate();
-      } catch (err) {
-        console.error("공유 스냅샷 불러오기 실패(teacher new):", err);
-      }
-      if (cancelled) return;
-
-      const nextTeachers = loadTeachers();
-      setTeachers(nextTeachers);
-
-      const matchedTeacherId = findTeacherByLoginEmail(nextTeachers)?.id ?? null;
-      if (matchedTeacherId) {
-        saveCurrentTeacherId(matchedTeacherId);
-        setTeacherId(matchedTeacherId);
-      } else {
-        setTeacherId(loadCurrentTeacherId());
-      }
-      setHydrated(true);
-    }
-
-    void bootstrap();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const teacherId = useMemo(() => {
+    if (!loaded) return null;
+    return matchedTeacherId ?? loadCurrentTeacherId();
+  }, [loaded, matchedTeacherId]);
 
   const teacherName = useMemo(() => {
     if (!teacherId) return "";
     return teachers.find((t) => t.id === teacherId)?.name ?? "";
   }, [teachers, teacherId]);
 
-  if (!hydrated) {
+  if (!loaded) {
     return (
       <main className="p-6" style={{ maxWidth: 720, margin: "0 auto" }}>
         <h1 className="page-title">신규 학생 등록 (선생님)</h1>

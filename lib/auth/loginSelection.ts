@@ -18,6 +18,33 @@ function loginEmail(): string {
   return normalizeEmail(loadAuthSession()?.email);
 }
 
+function hasDriveFolder(student: Student): boolean {
+  return Boolean((student.driveFolderId ?? "").trim());
+}
+
+function pickBestStudentByEmail(args: {
+  students: Student[];
+  email: string;
+  preferredToken?: string | null;
+}): Student | null {
+  const matched = args.students.filter((student) => normalizeEmail(student.googleEmail) === args.email);
+  if (matched.length === 0) return null;
+
+  if (args.preferredToken) {
+    const preferred = matched.find((student) => student.token === args.preferredToken);
+    if (preferred) return preferred;
+  }
+
+  const activeWithLocker = matched.find((student) => student.status === "active" && hasDriveFolder(student));
+  if (activeWithLocker) return activeWithLocker;
+
+  const withLocker = matched.find((student) => hasDriveFolder(student));
+  if (withLocker) return withLocker;
+
+  const active = matched.find((student) => student.status === "active");
+  return active ?? matched[0] ?? null;
+}
+
 export function findTeacherByLoginEmail(teachers: Teacher[]): Teacher | null {
   const email = loginEmail();
   if (!email) return null;
@@ -27,7 +54,7 @@ export function findTeacherByLoginEmail(teachers: Teacher[]): Teacher | null {
 export function findStudentByLoginEmail(students: Student[]): Student | null {
   const email = loginEmail();
   if (!email) return null;
-  return students.find((student) => normalizeEmail(student.googleEmail) === email) ?? null;
+  return pickBestStudentByEmail({ students, email });
 }
 
 function pickTeacherStudentToken(args: {
@@ -55,7 +82,14 @@ export function resolveSelectionForRole(args: {
   const { role, teachers, students, savedTeacherId, savedStudentToken } = args;
 
   if (role === "s") {
-    const matchedStudent = findStudentByLoginEmail(students);
+    const email = loginEmail();
+    const matchedStudent = email
+      ? pickBestStudentByEmail({
+          students,
+          email,
+          preferredToken: savedStudentToken,
+        })
+      : null;
     if (matchedStudent) {
       return {
         teacherId: matchedStudent.teacherId ?? null,

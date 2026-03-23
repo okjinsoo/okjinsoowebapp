@@ -9,6 +9,12 @@ import {
   saveAuthSession,
 } from "@/lib/auth/supabaseAuth";
 
+function normalizeNextPath(path: string): string {
+  const next = path.trim();
+  if (!next.startsWith("/") || next.startsWith("//")) return "";
+  return next;
+}
+
 export default function AuthCallbackPage() {
   const [status, setStatus] = useState<"loading" | "done" | "error">("loading");
   const [message, setMessage] = useState("로그인 정보를 확인하고 있어요...");
@@ -58,11 +64,13 @@ export default function AuthCallbackPage() {
           providerExpiresAt,
         });
 
+        const nextPath = normalizeNextPath(new URLSearchParams(window.location.search).get("next") ?? "");
+
         if (cancelled) return;
         setStatus("done");
-        setMessage("로그인이 완료됐어요. 홈으로 이동합니다.");
+        setMessage("로그인이 완료됐어요. 원래 화면으로 이동합니다.");
         setTimeout(() => {
-          window.location.replace("/");
+          window.location.replace(nextPath || "/");
         }, 700);
       } catch (err) {
         if (cancelled) return;

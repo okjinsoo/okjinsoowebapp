@@ -1,23 +1,5 @@
-// v1/app/a/tmain/[token]/edit/page.tsx
-"use client";
-
-import React, { useEffect, useState } from "react";
-import { useParams } from "next/navigation";
-import { loadTeachers } from "@/lib/storage/teachers";
-import StudentEditClient from "@/lib/ui/student/StudentEditClient";
-import type { Teacher } from "@/lib/types/index";
+import StudentEditTokenPageClient from "@/lib/ui/student/StudentEditTokenPageClient";
 
 export default function AdminTeacherStudentEditPage() {
-  const params = useParams();
-  const token = String(params?.token ?? "");
-  const [teachers, setTeachers] = useState<Teacher[]>([]);
-
-  useEffect(() => {
-    const id = setTimeout(() => setTeachers(loadTeachers()), 0);
-    return () => clearTimeout(id);
-  }, []);
-
-  return (
-    <StudentEditClient mode="admin" teachers={teachers} token={token} onDoneGoTo={`/a/tmain`} />
-  );
+  return <StudentEditTokenPageClient mode="admin" onDoneGoTo="/a/tmain" />;
 }

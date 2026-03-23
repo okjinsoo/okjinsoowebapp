@@ -1,112 +1,99 @@
-# TutorWEB API 권한표 템플릿 (v1)
+# TutorWEB API 권한표 (실구현 기준)
 
-작성일: 2026-02-05  
-원칙: `deny by default` (표에 없는 것은 기본 403)
+작성일: 2026-03-21  
+기준 코드: `app/api/**/route.ts`, `lib/server/supabaseSnapshotApi.ts`
 
-## 응답코드 규칙
-- `401`: 로그인 안 됨(세션 없음/만료)
-- `403`: 로그인은 됐지만 권한 없음
-- `404`: 리소스 없음(또는 존재 은닉 정책)
+이 문서는 "현재 실제 동작"을 기준으로 작성했습니다.  
+즉, 과거 설계안이 아니라 **지금 코드가 어떻게 응답하는지**를 정리한 표입니다.
 
 ---
 
-## 1) 인증
+## 0) 공통 응답 규칙
 
-| Method | Endpoint | a | t | s | 소유권 규칙 | 감사로그 |
-|---|---|---|---|---|---|---|
-| POST | `/api/auth/login` | 허용 | 허용 | 허용 | 계정+비번 확인 | `AUTH_LOGIN` |
-| POST | `/api/auth/logout` | 허용 | 허용 | 허용 | 본인 세션만 | `AUTH_LOGOUT` |
-| GET | `/api/auth/me` | 허용 | 허용 | 허용 | 본인 | 없음 |
+- `200`: 정상 처리
+- `400`: 요청 바디 형식 오류(예: JSON 깨짐, 필수 필드 누락)
+- `401`: 인증 실패 또는 권한 없음(일부 엔드포인트는 403 대신 401 사용)
+- `403`: 로그인은 되었지만 해당 학생 데이터 소유권 없음
+- `500`: 서버 처리 실패
 
----
-
-## 2) 학생
-
-| Method | Endpoint | a | t | s | 소유권 규칙 | 감사로그 |
-|---|---|---|---|---|---|---|
-| GET | `/api/students` | 허용 | 허용(담당만) | 금지 | t는 `teacher_students` 관계 필수 | 없음 |
-| POST | `/api/students` | 허용 | 금지 | 금지 | a만 생성 | `STUDENT_CREATE` |
-| GET | `/api/students/:id` | 허용 | 허용(담당만) | 허용(본인만) | t=담당, s=본인 | 없음 |
-| PATCH | `/api/students/:id` | 허용 | 제한허용(담당+허용필드) | 금지 | 필드 권한 분리 필요 | `STUDENT_UPDATE` |
-| DELETE(soft) | `/api/students/:id` | 허용 | 금지 | 금지 | hard delete 금지 | `STUDENT_DISABLE` |
+주의:
+- `/api/snapshot POST`는 내부 에러 문자열이 `unauthorized`를 포함하면 `401`, 아니면 `500`으로 응답합니다.
+- 그래서 일부 "권한 거절"도 구현상 `403`이 아닌 `401`로 내려올 수 있습니다.
 
 ---
 
-## 3) 선생
+## 1) 인증/세션 브리지
 
-| Method | Endpoint | a | t | s | 소유권 규칙 | 감사로그 |
-|---|---|---|---|---|---|---|
-| GET | `/api/teachers` | 허용 | 금지/제한 | 금지 | 운영 정책에 맞게 | 없음 |
-| POST | `/api/teachers` | 허용 | 금지 | 금지 | a만 | `TEACHER_CREATE` |
-| GET | `/api/teachers/:id` | 허용 | 허용(본인만) | 금지 | t는 자기 id만 | 없음 |
-| PATCH | `/api/teachers/:id` | 허용 | 허용(본인 제한필드) | 금지 | 필드 권한 분리 | `TEACHER_UPDATE` |
-
----
-
-## 4) 담당 관계(teacher_students)
-
-| Method | Endpoint | a | t | s | 소유권 규칙 | 감사로그 |
-|---|---|---|---|---|---|---|
-| POST | `/api/teacher-students` | 허용 | 금지 | 금지 | 중복 금지(`unique`) | `TEACHER_STUDENT_ATTACH` |
-| DELETE(soft) | `/api/teacher-students/:teacherId/:studentId` | 허용 | 금지 | 금지 | a만 | `TEACHER_STUDENT_DETACH` |
+| Method | Endpoint | 인증 필요 | 권한 규칙 | 주요 응답 |
+|---|---|---|---|---|
+| POST | `/api/auth/bridge` | 없음(동일 출처 호출 전제) | `accessToken`이 바디에 있어야 함. 서버가 서명된 `httpOnly` 쿠키 발급 | `200`, `400(access_token_missing/invalid_json)`, `500(bridge_secret_missing)` |
+| DELETE | `/api/auth/bridge` | 없음(동일 출처 호출 전제) | 브리지 쿠키 삭제 | `200` |
+| GET | `/api/auth/me` | 필요 | `resolveViewerContext` 성공 시 본인 정보 반환 | `200`, `401`, `500` |
 
 ---
 
-## 5) 회차/회차메타
+## 2) 스냅샷 API
 
-| Method | Endpoint | a | t | s | 소유권 규칙 | 감사로그 |
-|---|---|---|---|---|---|---|
-| GET | `/api/students/:id/sessions` | 허용 | 허용(담당만) | 허용(본인만) | 역할+소유권 필수 | 없음 |
-| PATCH | `/api/students/:id/sessions/:index/meta` | 허용 | 허용(담당만) | 금지 | 출결/조정은 a,t만 | `SESSION_META_UPDATE` |
-| POST | `/api/students/:id/sessions/rebuild` | 허용 | 제한허용 | 금지 | 정책 필요(보통 a) | `SESSION_REBUILD` |
+| Method | Endpoint | 인증 필요 | 권한 규칙 | 주요 응답 |
+|---|---|---|---|---|
+| GET | `/api/snapshot` | 필요 | 학생은 본인 `students/sessions`만 필터링되어 반환, 관리자/선생님은 역할 범위 데이터 반환 | `200`, `401`, `500` |
+| POST | `/api/snapshot` | 필요 | 아래 "세부 권한" 참고 | `200`, `401`, `500` |
 
----
+### `/api/snapshot POST` 세부 권한
 
-## 6) 상담
+- `admin`
+  - `teachers/students/sessions/stateKv` 수정 가능
+- `teacher`
+  - `teachers` 수정 불가
+  - `students/sessions/stateKv`는 서버 검증 통과 시 수정 가능
+- `student`
+  - 본인 학생 레코드 1건만 수정 가능
+  - `planCount/paymentHistory` 수정 시도 차단
+  - `sessions/teachers/stateKv` 수정 차단
 
-| Method | Endpoint | a | t | s | 소유권 규칙 | 감사로그 |
-|---|---|---|---|---|---|---|
-| GET | `/api/students/:id/consultations` | 허용 | 허용(담당만) | 허용(본인 정책에 따라 읽기 제한) | 역할+소유권 | 없음 |
-| POST | `/api/students/:id/consultations` | 허용 | 허용(담당만) | 금지 | 목적별 필드 검증 | `CONSULT_CREATE` |
-| PATCH | `/api/students/:id/consultations/:consultId` | 허용 | 제한허용 | 금지 | `finalResult`류는 a만 | `CONSULT_UPDATE` |
-| DELETE | `/api/students/:id/consultations/:consultId` | 허용(정책) | 제한/금지 | 금지 | 삭제 정책 확정 필요 | `CONSULT_DELETE` |
-
----
-
-## 7) 결제/환불
-
-| Method | Endpoint | a | t | s | 소유권 규칙 | 감사로그 |
-|---|---|---|---|---|---|---|
-| GET | `/api/students/:id/payments` | 허용 | 허용(담당만) | 금지/제한 | 개인정보 정책 반영 | 없음 |
-| POST | `/api/students/:id/payments` | 허용 | 제한허용 | 금지 | 결제완료 체크 정책 필요 | `PAYMENT_APPEND` |
-| PATCH | `/api/students/:id/payments/:paymentId` | 허용 | 제한허용 | 금지 | 인덱스 재계산 포함 | `PAYMENT_UPDATE` |
-| POST | `/api/students/:id/payments/:paymentId/refund` | 허용 | 제한허용(요청만) | 금지 | 완료처리는 a 우선 | `REFUND_UPDATE` |
+추가 서버 가드:
+- 대량 삭제 의심 패치 차단 로직 존재 (`server_blocked_mass_deletion`)
 
 ---
 
-## 8) 관리자 대시보드 집계
+## 3) 학생/선생 조회 API
 
-| Method | Endpoint | a | t | s | 소유권 규칙 | 감사로그 |
-|---|---|---|---|---|---|---|
-| GET | `/api/admin/summary` | 허용 | 금지 | 금지 | a만 | 없음 |
-| GET | `/api/admin/pause-requests` | 허용 | 금지 | 금지 | a만 | 없음 |
-| GET | `/api/admin/extension-needed` | 허용 | 금지 | 금지 | a만 | 없음 |
-
----
-
-## 9) CSRF 적용 대상(상태 변경 API)
-- POST / PATCH / DELETE 전부
-- 최소 적용 대상:
-  - 상담 생성/수정/삭제
-  - 결제 생성/수정/환불 처리
-  - 회차 메타 변경(출결/조정/숨김)
-  - 학생/선생 수정
+| Method | Endpoint | 인증 필요 | 소유권/필터 규칙 | 주요 응답 |
+|---|---|---|---|---|
+| GET | `/api/students` | 필요 | `admin`: 전체, `teacher`: 본인 담당만, `student`: 본인만 | `200`, `401`, `500` |
+| GET | `/api/teachers` | 필요 | `admin`: 전체, `teacher`: 본인만, `student`: 본인 담당 선생님만 | `200`, `401`, `500` |
+| GET | `/api/students/:id/sessions` | 필요 | `canReadStudent` 통과 시만 조회 (`admin` 전체, `teacher` 담당 학생, `student` 본인) | `200`, `401`, `403`, `500` |
+| GET | `/api/students/:id/consultations` | 필요 | `canReadStudent` 통과 시만 조회 (`admin` 전체, `teacher` 담당 학생, `student` 본인) | `200`, `401`, `403`, `500` |
 
 ---
 
-## 10) 구현 체크
-- [ ] 모든 상태변경 API에 `401/403/404` 분리 적용
-- [ ] 모든 조회 API에 소유권 조건(DB 관계) 포함
-- [ ] 감사로그 action 명세와 실제 코드 1:1 매핑
-- [ ] 표에 없는 API는 기본 403
+## 4) 운영 백업 API
 
+| Method | Endpoint | 인증 필요 | 권한 규칙 | 주요 응답 |
+|---|---|---|---|---|
+| GET | `/api/ops/backup/daily` | 필요 | `Authorization: Bearer <CRON_BACKUP_SECRET>` 또는 관리자 세션 | `200`, `401`, `500` |
+| POST | `/api/ops/backup/daily` | 필요 | GET과 동일 (`POST`는 내부적으로 GET 호출) | `200`, `401`, `500` |
+
+---
+
+## 5) 현재 없는 엔드포인트 (중요)
+
+아래 API는 현재 코드에 없습니다.
+
+- `/api/auth/login`
+- `/api/auth/logout`
+- `/api/students/:id` (GET/PATCH/DELETE)
+- `/api/teachers/:id` (GET/PATCH)
+- `/api/teacher-students/*`
+- `/api/students/:id/payments*`
+- `/api/admin/*`
+
+즉, 이전 설계 문서에서만 보이고 실제 구현은 아직 없는 상태입니다.
+
+---
+
+## 6) 운영 체크리스트
+
+- [ ] 새 API를 추가할 때 이 문서를 같은 날 업데이트했는가
+- [ ] `401/403/500` 응답코드가 문서와 일치하는가
+- [ ] 소유권 함수(`canReadStudent` 등) 변경 시 표를 같이 수정했는가

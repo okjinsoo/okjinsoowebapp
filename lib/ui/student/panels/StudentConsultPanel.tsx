@@ -4,6 +4,7 @@ import { type SessionRole as Role } from "@/lib/policies/sessionRolePolicy";
 import Badge from "@/lib/ui/common/Badge";
 import ConsultModal from "@/lib/ui/common/ConsultModal";
 import { ConsultButton } from "@/lib/ui/common/ConsultParts";
+import type { ConsultTag } from "@/lib/ui/session/consultationMap";
 
 const formatYmdDot = (ymd?: string) => {
     if (!ymd) return "-";
@@ -111,7 +112,7 @@ export function StudentConsultPanel({
                                     </div>
                                     <div style={{ display: "flex", justifyContent: "flex-end" }}>
                                         {(() => {
-                                            const tag: any =
+                                            const tag: ConsultTag =
                                                 r.purpose === "general"
                                                     ? {
                                                         purpose: "general",

@@ -1,16 +1,17 @@
 "use client";
 
 import { buildBaseDatesISO, computeEffectiveISO, readMetaMap } from "@/lib/factories/sessionFactories";
-import { loadSessions, saveSessions } from "@/lib/storage/sessions";
-import { findStudentByToken } from "@/lib/storage/students";
+import { findStudentByTokenInRows, readSnapshotServerFirst } from "@/lib/storage/serverRead";
+import { saveSessionsServerFirst } from "@/lib/storage/sessions";
 
-export function syncSessionDisplayAtByToken(token: string): void {
+export async function syncSessionDisplayAtByToken(token: string): Promise<void> {
   if (!token) return;
 
-  const student = findStudentByToken(token);
+  const snapshot = await readSnapshotServerFirst();
+  const student = findStudentByTokenInRows(token, snapshot.students);
   if (!student) return;
 
-  const sessions = loadSessions();
+  const sessions = snapshot.sessions;
   const own = sessions.filter((s) => s.studentId === student.id);
   if (own.length === 0) return;
 
@@ -37,6 +38,9 @@ export function syncSessionDisplayAtByToken(token: string): void {
   });
 
   if (!changed) return;
-  saveSessions(next);
+  try {
+    await saveSessionsServerFirst(next);
+  } catch (err) {
+    console.error("회차 날짜 동기화 서버 저장 실패:", err);
+  }
 }
-

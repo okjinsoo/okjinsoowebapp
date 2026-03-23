@@ -31,13 +31,6 @@ type SnapshotRow = {
   state_kv?: Record<string, unknown> | null;
 };
 
-// [Safety] 서버 데이터가 한 번이라도 성공적으로 로드되었는지 확인하는 플래그
-let isInitialDataLoaded = false;
-
-export function markInitialDataLoaded() {
-  isInitialDataLoaded = true;
-}
-
 type InternalSnapshotResponse = {
   ok?: boolean;
   snapshot?: {
@@ -51,6 +44,14 @@ type InternalSnapshotResponse = {
   value?: string | null;
   sessionsSynced?: boolean;
   stateKvSynced?: boolean;
+};
+
+type InternalSnapshotBody = {
+  teachers?: Teacher[];
+  students?: Student[];
+  sessions?: Session[];
+  stateKv?: Record<string, string>;
+  dropStateKeys?: string[];
 };
 
 type FetchRowsResult =
@@ -172,13 +173,7 @@ function buildInternalSnapshotUrl(args?: { stateKey?: string; digest?: string })
 
 async function fetchInternalSnapshot(args?: {
   stateKey?: string;
-  body?: {
-    teachers?: Teacher[];
-    students?: Student[];
-    sessions?: Session[];
-    stateKv?: Record<string, string>;
-    dropStateKeys?: string[];
-  };
+  body?: InternalSnapshotBody;
 }): Promise<InternalSnapshotResponse | null> {
   if (typeof window === "undefined") return null;
 
@@ -496,11 +491,7 @@ export async function pushSharedSnapshot(args?: PushSharedSnapshotArgs): Promise
   const sessions = hasSessionsArg ? (args?.sessions ?? []) : undefined;
   const stateKvPatch = hasStateKvArg ? toStateKv(args?.stateKv ?? {}) : undefined;
 
-  const localStudents = readLocalStudents();
-  // 모든 데이터 전송 차단 가드 제거 (사용자 명령 우선)
-  const incomingStudents = hasStudentsArg ? (args?.students ?? []) : localStudents;
-
-  const body: any = {};
+  const body: InternalSnapshotBody = {};
   if (hasTeachersArg) body.teachers = teachers;
   if (hasStudentsArg) body.students = students;
   if (hasSessionsArg) body.sessions = sessions;

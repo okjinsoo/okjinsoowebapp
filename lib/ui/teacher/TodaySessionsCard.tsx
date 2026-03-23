@@ -2,24 +2,22 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Badge from "@/lib/ui/common/Badge";
 import { saveCurrentStudentToken } from "@/lib/ui/common/roleGateStorage";
 import SessionQuickActions from "@/lib/ui/session/SessionQuickActions";
-import { saveConsultationsByStudent, loadConsultationsByStudent } from "@/lib/storage/consultations";
-import { loadStudents, upsertStudent } from "@/lib/storage/students";
-import { normalizeConsultPurpose, validateConsultForm } from "@/lib/factories/consultationFactory";
-import { computePauseLifecycle } from "@/lib/factories/studentStatusFactory";
+import { saveConsultationsByStudent } from "@/lib/storage/consultations";
+import { upsertStudent } from "@/lib/storage/students";
 import { ConsultBadge, ConsultButton } from "@/lib/ui/common/ConsultParts";
 import AchievementBadge from "@/lib/ui/common/AchievementBadge";
 import { getSessionStatusBadge } from "@/lib/ui/common/sessionStatusBadge";
 import { getSessionExtraBadgeStyle } from "@/lib/ui/common/sessionExtraBadge";
 import ConsultModal, { ConsultFormState } from "@/lib/ui/common/ConsultModal";
-import { makeId } from "@/lib/utils/id";
-import { nowIso, todayYmdKST, ymdFromISO_KST } from "@/lib/utils/date";
+import { todayYmdKST, ymdFromISO_KST } from "@/lib/utils/date";
 import { submitConsultation } from "@/lib/ui/student/hooks/useConsultationSubmit";
+import { TUTORWEB_EVENTS } from "@/lib/events/tutorwebEvents";
+import { readSnapshotServerFirst } from "@/lib/storage/serverRead";
 import { ConsultationRecord, PaymentRecord, Session, Student } from "@/lib/types/index";
-import { buildConsultationRecord } from "@/lib/factories/consultationFactory";
 
 export type TodaySessionRow = {
   studentId: string;
@@ -93,11 +91,46 @@ export default function TodaySessionsCard({
   });
   const [consultError, setConsultError] = useState("");
   const [isSaving, setIsSaving] = useState(false);
+  const [studentsById, setStudentsById] = useState<Record<string, Student>>({});
+  const [consultationsByStudent, setConsultationsByStudent] = useState<Record<string, ConsultationRecord[]>>({});
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const refreshSnapshot = async () => {
+      const next = await readSnapshotServerFirst();
+      if (cancelled) return;
+
+      const nextStudentsById: Record<string, Student> = {};
+      for (const student of next.students) {
+        nextStudentsById[student.id] = student;
+      }
+      setStudentsById(nextStudentsById);
+      setConsultationsByStudent(next.consultations);
+    };
+
+    const requestRefresh = () => {
+      void refreshSnapshot();
+    };
+
+    void refreshSnapshot();
+    window.addEventListener(TUTORWEB_EVENTS.studentsUpdated, requestRefresh);
+    window.addEventListener(TUTORWEB_EVENTS.consultationsUpdated, requestRefresh);
+    return () => {
+      cancelled = true;
+      window.removeEventListener(TUTORWEB_EVENTS.studentsUpdated, requestRefresh);
+      window.removeEventListener(TUTORWEB_EVENTS.consultationsUpdated, requestRefresh);
+    };
+  }, []);
+
+  const consultListOf = (studentId: string): ConsultationRecord[] => {
+    return consultationsByStudent[studentId] ?? [];
+  };
 
   function openConsult(row: TodaySessionRow) {
     setConsultStudentId(row.studentId);
     if (row.consultTag?.recordId) {
-      const list = loadConsultationsByStudent(row.studentId);
+      const list = consultListOf(row.studentId);
       const record = list.find((r) => r.id === row.consultTag?.recordId);
       if (record) {
         setConsultEditingId(record.id);
@@ -147,10 +180,10 @@ export default function TodaySessionsCard({
 
   async function saveConsult(finalForm: ConsultFormState) {
     if (!consultStudentId) return;
-    const student = loadStudents().find((s) => s.id === consultStudentId);
+    const student = studentsById[consultStudentId] ?? null;
     if (!student) return;
 
-    const list = loadConsultationsByStudent(consultStudentId);
+    const list = consultListOf(consultStudentId);
     const history = student.paymentHistory ?? [];
     const sessions: Session[] = []; // TodaySessionsCard에서는 세션 목록을 비워둬도 기본 저장 가능
 
@@ -174,11 +207,17 @@ export default function TodaySessionsCard({
 
             upsertStudent(updatedStudent);
             saveConsultationsByStudent(student.id, nextConsultRecords);
+            setStudentsById((prev) => ({ ...prev, [student.id]: updatedStudent }));
+            setConsultationsByStudent((prev) => ({ ...prev, [student.id]: nextConsultRecords }));
             return true;
           },
           persistConsultationState: async (recs: ConsultationRecord[], patch?: Student) => {
-            if (patch) upsertStudent(patch);
+            if (patch) {
+              upsertStudent(patch);
+              setStudentsById((prev) => ({ ...prev, [student.id]: patch }));
+            }
             saveConsultationsByStudent(student.id, recs);
+            setConsultationsByStudent((prev) => ({ ...prev, [student.id]: recs }));
             return true;
           },
         },
@@ -200,9 +239,10 @@ export default function TodaySessionsCard({
 
   function deleteConsult() {
     if (!consultStudentId || !consultEditingId) return;
-    const list = loadConsultationsByStudent(consultStudentId);
+    const list = consultListOf(consultStudentId);
     const updated = list.filter((r) => r.id !== consultEditingId);
     saveConsultationsByStudent(consultStudentId, updated);
+    setConsultationsByStudent((prev) => ({ ...prev, [consultStudentId]: updated }));
     setConsultOpen(false);
   }
 
@@ -291,7 +331,13 @@ export default function TodaySessionsCard({
                     ) : null}
                   </div>
                 </Link>
-                <div onClick={(e) => e.stopPropagation()} style={{ display: "flex", gap: 6 }}>
+                <div 
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    e.preventDefault();
+                  }} 
+                  style={{ display: "flex", gap: 6, position: "relative", zIndex: 10 }}
+                >
                   <SessionQuickActions role={role} token={r.token} index={r.index} />
                   <ConsultButton tag={r.consultTag} onClick={() => openConsult(r)} />
                 </div>

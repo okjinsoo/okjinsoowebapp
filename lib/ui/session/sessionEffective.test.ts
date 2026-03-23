@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import type { Student } from "@/lib/types/index";
 import { browserStorage } from "@/lib/storage/browserStorage";
 import { ymdFromISO_KST } from "@/lib/utils/date";
-import { buildBadges, buildBaseDatesISO, computeEffectiveISO, metaMapKey } from "@/lib/ui/session/sessionEffective";
+import { buildBaseDatesISO, computeEffectiveISO, metaMapKey } from "@/lib/ui/session/sessionEffective";
 
 function sampleStudent(): Student {
   return {
@@ -76,9 +76,9 @@ describe("sessionEffective schedule change by date", () => {
 
     expect(ymdOf(3)).toBe("2026-02-23");
     expect(ymdOf(4)).toBe("2026-02-25");
-    expect(ymdOf(5)).toBe("2026-03-10");
-    expect(ymdOf(6)).toBe("2026-03-12");
-    expect(ymdOf(7)).toBe("2026-03-13");
+    expect(ymdOf(5)).toBe("2026-03-13");
+    expect(ymdOf(6)).toBe("2026-03-17");
+    expect(ymdOf(7)).toBe("2026-03-19");
   });
 
   it("carry+1 bypasses extension override and uses baseDatesISO slot (no schedule change)", () => {

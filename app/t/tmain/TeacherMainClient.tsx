@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { findTeacherByLoginEmail } from "@/lib/auth/loginSelection";
 import { AUTH_EVENT } from "@/lib/auth/supabaseAuth";
@@ -8,7 +8,6 @@ import {
   clearCurrentTeacherId,
   loadCurrentTeacherId,
   saveCurrentTeacherId,
-  TEACHERS_EVENT,
 } from "@/lib/storage/teachers";
 import TodaySessionsCard, { type TodaySessionRow } from "@/lib/ui/teacher/TodaySessionsCard";
 import TeacherStudentListCard from "@/lib/ui/teacher/TeacherStudentListCard";
@@ -16,39 +15,29 @@ import RoleGateCard from "@/lib/ui/common/RoleGateCard";
 import {
   buildBadges,
   getDdayMeta,
-  getSessionVisibility,
 } from "@/lib/factories/sessionFactories";
 import { GATE_EVENT } from "@/lib/ui/common/roleGateStorage";
 import { buildConsultationMap, pickPrimaryConsultTag } from "@/lib/ui/session/consultationMap";
-import { findLastClassIndex } from "@/lib/ui/session/pauseHelpers";
 import { calculateSessionAchievementPercent } from "@/lib/factories/sessionProgressFactory";
-import { TUTORWEB_EVENTS } from "@/lib/events/tutorwebEvents";
 import { useStudentRegistry } from "@/lib/hooks/useStudentRegistry";
 import { parseDateTime } from "@/lib/ui/session/format";
 
+type TeacherMainRow = TodaySessionRow & { diff: number };
+
 export default function TeacherMainClient({ initialRole = "t" }: { initialRole?: "a" | "t" }) {
   const router = useRouter();
-  const { students, teachers, metricsMap, tick } = useStudentRegistry();
-  const [teacherId, setTeacherId] = useState<string | null>(null);
-
-  const applyTeacherSelection = useCallback((nextTeachers: typeof teachers) => {
-    if (initialRole === "t") {
-      const matchedTeacherId = findTeacherByLoginEmail(nextTeachers)?.id ?? null;
-      if (matchedTeacherId) {
-        saveCurrentTeacherId(matchedTeacherId);
-        setTeacherId(matchedTeacherId);
-      } else {
-        clearCurrentTeacherId();
-        setTeacherId(null);
-      }
-    } else {
-      setTeacherId(loadCurrentTeacherId());
-    }
-  }, [initialRole]);
+  const { students, teachers, metricsMap } = useStudentRegistry();
+  const [selectedTeacherId, setSelectedTeacherId] = useState<string | null>(() => loadCurrentTeacherId());
+  const teacherId = useMemo(() => {
+    if (initialRole === "t") return findTeacherByLoginEmail(teachers)?.id ?? null;
+    return selectedTeacherId;
+  }, [initialRole, teachers, selectedTeacherId]);
 
   useEffect(() => {
-    applyTeacherSelection(teachers);
-  }, [teachers, applyTeacherSelection]);
+    if (initialRole !== "t") return;
+    if (teacherId) saveCurrentTeacherId(teacherId);
+    else clearCurrentTeacherId();
+  }, [initialRole, teacherId]);
 
   useEffect(() => {
     const requestGateRefresh = () => { /* useStudentRegistry will handle refresh */ };
@@ -71,8 +60,8 @@ export default function TeacherMainClient({ initialRole = "t" }: { initialRole?:
       .map(({ student }) => student);
   }, [metricsMap, teacherId]);
 
-  const allRows = useMemo<TodaySessionRow[]>(() => {
-    const rows: TodaySessionRow[] = [];
+  const allRows = useMemo<TeacherMainRow[]>(() => {
+    const rows: TeacherMainRow[] = [];
     const now = new Date();
 
     for (const st of visibleStudents) {
@@ -123,15 +112,18 @@ export default function TeacherMainClient({ initialRole = "t" }: { initialRole?:
           consultTag,
           lastClass: isLastClass,
           diff: dday.diff,
-        } as any);
+        });
       }
     }
     return rows;
-  }, [visibleStudents, metricsMap, tick]);
+  }, [visibleStudents, metricsMap]);
 
-  const todayRows = useMemo(() => allRows.filter(r => (r as any).diff === 0), [allRows]);
+  const todayRows = useMemo(
+    () => allRows.filter((r) => r.diff === 0).sort((a, b) => a.effectiveISO.localeCompare(b.effectiveISO)),
+    [allRows]
+  );
   const nextRows = useMemo(() => {
-    const future = allRows.filter(r => (r as any).diff > 0).sort((a, b) => a.effectiveISO.localeCompare(b.effectiveISO));
+    const future = allRows.filter((r) => r.diff > 0).sort((a, b) => a.effectiveISO.localeCompare(b.effectiveISO));
     // 학생당 최대 2개씩만
     const picked: Record<string, number> = {};
     return future.filter(r => {
@@ -149,7 +141,7 @@ export default function TeacherMainClient({ initialRole = "t" }: { initialRole?:
           students={students}
           teacherId={teacherId}
           studentToken={null}
-          onTeacherChange={(next) => setTeacherId(next)}
+          onTeacherChange={(next) => setSelectedTeacherId(next)}
         />
       </div>
 

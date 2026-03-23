@@ -8,7 +8,11 @@ import { syncRoleBindingEmails } from "@/lib/auth/roleBindings";
 import { pushSharedSnapshot, readLocalStudents } from "@/lib/storage/sharedSnapshot";
 import { safeParseJson } from "@/lib/storage/safeParse";
 import { requestCalendarResyncForTeacherIds } from "@/lib/storage/sessions";
-import { loadLatestCoreSnapshotBaseline, mergeById } from "@/lib/storage/safeSnapshotMerge";
+import {
+  loadLatestCoreSnapshotBaseline,
+  loadLatestCoreSnapshotBaselineServerRequired,
+  mergeById,
+} from "@/lib/storage/safeSnapshotMerge";
 import type { Teacher } from "@/lib/types/index";
 
 const KEY = "tutorweb_teachers_v1";
@@ -19,6 +23,7 @@ export const TEACHERS_EVENT = "tutorweb:teachersUpdated";
 type SaveTeachersOptions = {
   skipSharedSnapshot?: boolean;
   snapshotMode?: "merge" | "replace";
+  serverRequired?: boolean;
 };
 
 function dispatchTeachersUpdated() {
@@ -83,34 +88,39 @@ function syncTeacherRoleBindings(previous: Teacher[], next: Teacher[]): void {
   });
 }
 
-function syncSharedSnapshot(nextTeachers: Teacher[], mode: "merge" | "replace"): void {
+function syncSharedSnapshot(
+  nextTeachers: Teacher[],
+  mode: "merge" | "replace",
+  serverRequired: boolean
+): void {
   void (async () => {
-    const baseline = await loadLatestCoreSnapshotBaseline();
+    const baseline = serverRequired
+      ? await loadLatestCoreSnapshotBaselineServerRequired()
+      : await loadLatestCoreSnapshotBaseline();
     const mergedTeachers = mode === "replace"
       ? nextTeachers
       : mergeById(baseline.teachers, nextTeachers);
+    const students = serverRequired
+      ? baseline.students
+      : baseline.students.length > 0
+        ? baseline.students
+        : readLocalStudents();
 
     await pushSharedSnapshot({
       teachers: mergedTeachers,
-      students: baseline.students.length > 0 ? baseline.students : readLocalStudents(),
+      students,
     });
   })().catch((err) => {
-    console.error("공유 스냅샷 동기화 실패(teachers):", err);
+    console.error(
+      `공유 스냅샷 동기화 실패(teachers${serverRequired ? ":server-required" : ""}):`,
+      err
+    );
   });
 }
 
 export function loadTeachers(): Teacher[] {
   if (typeof window === "undefined") return [];
   return safeParseJson<Teacher[]>(browserStorage.getItem(KEY), []);
-}
-
-function replaceTeachersLocal(list: Teacher[]): boolean {
-  if (typeof window === "undefined") return false;
-  const nextRaw = JSON.stringify(list);
-  if (browserStorage.getItem(KEY) === nextRaw) return false;
-  browserStorage.setItem(KEY, nextRaw);
-  dispatchTeachersUpdated();
-  return true;
 }
 
 
@@ -123,7 +133,7 @@ export function saveTeachers(list: Teacher[], options?: SaveTeachersOptions): vo
   dispatchTeachersUpdated();
   syncTeacherRoleBindings(previous, list);
   if (!options?.skipSharedSnapshot) {
-    syncSharedSnapshot(list, options?.snapshotMode ?? "merge");
+    syncSharedSnapshot(list, options?.snapshotMode ?? "merge", options?.serverRequired ?? false);
   }
   if (changedEmailIds.length > 0) {
     requestCalendarResyncForTeacherIds(changedEmailIds);
@@ -131,9 +141,10 @@ export function saveTeachers(list: Teacher[], options?: SaveTeachersOptions): vo
 }
 
 export async function saveTeachersServerFirst(list: Teacher[]): Promise<void> {
+  const baseline = await loadLatestCoreSnapshotBaselineServerRequired();
   await pushSharedSnapshot({
     teachers: list,
-    students: readLocalStudents(),
+    students: baseline.students,
   });
   saveTeachers(list, { skipSharedSnapshot: true });
 }
@@ -143,13 +154,13 @@ export function upsertTeacher(t: Teacher): Teacher[] {
   const idx = list.findIndex((x) => x.id === t.id);
   if (idx >= 0) list[idx] = t;
   else list.push(t);
-  saveTeachers(list);
+  saveTeachers(list, { serverRequired: true });
   return list;
 }
 
 export function removeTeacher(teacherId: string): Teacher[] {
   const list = loadTeachers().filter((t) => t.id !== teacherId);
-  saveTeachers(list, { snapshotMode: "replace" });
+  saveTeachers(list, { snapshotMode: "replace", serverRequired: true });
   return list;
 }
 
@@ -163,5 +174,5 @@ export function clearTeachers(): void {
   browserStorage.removeItem(KEY);
   dispatchTeachersUpdated();
   syncTeacherRoleBindings(previous, []);
-  syncSharedSnapshot([], "replace");
+  syncSharedSnapshot([], "replace", false);
 }

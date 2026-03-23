@@ -1,7 +1,7 @@
 import { useState, useMemo } from "react";
 import Badge from "@/lib/ui/common/Badge";
 import AutoResizeTextarea from "@/lib/ui/common/AutoResizeTextarea";
-import { PaymentRecord, Student } from "@/lib/types/index";
+import { Student } from "@/lib/types/index";
 import { refundRatioLabel, buildDisplayRecords } from "@/lib/factories/lessonStatusFactory";
 import { useStudentPayment, UseStudentPaymentProps } from "../hooks/useStudentPayment";
 

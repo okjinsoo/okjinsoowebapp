@@ -1,8 +1,8 @@
 import { useMemo, useState } from "react";
 import { PaymentRecord, Student } from "@/lib/types/index";
-import { computeRefundRatio } from "@/lib/factories/lessonStatusFactory";
 import { makeId } from "@/lib/utils/id";
 import { nowIso, todayYmdKST } from "@/lib/utils/date";
+import { SERVER_SAVE_RETRY_MESSAGE } from "@/lib/messages/serverMessages";
 
 export interface UseStudentPaymentProps {
     isAdmin: boolean;
@@ -94,7 +94,7 @@ export function useStudentPayment({
             : [...history, record];
 
         const ok = await applyHistory(nextHistory);
-        if (!ok) return setPaymentError("서버 저장에 실패했어요. 잠시 뒤 다시 시도해주세요.");
+        if (!ok) return setPaymentError(SERVER_SAVE_RETRY_MESSAGE);
 
         closePaymentPanel();
     }
@@ -103,7 +103,7 @@ export function useStudentPayment({
         if (!editingRecordId) return;
         const nextHistory = history.filter((h) => h.id !== editingRecordId);
         const ok = await applyHistory(nextHistory);
-        if (!ok) return setPaymentError("삭제 처리에 실패했어요. 잠시 뒤 다시 시도해주세요.");
+        if (!ok) return setPaymentError(SERVER_SAVE_RETRY_MESSAGE);
         closePaymentPanel();
     }
 

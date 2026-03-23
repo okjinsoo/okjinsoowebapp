@@ -2,7 +2,7 @@
 // ✅ Session 관련 계산/저장 공장들의 단일 입구
 // 사용법(간단):
 // - 화면에서는 가능하면 이 파일만 import 하세요.
-// - 원본 날짜: buildBaseDatesISO / buildBaseDatesISOByToken
+// - 원본 날짜: buildBaseDatesISO
 // - 기록(출결/변경/이월): readMetaMap / upsertMeta
 // - 최종 날짜: computeEffectiveISO
 // - D-day: getDdayMeta
@@ -10,7 +10,6 @@
 
 export {
   buildBaseDatesISO,
-  buildBaseDatesISOByToken,
   buildBadges,
   computeEffectiveISO,
   getStatusStyle,

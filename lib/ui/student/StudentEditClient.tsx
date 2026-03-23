@@ -7,11 +7,10 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Id, Student, Teacher } from "@/lib/types/index";
 import { pushSharedSnapshot } from "@/lib/storage/sharedSnapshot";
-import { loadLatestCoreSnapshotBaseline } from "@/lib/storage/safeSnapshotMerge";
-import { findStudentByToken, loadStudents, saveStudents } from "@/lib/storage/students";
-import { loadSessions, saveSessions } from "@/lib/storage/sessions";
+import { loadLatestCoreSnapshotBaselineServerRequired } from "@/lib/storage/safeSnapshotMerge";
+import { saveStudents } from "@/lib/storage/students";
+import { saveSessions } from "@/lib/storage/sessions";
 import {
-  loadAllConsultationsStore,
   saveAllConsultationsStore,
 } from "@/lib/storage/consultations";
 import { clearCurrentStudentToken } from "@/lib/ui/common/roleGateStorage";
@@ -20,6 +19,9 @@ import { SHARED_CONSULTATIONS_KEY } from "@/lib/storage/sharedStateKeys";
 import { makeId } from "@/lib/utils/id";
 import { nowIso } from "@/lib/utils/date";
 import { normalizePhoneDigits } from "@/lib/utils/phone";
+import { readSnapshotServerRequired, readStudentContextServerFirst } from "@/lib/storage/serverRead";
+import { TUTORWEB_EVENTS } from "@/lib/events/tutorwebEvents";
+import { SERVER_SAVE_RETRY_MESSAGE } from "@/lib/messages/serverMessages";
 
 function normalizePlanCount(n: number): number {
   if (!Number.isFinite(n)) return 12;
@@ -64,6 +66,7 @@ export default function StudentEditClient(props: {
   const { mode, teachers, token, fixedTeacherId, onDoneGoTo } = props;
 
   const [student, setStudent] = useState<Student | null>(null);
+  const [loadingStudent, setLoadingStudent] = useState(true);
   const [initialized, setInitialized] = useState(false);
 
   const [teacherId, setTeacherId] = useState<string>("");
@@ -97,8 +100,27 @@ export default function StudentEditClient(props: {
   }, [teacherId, teachers]);
 
   useEffect(() => {
-    const st = findStudentByToken(token);
-    setStudent(st);
+    setInitialized(false);
+    let cancelled = false;
+    setLoadingStudent(true);
+
+    const refreshStudent = async () => {
+      const next = await readStudentContextServerFirst(token);
+      if (cancelled) return;
+      setStudent(next.student);
+      setLoadingStudent(false);
+    };
+
+    const onStudentsUpdated = () => {
+      void refreshStudent();
+    };
+
+    void refreshStudent();
+    window.addEventListener(TUTORWEB_EVENTS.studentsUpdated, onStudentsUpdated);
+    return () => {
+      cancelled = true;
+      window.removeEventListener(TUTORWEB_EVENTS.studentsUpdated, onStudentsUpdated);
+    };
   }, [token]);
 
   useEffect(() => {
@@ -167,9 +189,9 @@ export default function StudentEditClient(props: {
       parentPhone: normalizePhoneDigits(parentPhone),
     };
 
-    const baseline = await loadLatestCoreSnapshotBaseline();
-    const baseStudents = baseline.students.length > 0 ? baseline.students : loadStudents();
-    const baseSessions = baseline.sessions.length > 0 ? baseline.sessions : loadSessions();
+    const baseline = await loadLatestCoreSnapshotBaselineServerRequired();
+    const baseStudents = baseline.students;
+    const baseSessions = baseline.sessions;
 
     const nextStudents = baseStudents.map((row) => (row.id === student.id ? updated : row));
     const all = baseSessions;
@@ -219,7 +241,7 @@ export default function StudentEditClient(props: {
       router.push(onDoneGoTo);
     } catch (err) {
       console.error("학생 수정 서버 저장 실패:", err);
-      setError("서버 저장에 실패했어요. 잠시 뒤 다시 시도해주세요.");
+      setError(SERVER_SAVE_RETRY_MESSAGE);
     } finally {
       setSaving(false);
     }
@@ -230,13 +252,14 @@ export default function StudentEditClient(props: {
     setDeleting(true);
     let succeeded = false;
     try {
-      const baseline = await loadLatestCoreSnapshotBaseline();
-      const baseStudents = baseline.students.length > 0 ? baseline.students : loadStudents();
-      const baseSessions = baseline.sessions.length > 0 ? baseline.sessions : loadSessions();
+      const baseline = await loadLatestCoreSnapshotBaselineServerRequired();
+      const baseStudents = baseline.students;
+      const baseSessions = baseline.sessions;
 
       const nextStudents = baseStudents.filter((row) => row.id !== student.id);
       const nextSessions = baseSessions.filter((row) => row.studentId !== student.id);
-      const nextConsultations = loadAllConsultationsStore();
+      const serverSnapshot = await readSnapshotServerRequired();
+      const nextConsultations = { ...serverSnapshot.consultations };
       delete nextConsultations[student.id];
       const droppedKeys = collectStudentScopedStorageKeys(student.token);
 
@@ -257,13 +280,27 @@ export default function StudentEditClient(props: {
       router.push("/a/students");
     } catch (err) {
       console.error("학생 삭제 서버 저장 실패:", err);
-      setError("서버 저장에 실패했어요. 잠시 뒤 다시 시도해주세요.");
+      setError(SERVER_SAVE_RETRY_MESSAGE);
     } finally {
       setDeleting(false);
       if (succeeded) {
         setDeleteOpen(false);
       }
     }
+  }
+
+  if (loadingStudent) {
+    return (
+      <main style={{ padding: 20, maxWidth: 860, margin: "0 auto" }}>
+        <button onClick={() => router.push(onDoneGoTo)} className="btn btn-bold">
+          돌아가기
+        </button>
+        <div style={{ marginTop: 8, textAlign: "center" }} className="page-title">
+          학생 정보 수정
+        </div>
+        <div style={{ marginTop: 10, color: "var(--text-muted)" }}>학생 정보를 불러오는 중입니다...</div>
+      </main>
+    );
   }
 
   if (!student) {

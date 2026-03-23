@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import {
   AUTH_EVENT,
   buildGoogleAuthUrl,
@@ -17,14 +18,40 @@ import {
   roleLabel,
   type UserRole,
 } from "@/lib/auth/roleAuth";
+import { findStudentByLoginEmail } from "@/lib/auth/loginSelection";
+import { loadCurrentRole, saveCurrentRole, saveCurrentStudentToken } from "@/lib/ui/common/roleGateStorage";
+import { readStudentsServerFirst } from "@/lib/storage/serverRead";
+
+function normalizeNextPath(path: string): string {
+  const next = path.trim();
+  if (!next.startsWith("/") || next.startsWith("//")) return "";
+  return next;
+}
+
+function buildCallbackRedirectUrl(args: { origin: string; nextPath: string }): string {
+  const base = `${args.origin}/auth/callback`;
+  if (!args.nextPath) return base;
+  return `${base}?next=${encodeURIComponent(args.nextPath)}`;
+}
+
+function shouldRequestCalendarScope(nextPath: string): boolean {
+  if (nextPath.startsWith("/a") || nextPath.startsWith("/t")) return true;
+  const rememberedRole = loadCurrentRole();
+  return rememberedRole === "a" || rememberedRole === "t";
+}
 
 export default function HomePage() {
+  const router = useRouter();
+  // hydration mismatch 방지: 서버/클라이언트 첫 렌더를 동일하게 guest로 시작
   const [session, setSession] = useState<AuthSession | null>(null);
   const [role, setRole] = useState<UserRole>("guest");
   const [roleLoading, setRoleLoading] = useState(false);
   const [redirectFrom, setRedirectFrom] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [pendingPath, setPendingPath] = useState<string | null>(null);
+  const [isPending, startTransition] = useTransition();
+  const studentAutoRedirectedRef = useRef(false);
 
   useEffect(() => {
     const from = new URLSearchParams(window.location.search).get("next");
@@ -69,6 +96,40 @@ export default function HomePage() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!session || roleLoading || !canAccessRole(role, "student")) return;
+    void router.prefetch("/s/smain");
+  }, [session, roleLoading, role, router]);
+
+  useEffect(() => {
+    if (studentAutoRedirectedRef.current) return;
+    if (!session || roleLoading || role !== "student") return;
+
+    let cancelled = false;
+
+    const redirectStudent = async () => {
+      const next = await readStudentsServerFirst();
+      if (cancelled || studentAutoRedirectedRef.current) return;
+
+      const matchedStudent = findStudentByLoginEmail(next.students);
+      if (matchedStudent?.token) {
+        saveCurrentStudentToken(matchedStudent.token);
+      }
+      saveCurrentRole("s");
+
+      studentAutoRedirectedRef.current = true;
+      setPendingPath("/s/smain");
+      startTransition(() => {
+        router.replace("/s/smain");
+      });
+    };
+
+    void redirectStudent();
+    return () => {
+      cancelled = true;
+    };
+  }, [session, roleLoading, role, router, startTransition]);
+
   const loginReady = useMemo(() => Boolean(getSupabaseConfig()), []);
 
   function onClickGoogleLogin() {
@@ -79,9 +140,10 @@ export default function HomePage() {
     }
 
     setBusy(true);
-    const redirectTo = `${window.location.origin}/auth/callback`;
-    // 일반 계정 로그인: 캘린더 권한 없이 드라이브 권한만 최소 요청 (Phase 18 보안 고도화)
-    const url = buildGoogleAuthUrl(redirectTo, false);
+    const nextPath = normalizeNextPath(redirectFrom);
+    const redirectTo = buildCallbackRedirectUrl({ origin: window.location.origin, nextPath });
+    const requestCalendar = shouldRequestCalendarScope(nextPath);
+    const url = buildGoogleAuthUrl(redirectTo, requestCalendar);
     if (!url) {
       setBusy(false);
       setError("로그인 URL을 만들지 못했어요.");
@@ -98,7 +160,8 @@ export default function HomePage() {
     }
 
     setBusy(true);
-    const redirectTo = `${window.location.origin}/auth/callback`;
+    const nextPath = normalizeNextPath(redirectFrom);
+    const redirectTo = buildCallbackRedirectUrl({ origin: window.location.origin, nextPath });
     // 관리자/테스터 로그인: 캘린더 권한(requestCalendar) TRUE
     const url = buildGoogleAuthUrl(redirectTo, true);
     if (!url) {
@@ -116,7 +179,15 @@ export default function HomePage() {
     setRoleLoading(false);
   }
 
+  function onClickStudentMove() {
+    setPendingPath("/s/smain");
+    startTransition(() => {
+      router.push("/s/smain");
+    });
+  }
+
   const loggedIn = Boolean(session);
+  const studentMovePending = isPending && pendingPath === "/s/smain";
 
   return (
     <main
@@ -206,13 +277,19 @@ export default function HomePage() {
                   <Link
                     href="/a/amain"
                     style={{
-                      padding: "10px 12px",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      padding: "10px 16px",
                       border: "1px solid #1d4ed8",
                       borderRadius: 10,
                       color: "#1d4ed8",
                       fontWeight: 800,
                       textDecoration: "none",
                       background: "#eff6ff",
+                      cursor: "pointer",
+                      userSelect: "none",
+                      minHeight: 44,
                     }}
                   >
                     관리자 화면으로 이동
@@ -222,44 +299,65 @@ export default function HomePage() {
                   <Link
                     href="/t/tmain"
                     style={{
-                      padding: "10px 12px",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      padding: "10px 16px",
                       border: "1px solid #0f766e",
                       borderRadius: 10,
                       color: "#0f766e",
                       fontWeight: 800,
                       textDecoration: "none",
                       background: "#f0fdfa",
+                      cursor: "pointer",
+                      userSelect: "none",
+                      minHeight: 44,
                     }}
                   >
                     선생님 화면으로 이동
                   </Link>
                 ) : null}
                 {!roleLoading && canAccessRole(role, "student") ? (
-                  <Link
-                    href="/s/smain"
+                  <button
+                    type="button"
+                    onClick={onClickStudentMove}
+                    disabled={studentMovePending}
+                    aria-busy={studentMovePending}
                     style={{
-                      padding: "10px 12px",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      padding: "10px 16px",
                       border: "1px solid #7c3aed",
                       borderRadius: 10,
                       color: "#7c3aed",
                       fontWeight: 800,
                       textDecoration: "none",
                       background: "#faf5ff",
+                      cursor: studentMovePending ? "progress" : "pointer",
+                      userSelect: "none",
+                      minHeight: 44,
+                      opacity: studentMovePending ? 0.75 : 1,
                     }}
                   >
-                    학생 화면으로 이동
-                  </Link>
+                    {studentMovePending ? "학생 화면으로 이동 중..." : "학생 화면으로 이동"}
+                  </button>
                 ) : null}
                 <button
                   type="button"
                   onClick={onClickLogout}
                   style={{
-                    padding: "10px 12px",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    padding: "10px 20px",
                     border: "1px solid var(--surface-border)",
                     borderRadius: 10,
                     background: "var(--home-card-bg)",
                     fontWeight: 700,
                     cursor: "pointer",
+                    userSelect: "none",
+                    minHeight: 44,
                   }}
                 >
                   로그아웃

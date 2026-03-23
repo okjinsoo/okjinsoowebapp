@@ -3,10 +3,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { usePathname } from "next/navigation";
 import type { Student } from "@/lib/types/index";
-import { loadStudents } from "@/lib/storage/students";
-import { pullSharedSnapshotAndHydrateWithOptions } from "@/lib/storage/sharedSnapshot";
 import { GATE_EVENT, loadCurrentStudentToken } from "@/lib/ui/common/roleGateStorage";
 import { TUTORWEB_EVENTS } from "@/lib/events/tutorwebEvents";
+import { readStudentsServerFirst } from "@/lib/storage/serverRead";
 
 const APP_TITLE = "옥진수학";
 
@@ -83,29 +82,32 @@ function resolveTitle(pathname: string, students: Student[], selectedToken: stri
 
 export default function PageTitleAgent() {
   const pathname = usePathname() ?? "/";
-  const [students, setStudents] = useState<Student[]>(() => loadStudents());
+  const [students, setStudents] = useState<Student[]>([]);
   const [gateTick, setGateTick] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
-    const refreshStudents = () => setStudents(loadStudents());
-    const onGateUpdated = () => setGateTick((v) => v + 1);
+    const refreshStudents = async () => {
+      const next = await readStudentsServerFirst();
+      if (cancelled) return;
+      setStudents(next.students);
+    };
+    const onGateUpdated = () => {
+      setGateTick((v) => v + 1);
+      void refreshStudents();
+    };
 
-    refreshStudents();
-    void pullSharedSnapshotAndHydrateWithOptions({ forceRemote: true })
-      .then((snapshot) => {
-        if (cancelled) return;
-        if (snapshot) setStudents(snapshot.students);
-      })
-      .catch(() => {
-        // 로그인 전 홈 화면에서는 서버 호출 실패가 정상일 수 있음.
-      });
+    void refreshStudents();
 
-    window.addEventListener(TUTORWEB_EVENTS.studentsUpdated, refreshStudents);
+    const onStudentsUpdated = () => {
+      void refreshStudents();
+    };
+
+    window.addEventListener(TUTORWEB_EVENTS.studentsUpdated, onStudentsUpdated);
     window.addEventListener(GATE_EVENT, onGateUpdated);
     return () => {
       cancelled = true;
-      window.removeEventListener(TUTORWEB_EVENTS.studentsUpdated, refreshStudents);
+      window.removeEventListener(TUTORWEB_EVENTS.studentsUpdated, onStudentsUpdated);
       window.removeEventListener(GATE_EVENT, onGateUpdated);
     };
   }, []);

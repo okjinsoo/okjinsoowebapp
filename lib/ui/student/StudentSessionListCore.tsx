@@ -4,18 +4,17 @@ import { BROWSER_STORAGE_EVENT } from "@/lib/storage/browserStorage";
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { sessionsByStudent } from "@/lib/storage/sessions";
-import { findStudentByToken, upsertStudent } from "@/lib/storage/students";
-import { loadConsultationsByStudent, saveConsultationsByStudent } from "@/lib/storage/consultations";
+import { upsertStudent } from "@/lib/storage/students";
+import { saveConsultationsByStudent } from "@/lib/storage/consultations";
 import {
-  buildBaseDatesISOByToken,
+  buildBaseDatesISO,
   computeEffectiveISO,
   buildBadges,
   getSessionVisibility,
 } from "@/lib/factories/sessionFactories";
 import { useMetaMap, getDdayMeta } from "@/lib/factories/sessionFactories";
-import { buildDisplayRecords, computeRefundRatio, type RefundRatio } from "@/lib/factories/lessonStatusFactory";
-import { buildConsultationRecord, normalizeConsultPurpose, validateConsultForm } from "@/lib/factories/consultationFactory";
+import { buildDisplayRecords, computeRefundRatio } from "@/lib/factories/lessonStatusFactory";
+import { normalizeConsultPurpose } from "@/lib/factories/consultationFactory";
 import { computePauseLifecycle } from "@/lib/factories/studentStatusFactory";
 import Badge from "@/lib/ui/common/Badge";
 import SessionQuickActions from "@/lib/ui/session/SessionQuickActions";
@@ -25,11 +24,10 @@ import AchievementBadge from "@/lib/ui/common/AchievementBadge";
 import { getSessionStatusBadge } from "@/lib/ui/common/sessionStatusBadge";
 import { buildSessionContextBadges, getSessionExtraBadgeStyle } from "@/lib/ui/common/sessionExtraBadge";
 import type { ConsultTag } from "@/lib/ui/session/consultationMap";
-import { ConsultationRecord, PaymentRecord, Session, Student } from "@/lib/types/index";
+import { ConsultationRecord, PaymentRecord, Student } from "@/lib/types/index";
 import { useConsultationSubmit } from "./hooks/useConsultationSubmit";
 import { ConsultBadge, ConsultButton } from "@/lib/ui/common/ConsultParts";
 import ConsultModal, { ConsultFormState } from "@/lib/ui/common/ConsultModal";
-import { TUTORWEB_EVENTS } from "@/lib/events/tutorwebEvents";
 import {
   calculateSessionProgressSummary,
   isSessionProgressEventKeyForToken,
@@ -37,6 +35,7 @@ import {
 import { canUseConsultFeatures } from "@/lib/policies/sessionRolePolicy";
 import { todayYmdKST, ymdFromISO_KST } from "@/lib/utils/date";
 import { parseDateTime } from "@/lib/ui/session/format";
+import { useStudentSessionContext } from "@/lib/hooks/useStudentSessionContext";
 
 type Props = {
   role: "a" | "t" | "s";
@@ -45,7 +44,7 @@ type Props = {
   hideTokenInRoute?: boolean;
 };
 
-function applyPauseStateFromConsultations(student: NonNullable<ReturnType<typeof findStudentByToken>>, records: ConsultationRecord[]) {
+function applyPauseStateFromConsultations(student: Student, records: ConsultationRecord[]): Student {
   const latestPause = [...records]
     .filter((r) => r.purpose === "pause_request" && (r.finalResult === "pause_confirm" || r.finalResult === "pause_cancel"))
     .sort((a, b) => {
@@ -58,21 +57,24 @@ function applyPauseStateFromConsultations(student: NonNullable<ReturnType<typeof
   if (latestPause?.finalResult === "pause_confirm" && latestPause.pauseEffectiveDate) {
     const today = todayYmdKST();
     const pauseStatus = computePauseLifecycle(today, latestPause.pauseEffectiveDate) === "paused" ? "paused" : "confirmed";
-    upsertStudent({
+    const nextStudent: Student = {
       ...student,
       status: "paused",
       pauseEffectiveDate: latestPause.pauseEffectiveDate,
       pauseStatus,
-    });
-    return;
+    };
+    upsertStudent(nextStudent);
+    return nextStudent;
   }
 
-  upsertStudent({
+  const nextStudent: Student = {
     ...student,
     status: "active",
     pauseEffectiveDate: undefined,
     pauseStatus: "none",
-  });
+  };
+  upsertStudent(nextStudent);
+  return nextStudent;
 }
 
 export default function StudentSessionListCore({ role, token, prefix, hideTokenInRoute = false }: Props) {
@@ -83,12 +85,14 @@ export default function StudentSessionListCore({ role, token, prefix, hideTokenI
 
   // ✅ metaMap 배선 단일화
   const metaMap = useMetaMap(token);
-
-  const [studentTick, setStudentTick] = useState(0);
-  const student = useMemo(() => {
-    void studentTick;
-    return findStudentByToken(token) ?? null;
-  }, [token, studentTick]);
+  const {
+    student,
+    sessions,
+    consultRecords,
+    refresh: refreshStudentContext,
+    setStudent,
+    setConsultRecords,
+  } = useStudentSessionContext(token);
   const [showAllUpcoming, setShowAllUpcoming] = useState(false);
   const [showAllPast, setShowAllPast] = useState(false);
   const [consultOpen, setConsultOpen] = useState(false);
@@ -110,7 +114,6 @@ export default function StudentSessionListCore({ role, token, prefix, hideTokenI
     pauseRefundCompleted: false,
   });
   const [consultError, setConsultError] = useState("");
-  const [consultTick, setConsultTick] = useState(0);
 
   useEffect(() => {
     const id = setTimeout(() => setMounted(true), 0);
@@ -118,8 +121,6 @@ export default function StudentSessionListCore({ role, token, prefix, hideTokenI
   }, []);
 
   useEffect(() => {
-    const onConsult = () => setConsultTick((x) => x + 1);
-    const onStudents = () => setStudentTick((x) => x + 1);
     const onProgressChanged: EventListener = (event) => {
       const ce = event as CustomEvent<{ key?: string | null }>;
       const key = ce.detail?.key ?? "";
@@ -127,12 +128,8 @@ export default function StudentSessionListCore({ role, token, prefix, hideTokenI
       if (!isSessionProgressEventKeyForToken(key, token)) return;
       setProgressTick((x) => x + 1);
     };
-    window.addEventListener(TUTORWEB_EVENTS.consultationsUpdated, onConsult);
-    window.addEventListener(TUTORWEB_EVENTS.studentsUpdated, onStudents);
     window.addEventListener(BROWSER_STORAGE_EVENT, onProgressChanged);
     return () => {
-      window.removeEventListener(TUTORWEB_EVENTS.consultationsUpdated, onConsult);
-      window.removeEventListener(TUTORWEB_EVENTS.studentsUpdated, onStudents);
       window.removeEventListener(BROWSER_STORAGE_EVENT, onProgressChanged);
     };
   }, [token]);
@@ -140,16 +137,7 @@ export default function StudentSessionListCore({ role, token, prefix, hideTokenI
 
 
   // baseDates는 규칙 기반이라 자주 변하지 않음(토큰 기준)
-  const baseDatesISO = useMemo(() => buildBaseDatesISOByToken(token, 60), [token]);
-
-  const sessions = useMemo(() => (student ? sessionsByStudent(student.id) : []), [student]);
-  const consultRecords = useMemo(
-    () => {
-      void consultTick;
-      return student ? loadConsultationsByStudent(student.id) : [];
-    },
-    [student, consultTick]
-  );
+  const baseDatesISO = useMemo(() => (student ? buildBaseDatesISO(student, 60) : []), [student]);
 
   const progressByIndex = useMemo(() => {
     if (!mounted) return {} as Record<number, { done: number; total: number; percent: number | null }>;
@@ -380,12 +368,18 @@ export default function StudentSessionListCore({ role, token, prefix, hideTokenI
 
       upsertStudent(updatedStudent);
       saveConsultationsByStudent(student.id, nextConsultRecords);
+      setStudent(updatedStudent);
+      setConsultRecords(nextConsultRecords);
       return true;
     },
     persistConsultationState: async (recs: ConsultationRecord[], patch?: Student) => {
       if (!student) return false;
-      if (patch) upsertStudent(patch);
+      if (patch) {
+        upsertStudent(patch);
+        setStudent(patch);
+      }
       saveConsultationsByStudent(student.id, recs);
+      setConsultRecords(recs);
       return true;
     },
   });
@@ -399,7 +393,7 @@ export default function StudentSessionListCore({ role, token, prefix, hideTokenI
     }
     if (res.ok) {
       setConsultOpen(false);
-      setConsultTick((x) => x + 1);
+      void refreshStudentContext();
     }
   };
 
@@ -408,11 +402,13 @@ export default function StudentSessionListCore({ role, token, prefix, hideTokenI
     const deleting = consultRecords.find((r) => r.id === consultEditingId);
     const updated = consultRecords.filter((r) => r.id !== consultEditingId);
     saveConsultationsByStudent(student.id, updated);
-    setConsultTick((x) => x + 1);
+    setConsultRecords(updated);
     if (isAdmin && deleting?.purpose === "pause_request") {
-      applyPauseStateFromConsultations(student, updated);
+      const patched = applyPauseStateFromConsultations(student, updated);
+      setStudent(patched);
     }
     setConsultOpen(false);
+    void refreshStudentContext();
   };
 
 
@@ -525,7 +521,19 @@ export default function StudentSessionListCore({ role, token, prefix, hideTokenI
                   </div>
                 </Link>
                 {canUseConsultFeatures(role) ? (
-                  <div onClick={(e) => e.stopPropagation()} style={{ display: "flex", gap: 6 }}>
+                  <div
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      e.preventDefault();
+                    }}
+                    style={{
+                      display: "flex",
+                      gap: 6,
+                      position: "relative",
+                      zIndex: 10,
+                      padding: "4px"
+                    }}
+                  >
                     <SessionQuickActions role={role} token={token} index={r.index} />
                     <ConsultButton tag={consultTag} onClick={() => openConsultForSession(r.effectiveISO, consultTag)} />
                   </div>
@@ -621,7 +629,19 @@ export default function StudentSessionListCore({ role, token, prefix, hideTokenI
                   </div>
                 </Link>
                 {canUseConsultFeatures(role) ? (
-                  <div onClick={(e) => e.stopPropagation()} style={{ display: "flex", gap: 6 }}>
+                  <div
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      e.preventDefault();
+                    }}
+                    style={{
+                      display: "flex",
+                      gap: 6,
+                      position: "relative",
+                      zIndex: 10,
+                      padding: "4px"
+                    }}
+                  >
                     <SessionQuickActions role={role} token={token} index={r.index} />
                     <ConsultButton tag={consultTag} onClick={() => openConsultForSession(r.effectiveISO, consultTag)} />
                   </div>

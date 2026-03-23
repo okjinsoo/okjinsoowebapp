@@ -4,11 +4,10 @@
 import { browserStorage } from "@/lib/storage/browserStorage";
 
 import { useEffect, useState } from "react";
+import { useTeachersServerFirst } from "@/lib/hooks/useTeachersServerFirst";
 import { resolveSelectionForRole } from "@/lib/auth/loginSelection";
-import { pullSharedSnapshotAndHydrate } from "@/lib/storage/sharedSnapshot";
-import { loadStudents } from "@/lib/storage/students";
-import { loadTeachers } from "@/lib/storage/teachers";
-import type { Teacher } from "@/lib/types/index";
+import { readRosterServerFirst } from "@/lib/storage/serverRead";
+import { TUTORWEB_EVENTS } from "@/lib/events/tutorwebEvents";
 import StudentEditClient from "@/lib/ui/student/StudentEditClient";
 
 const KEY = "tutorweb_current_student_token";
@@ -21,27 +20,20 @@ function loadCurrentStudentToken() {
 
 export default function StudentEditBase({ role }: { role: "a" | "t" | "s" }) {
   const [token, setToken] = useState<string | null>(null);
-  const [teachers, setTeachers] = useState<Teacher[]>([]);
+  const { teachers, loaded: teachersLoaded } = useTeachersServerFirst();
 
   useEffect(() => {
     let cancelled = false;
 
-    async function bootstrap() {
-      try {
-        await pullSharedSnapshotAndHydrate();
-      } catch (err) {
-        console.error("공유 스냅샷 불러오기 실패(student edit):", err);
-      }
-      if (cancelled) return;
-
-      const nextTeachers = loadTeachers();
-      setTeachers(nextTeachers);
-
+    const bootstrap = async () => {
       if (role === "t") {
+        if (!teachersLoaded) return;
+        const roster = await readRosterServerFirst();
+        if (cancelled) return;
         const selection = resolveSelectionForRole({
           role,
-          teachers: nextTeachers,
-          students: loadStudents(),
+          teachers,
+          students: roster.students,
           savedTeacherId: null,
           savedStudentToken: loadCurrentStudentToken(),
         });
@@ -49,13 +41,20 @@ export default function StudentEditBase({ role }: { role: "a" | "t" | "s" }) {
       } else {
         setToken(loadCurrentStudentToken());
       }
-    }
+    };
 
     void bootstrap();
+
+    const requestRefresh = () => {
+      void bootstrap();
+    };
+
+    window.addEventListener(TUTORWEB_EVENTS.studentsUpdated, requestRefresh);
     return () => {
       cancelled = true;
+      window.removeEventListener(TUTORWEB_EVENTS.studentsUpdated, requestRefresh);
     };
-  }, [role]);
+  }, [role, teachers, teachersLoaded]);
 
   if (role === "s") {
     return (

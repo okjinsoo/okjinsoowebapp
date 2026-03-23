@@ -4,7 +4,7 @@ import { BROWSER_STORAGE_EVENT } from "@/lib/storage/browserStorage";
 
 import { useEffect, useMemo, useState } from "react";
 import {
-  buildBaseDatesISOByToken,
+  buildBaseDatesISO,
   computeEffectiveISO,
   upsertMeta,
   buildBadges,
@@ -12,25 +12,20 @@ import {
   getDdayMeta,
 } from "@/lib/factories/sessionFactories";
 import {
-  buildConsultationRecord,
   normalizeConsultPurpose,
-  validateConsultForm,
 } from "@/lib/factories/consultationFactory";
 import {
   buildGoogleAuthUrl,
-  forceRefreshAuthSession,
 } from "@/lib/auth/supabaseAuth";
 import { fmtKST_yyyyMMdd_HHmm_noSeconds } from "@/lib/ui/session/format";
 import Badge from "@/lib/ui/common/Badge";
 import AchievementBadge from "@/lib/ui/common/AchievementBadge";
 import { getSessionStatusBadge } from "@/lib/ui/common/sessionStatusBadge";
-import { findStudentByToken, upsertStudent } from "@/lib/storage/students";
-import { sessionsByStudent } from "@/lib/storage/sessions";
-import { loadConsultationsByStudent, saveConsultationsByStudent } from "@/lib/storage/consultations";
+import { upsertStudent } from "@/lib/storage/students";
+import { saveConsultationsByStudent } from "@/lib/storage/consultations";
 import { buildConsultationMap, pickPrimaryConsultTag } from "@/lib/ui/session/consultationMap";
 import { findClassIndexByDatePreferFuture, findLastClassIndex } from "@/lib/ui/session/pauseHelpers";
 import { buildDisplayRecords, computeRefundRatio } from "@/lib/factories/lessonStatusFactory";
-import { computePauseLifecycle } from "@/lib/factories/studentStatusFactory";
 import { ConsultBadge, ConsultButton } from "@/lib/ui/common/ConsultParts";
 import ConsultModal, { ConsultFormState } from "@/lib/ui/common/ConsultModal";
 import { TUTORWEB_EVENTS } from "@/lib/events/tutorwebEvents";
@@ -43,6 +38,7 @@ import { todayYmdKST } from "@/lib/utils/date";
 import { syncSessionDisplayAtByToken } from "@/lib/ui/session/syncSessionDisplayAt";
 import { canEditSessionMeta, type SessionRole } from "@/lib/policies/sessionRolePolicy";
 import { ConsultationRecord, PaymentRecord, Student } from "@/lib/types/index";
+import { useStudentSessionContext } from "@/lib/hooks/useStudentSessionContext";
 
 type Props = {
   role: SessionRole;
@@ -80,9 +76,14 @@ export default function SessionTopBarCore({ role, token, index }: Props) {
 
   const [consultOpen, setConsultOpen] = useState(false);
   const [consultEditingId, setConsultEditingId] = useState<string | null>(null);
-  const [studentTick, setStudentTick] = useState(0);
-  const [sessionTick, setSessionTick] = useState(0);
-  const [consultTick, setConsultTick] = useState(0);
+  const {
+    student,
+    sessions,
+    consultRecords,
+    refresh: refreshStudentContext,
+    setStudent,
+    setConsultRecords,
+  } = useStudentSessionContext(token);
   const [progressTick, setProgressTick] = useState(0);
   const [consultForm, setConsultForm] = useState<ConsultFormState>({
     date: todayYmdKST(),
@@ -119,23 +120,14 @@ export default function SessionTopBarCore({ role, token, index }: Props) {
 
   const [isSaving, setIsSaving] = useState(false);
   useEffect(() => {
-    const onStudents = () => setStudentTick((x) => x + 1);
-    const onSessions = () => setSessionTick((x) => x + 1);
-    const onConsultations = () => setConsultTick((x) => x + 1);
     const onAuthError = (e: Event) => {
       const detail = (e as CustomEvent).detail;
       setAuthError(detail?.msg || "권한 만료");
     };
 
-    window.addEventListener(TUTORWEB_EVENTS.studentsUpdated, onStudents);
-    window.addEventListener(TUTORWEB_EVENTS.sessionsUpdated, onSessions);
-    window.addEventListener(TUTORWEB_EVENTS.consultationsUpdated, onConsultations);
     window.addEventListener(TUTORWEB_EVENTS.googleAuthError, onAuthError);
 
     return () => {
-      window.removeEventListener(TUTORWEB_EVENTS.studentsUpdated, onStudents);
-      window.removeEventListener(TUTORWEB_EVENTS.sessionsUpdated, onSessions);
-      window.removeEventListener(TUTORWEB_EVENTS.consultationsUpdated, onConsultations);
       window.removeEventListener(TUTORWEB_EVENTS.googleAuthError, onAuthError);
     };
   }, []);
@@ -155,20 +147,7 @@ export default function SessionTopBarCore({ role, token, index }: Props) {
     };
   }, [token]);
 
-  const baseDatesISO = useMemo(() => buildBaseDatesISOByToken(token, 60), [token]);
-
-  const student = useMemo(() => {
-    void studentTick;
-    return findStudentByToken(token) ?? null;
-  }, [token, studentTick]);
-  const sessions = useMemo(() => {
-    void sessionTick;
-    return student ? sessionsByStudent(student.id) : [];
-  }, [student, sessionTick]);
-  const consultRecords = useMemo(() => {
-    void consultTick;
-    return student ? loadConsultationsByStudent(student.id) : [];
-  }, [student, consultTick]);
+  const baseDatesISO = useMemo(() => (student ? buildBaseDatesISO(student, 60) : []), [student]);
 
   const { effectiveISO, meta } = useMemo(() => {
     return computeEffectiveISO({
@@ -368,12 +347,18 @@ export default function SessionTopBarCore({ role, token, index }: Props) {
       const updatedStudent = { ...student, ...patch, paymentHistory: recs };
       upsertStudent(updatedStudent);
       saveConsultationsByStudent(student.id, nextConsultRecords);
+      setStudent(updatedStudent);
+      setConsultRecords(nextConsultRecords);
       return true;
     },
     persistConsultationState: async (recs: ConsultationRecord[], patch?: Student) => {
       if (!student) return false;
-      if (patch) upsertStudent(patch);
+      if (patch) {
+        upsertStudent(patch);
+        setStudent(patch);
+      }
       saveConsultationsByStudent(student.id, recs);
+      setConsultRecords(recs);
       return true;
     },
   });
@@ -389,7 +374,7 @@ export default function SessionTopBarCore({ role, token, index }: Props) {
       }
       if (res.ok) {
         setConsultOpen(false);
-        setConsultTick((x) => x + 1);
+        void refreshStudentContext();
       }
     } finally {
       setIsSaving(false);
@@ -397,11 +382,11 @@ export default function SessionTopBarCore({ role, token, index }: Props) {
   };
   const deleteConsultRecord = () => {
     if (!student || !consultEditingId) return;
-    const list = loadConsultationsByStudent(student.id);
-    const updated = list.filter((r) => r.id !== consultEditingId);
+    const updated = consultRecords.filter((r) => r.id !== consultEditingId);
     saveConsultationsByStudent(student.id, updated);
-    setConsultTick((x) => x + 1);
+    setConsultRecords(updated);
     setConsultOpen(false);
+    void refreshStudentContext();
   };
 
   // ===== 모달 열릴 때 meta -> draft 복사 =====
@@ -547,7 +532,7 @@ export default function SessionTopBarCore({ role, token, index }: Props) {
         reason: needReasonUI ? draftReason : "",
         record: needReasonUI ? draftRecord : "",
       });
-      syncSessionDisplayAtByToken(token);
+      await syncSessionDisplayAtByToken(token);
       setOpen(false);
     } finally {
       setIsSaving(false);
@@ -613,7 +598,9 @@ export default function SessionTopBarCore({ role, token, index }: Props) {
             <button
               onClick={() => {
                 const needsCalendar = role === "a" || role === "t";
-                const url = buildGoogleAuthUrl(window.location.href, needsCalendar);
+                const nextPath = `${window.location.pathname}${window.location.search}`;
+                const redirectTo = `${window.location.origin}/auth/callback?next=${encodeURIComponent(nextPath)}`;
+                const url = buildGoogleAuthUrl(redirectTo, needsCalendar);
                 if (url) window.location.href = url;
               }}
               style={{

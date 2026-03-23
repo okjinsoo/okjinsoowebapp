@@ -20,13 +20,15 @@ describe("sharedStateKeys", () => {
   it("detects session progress keys and shared state keys", () => {
     expect(isSessionProgressStateKey("mk3:abc:session:12:leafIds")).toBe(true);
     expect(isSessionProgressStateKey("mk3:abc:session:12:progressByLeafId")).toBe(true);
-    expect(isSessionProgressStateKey("mk3:abc:session:12:lastAddedLeafId")).toBe(false);
+    expect(isSessionProgressStateKey("mk3:abc:session:12:lastAddedLeafId")).toBe(true);
+    expect(isSessionProgressStateKey("mk3:abc:session:12:items")).toBe(true);
 
     expect(isSharedStateKvKey(SHARED_CONSULTATIONS_KEY)).toBe(true);
     expect(isSharedStateKvKey(SHARED_LECTURE_TREE_KEY)).toBe(true);
     expect(isSharedStateKvKey(`${SHARED_META_MAP_PREFIX}abc`)).toBe(true);
     expect(isSharedStateKvKey("mk3:abc:session:12:leafIds")).toBe(true);
     expect(isSharedStateKvKey("mk3:abc:session:12:progressByLeafId")).toBe(true);
-    expect(isSharedStateKvKey("mk3:abc:session:12:lastAddedLeafId")).toBe(false);
+    expect(isSharedStateKvKey("mk3:abc:session:12:lastAddedLeafId")).toBe(true);
+    expect(isSharedStateKvKey("mk3:abc:session:12:items")).toBe(true);
   });
 });
