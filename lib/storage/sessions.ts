@@ -159,7 +159,12 @@ function applySessionPatches(patches: Array<{ id: string; patch: Partial<Session
   });
 
   if (!changed) return;
-  saveSessions(next, { skipSharedSnapshot: false, serverRequired: true });
+  // 캘린더 동기화 엔진이 만든 상태 패치(synced/error)를 다시 동기화 엔진에 재주입하지 않도록 차단
+  saveSessions(next, {
+    skipSharedSnapshot: false,
+    serverRequired: true,
+    suppressCalendarSync: true,
+  });
 }
 
 function applyCalendarResyncPatch(args: {
@@ -240,6 +245,17 @@ export function requestCalendarResyncForStudentIds(studentIds: string[]): void {
   applyCalendarResyncPatch({
     studentIds: set,
     reason: "학생 이메일 변경 반영을 위해 Meet 참석자를 다시 동기화합니다.",
+  });
+}
+
+export function requestCalendarResyncForStudentIdsByAdmin(studentIds: string[]): void {
+  if (!Array.isArray(studentIds) || studentIds.length === 0) return;
+  const set = new Set(studentIds.filter((id) => typeof id === "string" && id.trim()));
+  if (set.size === 0) return;
+
+  applyCalendarResyncPatch({
+    studentIds: set,
+    reason: "관리자가 재동기화를 요청했습니다. 담당 선생님 계정 로그인 시 Meet 일정이 자동으로 다시 생성됩니다.",
   });
 }
 

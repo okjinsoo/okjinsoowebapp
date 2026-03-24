@@ -18,9 +18,17 @@ export default function AuthControl() {
     return () => window.removeEventListener(AUTH_EVENT, sync);
   }, []);
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    try {
+      await fetch("/api/auth/bridge", {
+        method: "DELETE",
+        credentials: "same-origin",
+      });
+    } catch {
+      // 네트워크 실패 시에도 로컬 세션은 즉시 제거합니다.
+    }
     clearAuthSession();
-    router.push("/");
+    window.location.replace("/");
   };
 
   const handleLogin = () => {

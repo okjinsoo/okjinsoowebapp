@@ -13,10 +13,17 @@ type Props = {
   students: Student[];
   onStudentClick?: (student: Student) => void;
   onAddStudent?: () => void;
+  onSyncOwnStudents?: () => void;
   role?: "a" | "t" | "s";
 };
 
-export default function TeacherStudentListCard({ students, onStudentClick, onAddStudent, role = "t" }: Props) {
+export default function TeacherStudentListCard({
+  students,
+  onStudentClick,
+  onAddStudent,
+  onSyncOwnStudents,
+  role = "t",
+}: Props) {
   const router = useRouter();
   const handleClick =
     onStudentClick ??
@@ -74,11 +81,18 @@ export default function TeacherStudentListCard({ students, onStudentClick, onAdd
           <div className="card-title">학생 리스트</div>
           <Badge className="bg-slate-200 text-slate-700">{students.length}명</Badge>
         </div>
-        {onAddStudent ? (
-          <button className="btn btn-black" onClick={onAddStudent}>
-            + 학생 추가
-          </button>
-        ) : null}
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          {onSyncOwnStudents ? (
+            <button className="btn btn-blue" onClick={onSyncOwnStudents}>
+              본인 학생 회차 동기화
+            </button>
+          ) : null}
+          {onAddStudent ? (
+            <button className="btn btn-black" onClick={onAddStudent}>
+              + 학생 추가
+            </button>
+          ) : null}
+        </div>
       </div>
       {students.length === 0 ? (
         <div style={{ marginTop: 8, color: "var(--text-muted)" }}>학생이 없습니다.</div>

@@ -36,7 +36,11 @@ export default function SharedSnapshotAgent() {
   useEffect(() => {
     const trySyncCalendarForCurrentLogin = () => {
       const auth = loadAuthSession();
-      if (!auth?.email || !auth?.providerAccessToken) return;
+      if (!auth?.email || !auth?.providerAccessToken) {
+        // 로그아웃(또는 토큰 소실) 시 다음 로그인에서 다시 1회 동기화되도록 키를 초기화
+        calendarSyncKeyRef.current = "";
+        return;
+      }
       const syncKey = `${auth.email.toLowerCase()}::${auth.userId ?? ""}`;
       if (calendarSyncKeyRef.current === syncKey) return;
       calendarSyncKeyRef.current = syncKey;
@@ -108,7 +112,6 @@ export default function SharedSnapshotAgent() {
     };
 
     const onAuthChanged = () => {
-      calendarSyncKeyRef.current = "";
       trySyncCalendarForCurrentLogin();
       void hydrate(true);
     };

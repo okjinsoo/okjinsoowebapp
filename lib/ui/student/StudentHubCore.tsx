@@ -15,6 +15,7 @@ import { formatGrade, formatPhone, formatSchedule } from "@/lib/ui/student/forma
 import AchievementBadge from "@/lib/ui/common/AchievementBadge";
 import {
   rebuildTeacherGoogleCalendarForStudentIds,
+  requestCalendarResyncForStudentIdsByAdmin,
   saveSessions,
   syncStudentGoogleCalendarMirrorForStudentIds,
 } from "@/lib/storage/sessions";
@@ -423,48 +424,61 @@ export default function StudentHubCore({
     if (isStudentSelf) {
       syncStudentGoogleCalendarMirrorForStudentIds([student.id]);
       setCalendarSyncMessage("학생 본인 캘린더 동기화를 시작했어요. 1~3초 뒤 구글 캘린더에서 확인해주세요.");
-    } else if (currentEmail && ownerEmail && currentEmail === ownerEmail) {
-      rebuildTeacherGoogleCalendarForStudentIds([student.id]);
-    }
-
-    if (!ownerEmail && !isStudentSelf) {
-      setCalendarSyncMessage("요청은 보냈지만 담당 선생님 이메일이 없어 생성할 수 없습니다. 선생님 이메일을 먼저 확인해주세요.");
-    } else if (currentEmail && currentEmail !== ownerEmail && !isStudentSelf) {
-      setCalendarSyncMessage(
-        `요청은 저장됐지만 현재 로그인 계정(${currentEmail})은 담당 선생님(${ownerEmail})이 아니어서 실제 생성은 안 됩니다. 담당 선생님 계정으로 로그인 후 다시 눌러주세요.`
-      );
-    } else if (!isStudentSelf) {
-      setCalendarSyncMessage("기존 일정을 정리하고 다시 만드는 중이에요. 1~3초 뒤 캘린더/Meet 상태가 갱신됩니다.");
-    }
-
-    window.setTimeout(() => {
-      void (async () => {
-        if (isStudentSelf) {
-          setCalendarSyncMessage("학생 본인 캘린더 동기화 요청을 마쳤어요. 구글 캘린더 앱에서 '옥진수학' 캘린더를 확인해주세요.");
-          setCalendarSyncing(false);
-          return;
-        }
-        try {
-          const baseline = await loadLatestCoreSnapshotBaselineServerRequired();
-          const rows = baseline.sessions.filter((s) => s.studentId === student.id);
-          const synced = rows.filter((s) => s.googleCalendarStatus === "synced").length;
-          const pendingCount = rows.filter((s) => s.googleCalendarStatus === "pending").length;
-          const errored = rows.filter((s) => s.googleCalendarStatus === "error");
-          const firstError = errored.find((s) => (s.googleCalendarError ?? "").trim())?.googleCalendarError ?? "";
-          if (errored.length > 0) {
-            setCalendarSyncMessage(
-              `동기화 결과: 성공 ${synced}개, 대기 ${pendingCount}개, 오류 ${errored.length}개. ${firstError ? `오류: ${firstError}` : ""
-              }`
-            );
-          } else {
-            setCalendarSyncMessage(`동기화 결과: 성공 ${synced}개, 대기 ${pendingCount}개, 오류 0개.`);
-          }
-        } catch {
-          setCalendarSyncMessage("동기화 요청은 전송했지만 서버 결과 확인에 실패했어요. 잠시 뒤 새로고침 해주세요.");
-        }
+      window.setTimeout(() => {
+        setCalendarSyncMessage("학생 본인 캘린더 동기화 요청을 마쳤어요. 구글 캘린더 앱에서 '옥진수학' 캘린더를 확인해주세요.");
         setCalendarSyncing(false);
-      })();
-    }, 2200);
+      }, 2200);
+      return;
+    }
+
+    if (!ownerEmail) {
+      setCalendarSyncMessage("요청은 보냈지만 담당 선생님 이메일이 없어 생성할 수 없습니다. 선생님 이메일을 먼저 확인해주세요.");
+      setCalendarSyncing(false);
+      return;
+    }
+
+    if (currentEmail && currentEmail === ownerEmail) {
+      rebuildTeacherGoogleCalendarForStudentIds([student.id]);
+      setCalendarSyncMessage("기존 일정을 정리하고 다시 만드는 중이에요. 1~3초 뒤 캘린더/Meet 상태가 갱신됩니다.");
+      window.setTimeout(() => {
+        void (async () => {
+          try {
+            const baseline = await loadLatestCoreSnapshotBaselineServerRequired();
+            const rows = baseline.sessions.filter((s) => s.studentId === student.id);
+            const synced = rows.filter((s) => s.googleCalendarStatus === "synced").length;
+            const pendingCount = rows.filter((s) => s.googleCalendarStatus === "pending").length;
+            const errored = rows.filter((s) => s.googleCalendarStatus === "error");
+            const firstError = errored.find((s) => (s.googleCalendarError ?? "").trim())?.googleCalendarError ?? "";
+            if (errored.length > 0) {
+              setCalendarSyncMessage(
+                `동기화 결과: 성공 ${synced}개, 대기 ${pendingCount}개, 오류 ${errored.length}개. ${firstError ? `오류: ${firstError}` : ""
+                }`
+              );
+            } else {
+              setCalendarSyncMessage(`동기화 결과: 성공 ${synced}개, 대기 ${pendingCount}개, 오류 0개.`);
+            }
+          } catch {
+            setCalendarSyncMessage("동기화 요청은 전송했지만 서버 결과 확인에 실패했어요. 잠시 뒤 새로고침 해주세요.");
+          }
+          setCalendarSyncing(false);
+        })();
+      }, 2200);
+      return;
+    }
+
+    if (isAdmin && currentEmail) {
+      requestCalendarResyncForStudentIdsByAdmin([student.id]);
+      setCalendarSyncMessage(
+        `관리자 요청을 저장했어요. 현재 로그인 계정(${currentEmail})은 담당 선생님(${ownerEmail})이 아니므로 지금은 직접 생성하지 않습니다. 담당 선생님 계정으로 로그인하면 자동으로 다시 생성됩니다.`
+      );
+      setCalendarSyncing(false);
+      return;
+    }
+
+    setCalendarSyncMessage(
+      `현재 로그인 계정(${currentEmail || "미확인"})은 담당 선생님(${ownerEmail})이 아니어서 직접 생성할 수 없습니다. 담당 선생님 계정으로 로그인 후 다시 눌러주세요.`
+    );
+    setCalendarSyncing(false);
   }
   
   async function onClickLockerResync() {

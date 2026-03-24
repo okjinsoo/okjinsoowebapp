@@ -172,11 +172,20 @@ export default function HomePage() {
     window.location.href = url;
   }
 
-  function onClickLogout() {
+  async function onClickLogout() {
+    try {
+      await fetch("/api/auth/bridge", {
+        method: "DELETE",
+        credentials: "same-origin",
+      });
+    } catch {
+      // 네트워크 오류가 있어도 로컬 세션은 지웁니다.
+    }
     clearAuthSession();
     setSession(null);
     setRole("guest");
     setRoleLoading(false);
+    window.location.replace("/");
   }
 
   function onClickStudentMove() {

@@ -67,19 +67,6 @@ function parseAuthSessionRaw(raw: string | null): AuthSession | null {
   }
 }
 
-function readCookie(name: string): string | null {
-  if (typeof document === "undefined") return null;
-  const chunks = document.cookie ? document.cookie.split("; ") : [];
-  for (const chunk of chunks) {
-    const idx = chunk.indexOf("=");
-    if (idx <= 0) continue;
-    const key = decodeURIComponent(chunk.slice(0, idx));
-    if (key !== name) continue;
-    return decodeURIComponent(chunk.slice(idx + 1));
-  }
-  return null;
-}
-
 function clearCookie(name: string): void {
   if (typeof document === "undefined") return;
   const secure = typeof window !== "undefined" && window.location.protocol === "https:" ? "; Secure" : "";
@@ -110,6 +97,14 @@ function syncAuthBridgeCookieServer(payload: AuthBridgeCookie | null): void {
 }
 
 function syncAuthBridgeCookieServerDedup(payload: AuthBridgeCookie | null): void {
+  if (!payload) {
+    // 로그아웃은 실패 시 영향이 크므로 cooldown 없이 매번 서버 삭제를 시도합니다.
+    lastBridgeSyncPayloadKey = "__EMPTY__";
+    lastBridgeSyncAt = Date.now();
+    syncAuthBridgeCookieServer(null);
+    return;
+  }
+
   const payloadKey = payload ? JSON.stringify(payload) : "__EMPTY__";
   const now = Date.now();
   if (
@@ -121,26 +116,6 @@ function syncAuthBridgeCookieServerDedup(payload: AuthBridgeCookie | null): void
   lastBridgeSyncPayloadKey = payloadKey;
   lastBridgeSyncAt = now;
   syncAuthBridgeCookieServer(payload);
-}
-
-function sessionRank(session: AuthSession | null): number {
-  if (!session) return Number.NEGATIVE_INFINITY;
-  if (session.expiresAt === null) return Date.now();
-  return session.expiresAt;
-}
-
-function pickPreferredSession(primary: AuthSession | null, secondary: AuthSession | null): AuthSession | null {
-  if (!primary) return secondary;
-  if (!secondary) return primary;
-
-  const now = Date.now();
-  const primaryExpired = primary.expiresAt !== null && now >= primary.expiresAt;
-  const secondaryExpired = secondary.expiresAt !== null && now >= secondary.expiresAt;
-  if (primaryExpired !== secondaryExpired) {
-    return primaryExpired ? secondary : primary;
-  }
-
-  return sessionRank(secondary) > sessionRank(primary) ? secondary : primary;
 }
 
 export function getSupabaseConfig(): SupabaseConfig | null {
@@ -248,20 +223,11 @@ function isAuthSession(v: unknown): v is AuthSession {
 export function loadAuthSession(): AuthSession | null {
   if (typeof window === "undefined") return null;
   const storageRaw = browserStorage.getItem(AUTH_STORAGE_KEY);
-  // 레거시 호환: 과거에는 전체 세션을 쿠키에 저장했기 때문에 1회 마이그레이션 용도로만 읽습니다.
-  // 현재 브리지 쿠키는 서버에서 서명/검증하므로 클라이언트가 직접 읽거나 쓰지 않습니다.
-  const cookieRaw = readCookie(AUTH_COOKIE_KEY);
   const storageSession = parseAuthSessionRaw(storageRaw);
-  const legacyCookieSession = parseAuthSessionRaw(cookieRaw);
-  const picked = pickPreferredSession(storageSession, legacyCookieSession);
-  if (!picked) return null;
+  if (!storageSession) return null;
 
-  const pickedRaw = JSON.stringify(picked);
-  if (storageRaw !== pickedRaw) {
-    browserStorage.setItem(AUTH_STORAGE_KEY, pickedRaw);
-  }
-  syncAuthBridgeCookieServerDedup(buildAuthBridgeCookiePayload(picked));
-  return picked;
+  syncAuthBridgeCookieServerDedup(buildAuthBridgeCookiePayload(storageSession));
+  return storageSession;
 }
 
 export function saveAuthSession(session: AuthSession): void {

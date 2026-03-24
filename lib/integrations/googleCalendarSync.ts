@@ -1,6 +1,6 @@
 "use client";
 
-import { loadAuthSession } from "@/lib/auth/supabaseAuth";
+import { buildGoogleAuthUrl, loadAuthSession } from "@/lib/auth/supabaseAuth";
 import { readSnapshotServerFirst } from "@/lib/storage/serverRead";
 import type { Session, Student, Teacher } from "@/lib/types/index";
 import {
@@ -61,12 +61,17 @@ const APP_CALENDAR_DESCRIPTION = "옥진수학 자동 생성 수업 일정";
 export const APP_EVENT_MARKER = "옥진수학 자동 생성 일정";
 const STUDENT_MIRROR_MARKER = "학생용 보조 일정";
 const CALENDAR_CACHE_TTL_MS = 30 * 60 * 1000; // [최적화] 5분 → 30분: 반복 캘린더 목록 조회 대폭 감소
+const GOOGLE_AUTH_ERROR_DEDUP_MS = 15 * 1000;
+const GOOGLE_AUTH_AUTO_REDIRECT_COOLDOWN_MS = 60 * 1000;
+const GOOGLE_AUTH_AUTO_REDIRECT_KEY = "tutorweb_google_auth_auto_redirect_ts_v1";
 
 let syncTimer: ReturnType<typeof setTimeout> | null = null;
 let pending: SyncArgs | null = null;
 let syncInFlight = false;
+let googleAuthRedirecting = false;
 const recentCreatedEventByOwnerSession = new Map<string, { eventId: string; ts: number }>();
 const ownerCalendarIdCache = new Map<string, { calendarId: string; ts: number }>();
+const recentGoogleAuthErrorAt = new Map<string, number>();
 
 function text(v: unknown): string {
   return typeof v === "string" ? v.trim() : "";
@@ -81,6 +86,56 @@ function isValidEmail(email: string): boolean {
 }
  
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+function shouldNotifyGoogleAuthError(key: string): boolean {
+  const now = Date.now();
+  const last = recentGoogleAuthErrorAt.get(key) ?? 0;
+  if (now - last < GOOGLE_AUTH_ERROR_DEDUP_MS) return false;
+  recentGoogleAuthErrorAt.set(key, now);
+
+  // 장시간 실행 탭에서 메모리 증가 방지
+  if (recentGoogleAuthErrorAt.size > 80) {
+    for (const [k, ts] of recentGoogleAuthErrorAt.entries()) {
+      if (now - ts > GOOGLE_AUTH_ERROR_DEDUP_MS * 4) {
+        recentGoogleAuthErrorAt.delete(k);
+      }
+    }
+  }
+  return true;
+}
+
+function canAutoRedirectGoogleAuth(): boolean {
+  if (typeof window === "undefined") return false;
+  if (googleAuthRedirecting) return false;
+  if ((window.location.pathname ?? "").startsWith("/auth/callback")) return false;
+  try {
+    const raw = window.sessionStorage.getItem(GOOGLE_AUTH_AUTO_REDIRECT_KEY) ?? "";
+    const last = Number(raw);
+    if (Number.isFinite(last) && last > 0) {
+      if (Date.now() - last < GOOGLE_AUTH_AUTO_REDIRECT_COOLDOWN_MS) return false;
+    }
+  } catch {
+    // sessionStorage 사용 불가 환경이면 쿨다운 없이 진행
+  }
+  return true;
+}
+
+async function tryAutoRecoverGoogleAuth401(): Promise<boolean> {
+  if (!canAutoRedirectGoogleAuth()) return false;
+  const nextPath = `${window.location.pathname}${window.location.search}`;
+  const redirectTo = `${window.location.origin}/auth/callback?next=${encodeURIComponent(nextPath || "/")}`;
+  const reconnectUrl = buildGoogleAuthUrl(redirectTo, true);
+  if (!reconnectUrl) return false;
+
+  try {
+    window.sessionStorage.setItem(GOOGLE_AUTH_AUTO_REDIRECT_KEY, String(Date.now()));
+  } catch {
+    // no-op
+  }
+  googleAuthRedirecting = true;
+  window.location.replace(reconnectUrl);
+  return true;
+}
 
 function ownerSessionKey(ownerEmail: string, sessionId: string): string {
   return `${ownerEmail}::${sessionId}`;
@@ -344,15 +399,28 @@ export async function requestGoogle(args: {
  
     if (res.status === 401) {
       const tokenPrefix = args.token ? `${args.token.substring(0, 8)}...` : "NONE";
-      console.error(`[Google API Persistent 401] Token: ${tokenPrefix}, Msg: ${msg}`);
+      const errorKey = `${args.method}:${args.path}:${msg}`;
+      const shouldNotify = shouldNotifyGoogleAuthError(errorKey);
+      if (shouldNotify) {
+        console.error(`[Google API Persistent 401] Token: ${tokenPrefix}, Msg: ${msg}`);
+      } else {
+        console.warn(`[Google API Persistent 401: deduped] Token: ${tokenPrefix}, Msg: ${msg}`);
+      }
       
       // 재로그인 유도를 위해 전역 이벤트를 발생시킵니다.
+      let autoRedirected = false;
       if (typeof window !== "undefined") {
-        const { TUTORWEB_EVENTS } = await import("@/lib/events/tutorwebEvents");
-        window.dispatchEvent(new CustomEvent(TUTORWEB_EVENTS.googleAuthError, { detail: { msg } }));
+        if (shouldNotify) {
+          const { TUTORWEB_EVENTS } = await import("@/lib/events/tutorwebEvents");
+          window.dispatchEvent(new CustomEvent(TUTORWEB_EVENTS.googleAuthError, { detail: { msg } }));
+        }
+        autoRedirected = await tryAutoRecoverGoogleAuth401();
       }
 
-      throw new Error(`401 구글 캘린더 권한이 만료되었거나 무효합니다. 사유: ${msg}. 홈에서 로그아웃 후 다시 로그인하거나 '구글 권한 다시 연결' 버튼을 클릭해주세요.`);
+      const hint = autoRedirected
+        ? "자동으로 구글 권한 재연결 화면으로 이동합니다."
+        : "홈에서 로그아웃 후 다시 로그인하거나 '구글 권한 다시 연결' 버튼을 클릭해주세요.";
+      throw new Error(`401 구글 캘린더 권한이 만료되었거나 무효합니다. 사유: ${msg}. ${hint}`);
     }
     throw new Error(`${res.status} ${msg}`);
   }
@@ -1392,6 +1460,7 @@ async function runSync(args: SyncArgs): Promise<void> {
     const ownerEmail = teacherEmail;
     const savedOwnerEmail = normalizeEmail(next.googleCalendarOwnerEmail);
     const ownerMismatch = Boolean(savedOwnerEmail && savedOwnerEmail !== ownerEmail);
+    const scheduleChanged = sessionNeedsUpsert(prev, next);
 
     if (!teacher || !ownerEmail || !isValidEmail(ownerEmail)) {
       patches.push({
@@ -1427,8 +1496,10 @@ async function runSync(args: SyncArgs): Promise<void> {
 
       const hasReadyMeet =
         Boolean(text(next.googleCalendarEventId)) && Boolean(text(next.googleMeetUrl));
-      // 학생 로그인 등 비소유자 계정에서는 이미 완성된 회차 상태를 pending으로 덮어쓰지 않는다.
-      if (!ownerMismatch && hasReadyMeet) {
+      const isSyncedStatus = text(next.googleCalendarStatus) === "synced";
+      // 비소유자 계정에서도 "변경 없음 + 이미 동기화 완료"인 경우만 그대로 둡니다.
+      // 일정이 바뀌었으면 반드시 pending으로 내려서 담당 선생님 재동기화를 유도합니다.
+      if (!ownerMismatch && hasReadyMeet && isSyncedStatus && !scheduleChanged) {
         continue;
       }
 
@@ -1626,6 +1697,10 @@ async function runSync(args: SyncArgs): Promise<void> {
             eventId: result.eventId,
           });
         }
+      }
+
+      if (!result.eventId) {
+        throw new Error("유효한 수업 시간이 없어 캘린더 일정을 만들지 못했습니다.");
       }
 
       // 같은 회차가 target 캘린더 외의 앱 캘린더에 남아 있으면 정리

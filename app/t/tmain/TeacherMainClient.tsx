@@ -3,12 +3,16 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { findTeacherByLoginEmail } from "@/lib/auth/loginSelection";
-import { AUTH_EVENT } from "@/lib/auth/supabaseAuth";
+import { AUTH_EVENT, loadAuthSession } from "@/lib/auth/supabaseAuth";
 import {
   clearCurrentTeacherId,
   loadCurrentTeacherId,
   saveCurrentTeacherId,
 } from "@/lib/storage/teachers";
+import {
+  requestCalendarResyncForStudentIds,
+  requestCalendarResyncForStudentIdsByAdmin,
+} from "@/lib/storage/sessions";
 import TodaySessionsCard, { type TodaySessionRow } from "@/lib/ui/teacher/TodaySessionsCard";
 import TeacherStudentListCard from "@/lib/ui/teacher/TeacherStudentListCard";
 import RoleGateCard from "@/lib/ui/common/RoleGateCard";
@@ -132,6 +136,39 @@ export default function TeacherMainClient({ initialRole = "t" }: { initialRole?:
     });
   }, [allRows]);
 
+  function onClickSyncOwnStudents() {
+    const targetStudentIds = visibleStudents
+      .map((student) => student.id)
+      .filter((id) => typeof id === "string" && id.trim());
+
+    if (targetStudentIds.length === 0) {
+      window.alert("동기화할 학생이 없습니다.");
+      return;
+    }
+
+    const auth = loadAuthSession();
+    const hasProviderToken = Boolean((auth?.providerAccessToken ?? "").trim());
+    if (!hasProviderToken) {
+      window.alert("구글 캘린더 권한 토큰이 없습니다. 홈에서 로그아웃 후 다시 로그인해주세요.");
+      return;
+    }
+
+    const teacherLabel = currentTeacherName || "선생님";
+    const ok = window.confirm(`${teacherLabel} 담당 학생 ${targetStudentIds.length}명의 회차 동기화를 요청할까요?`);
+    if (!ok) return;
+
+    if (initialRole === "a") {
+      requestCalendarResyncForStudentIdsByAdmin(targetStudentIds);
+      window.alert(
+        `요청을 저장했어요.\n\n현재는 관리자 계정이므로 직접 생성하지 않고 pending으로 표시됩니다.\n담당 선생님 계정으로 로그인하면 자동으로 다시 생성됩니다.`
+      );
+      return;
+    }
+
+    requestCalendarResyncForStudentIds(targetStudentIds);
+    window.alert("요청을 전송했어요. 2~5초 뒤 학생별 회차 상태를 확인해주세요.");
+  }
+
   return (
     <main className="p-6">
       <div style={{ marginBottom: 12 }}>
@@ -173,6 +210,7 @@ export default function TeacherMainClient({ initialRole = "t" }: { initialRole?:
         <TeacherStudentListCard
           students={visibleStudents}
           role={initialRole}
+          onSyncOwnStudents={onClickSyncOwnStudents}
           onAddStudent={() => router.push(`/${initialRole}/tmain/new`)}
         />
       ) : (
