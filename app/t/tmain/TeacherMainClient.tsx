@@ -149,7 +149,7 @@ export default function TeacherMainClient({ initialRole = "t" }: { initialRole?:
     const auth = loadAuthSession();
     const hasProviderToken = Boolean((auth?.providerAccessToken ?? "").trim());
     if (!hasProviderToken) {
-      window.alert("구글 캘린더 권한 토큰이 없습니다. 홈에서 로그아웃 후 다시 로그인해주세요.");
+      window.alert("구글 캘린더 권한 토큰이 없습니다. 홈에서 구글 권한을 다시 연결해주세요.");
       return;
     }
 

@@ -231,7 +231,7 @@ export default function DriveUploadModal({
               <p>{error}</p>
               {error.includes("만료") && (
                 <p className="mt-2 font-bold text-red-800">
-                  ⚠️ 홈 화면에서 로그아웃 후 다시 로그인하여 &apos;Drive 권한&apos;을 승인해 주세요.
+                  ⚠️ 홈 화면에서 &apos;구글 권한 다시 연결&apos;을 눌러 Drive 권한을 다시 연결해 주세요.
                 </p>
               )}
               <button 

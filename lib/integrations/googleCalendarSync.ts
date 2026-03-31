@@ -407,7 +407,7 @@ export async function requestGoogle(args: {
         console.warn(`[Google API Persistent 401: deduped] Token: ${tokenPrefix}, Msg: ${msg}`);
       }
       
-      // 재로그인 유도를 위해 전역 이벤트를 발생시킵니다.
+      // 권한 재연결 유도를 위해 전역 이벤트를 발생시킵니다.
       let autoRedirected = false;
       if (typeof window !== "undefined") {
         if (shouldNotify) {
@@ -419,7 +419,7 @@ export async function requestGoogle(args: {
 
       const hint = autoRedirected
         ? "자동으로 구글 권한 재연결 화면으로 이동합니다."
-        : "홈에서 로그아웃 후 다시 로그인하거나 '구글 권한 다시 연결' 버튼을 클릭해주세요.";
+        : "홈의 '구글 권한 다시 연결' 버튼을 눌러 다시 연결해주세요.";
       throw new Error(`401 구글 캘린더 권한이 만료되었거나 무효합니다. 사유: ${msg}. ${hint}`);
     }
     throw new Error(`${res.status} ${msg}`);
@@ -1358,7 +1358,7 @@ async function runSync(args: SyncArgs): Promise<void> {
   const providerToken = text(auth?.providerAccessToken);
   const currentEmail = normalizeEmail(auth?.email);
   if (!providerToken) {
-    applySyncErrorToTargets("구글 캘린더 권한 토큰이 없습니다. 로그아웃 후 다시 로그인 해주세요.");
+    applySyncErrorToTargets("구글 캘린더 권한 토큰이 없습니다. 홈에서 구글 권한을 다시 연결해주세요.");
     return;
   }
   if (!currentEmail) {

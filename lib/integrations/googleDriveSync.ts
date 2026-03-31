@@ -112,7 +112,7 @@ export async function requestDrive(args: {
           console.error("Failed to dispatch auth error event", err);
         }
       }
-      throw new Error(`구글 권한이 만료되었습니다. '구글 권한 다시 연결' 버튼을 클릭하거나 다시 로그인해 주세요. (사유: ${message})`);
+      throw new Error(`구글 권한이 만료되었습니다. '구글 권한 다시 연결' 버튼을 눌러 다시 연결해 주세요. (사유: ${message})`);
     }
   }
 

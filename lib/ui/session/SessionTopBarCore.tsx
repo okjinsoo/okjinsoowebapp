@@ -600,7 +600,7 @@ export default function SessionTopBarCore({ role, token, index }: Props) {
                 const needsCalendar = role === "a" || role === "t";
                 const nextPath = `${window.location.pathname}${window.location.search}`;
                 const redirectTo = `${window.location.origin}/auth/callback?next=${encodeURIComponent(nextPath)}`;
-                const url = buildGoogleAuthUrl(redirectTo, needsCalendar);
+                const url = buildGoogleAuthUrl(redirectTo, needsCalendar, { forceConsent: true });
                 if (url) window.location.href = url;
               }}
               style={{

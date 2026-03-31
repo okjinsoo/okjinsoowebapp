@@ -27,7 +27,7 @@ export default function DriveControlPanel() {
       setIsBusy(true);
       const auth = loadAuthSession();
       const providerToken = auth?.providerAccessToken;
-      if (!providerToken) throw new Error("구글 계정 연결이 필요합니다. 로그아웃 후 다시 로그인해 주세요.");
+      if (!providerToken) throw new Error("구글 계정 연결이 필요합니다. 홈에서 구글 권한을 다시 연결해 주세요.");
 
       setBatchProgress("폴더 생성 및 설정 중...");
       const brandId = await ensureFolder({ token: providerToken, name: "01_옥진수학", parentId: "root" });
@@ -49,7 +49,7 @@ export default function DriveControlPanel() {
       console.error("본진 설정 실패:", err);
       if (err instanceof Error && err.message.includes("만료")) {
         if (window.confirm("구글 인증이 만료되었습니다. 다시 로그인하여 권한을 갱신할까요?")) {
-          const url = buildGoogleAuthUrl(`${window.location.origin}/auth/callback`, true);
+          const url = buildGoogleAuthUrl(`${window.location.origin}/auth/callback`, true, { forceConsent: true });
           if (url) window.location.href = url;
         }
       } else {

@@ -417,7 +417,7 @@ export default function StudentHubCore({
 
     if (!hasProviderToken) {
       setCalendarSyncing(false);
-      setCalendarSyncMessage("실패: 구글 캘린더 권한 토큰이 없습니다. 홈에서 로그아웃 후 다시 로그인해주세요.");
+      setCalendarSyncMessage("실패: 구글 캘린더 권한 토큰이 없습니다. 홈에서 구글 권한을 다시 연결해주세요.");
       return;
     }
 
@@ -488,7 +488,7 @@ export default function StudentHubCore({
       // 1. 구글 권한 확인
       const auth = loadAuthSession();
       const providerToken = auth?.providerAccessToken;
-      if (!providerToken) throw new Error("구글 계정 연결이 필요합니다. 로그아웃 후 다시 로그인해 주세요.");
+      if (!providerToken) throw new Error("구글 계정 연결이 필요합니다. 홈에서 구글 권한을 다시 연결해 주세요.");
 
       // 2. 최신 설정(본진 ID 등) 불러오기
       await pullSharedSnapshotAndHydrateWithOptions({ forceRemote: true });

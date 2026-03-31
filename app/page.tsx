@@ -10,6 +10,8 @@ import {
   ensureAuthSession,
   getSupabaseConfig,
   isProviderTokenExpired,
+  loadKeepSignedInPreference,
+  saveKeepSignedInPreference,
   type AuthSession,
 } from "@/lib/auth/supabaseAuth";
 import {
@@ -18,6 +20,7 @@ import {
   roleLabel,
   type UserRole,
 } from "@/lib/auth/roleAuth";
+import { requiredRoleByPathname } from "@/lib/auth/accessPolicy";
 import { findStudentByLoginEmail } from "@/lib/auth/loginSelection";
 import { loadCurrentRole, saveCurrentRole, saveCurrentStudentToken } from "@/lib/ui/common/roleGateStorage";
 import { readStudentsServerFirst } from "@/lib/storage/serverRead";
@@ -49,13 +52,19 @@ export default function HomePage() {
   const [redirectFrom, setRedirectFrom] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [keepSignedIn, setKeepSignedIn] = useState(true);
   const [pendingPath, setPendingPath] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const studentAutoRedirectedRef = useRef(false);
+  const nextAutoRedirectedRef = useRef(false);
 
   useEffect(() => {
     const from = new URLSearchParams(window.location.search).get("next");
     setRedirectFrom((from ?? "").trim());
+  }, []);
+
+  useEffect(() => {
+    setKeepSignedIn(loadKeepSignedInPreference());
   }, []);
 
   useEffect(() => {
@@ -102,7 +111,25 @@ export default function HomePage() {
   }, [session, roleLoading, role, router]);
 
   useEffect(() => {
+    if (nextAutoRedirectedRef.current) return;
+    if (!session || roleLoading || role === "guest") return;
+
+    const nextPath = normalizeNextPath(redirectFrom);
+    if (!nextPath) return;
+
+    const requiredRole = requiredRoleByPathname(nextPath);
+    if (requiredRole && !canAccessRole(role, requiredRole)) return;
+
+    nextAutoRedirectedRef.current = true;
+    setPendingPath(nextPath);
+    startTransition(() => {
+      router.replace(nextPath);
+    });
+  }, [session, roleLoading, role, redirectFrom, router, startTransition]);
+
+  useEffect(() => {
     if (studentAutoRedirectedRef.current) return;
+    if (normalizeNextPath(redirectFrom)) return;
     if (!session || roleLoading || role !== "student") return;
 
     let cancelled = false;
@@ -128,7 +155,7 @@ export default function HomePage() {
     return () => {
       cancelled = true;
     };
-  }, [session, roleLoading, role, router, startTransition]);
+  }, [session, roleLoading, role, redirectFrom, router, startTransition]);
 
   const loginReady = useMemo(() => Boolean(getSupabaseConfig()), []);
 
@@ -140,6 +167,7 @@ export default function HomePage() {
     }
 
     setBusy(true);
+    saveKeepSignedInPreference(keepSignedIn);
     const nextPath = normalizeNextPath(redirectFrom);
     const redirectTo = buildCallbackRedirectUrl({ origin: window.location.origin, nextPath });
     const requestCalendar = shouldRequestCalendarScope(nextPath);
@@ -160,13 +188,26 @@ export default function HomePage() {
     }
 
     setBusy(true);
+    saveKeepSignedInPreference(keepSignedIn);
     const nextPath = normalizeNextPath(redirectFrom);
     const redirectTo = buildCallbackRedirectUrl({ origin: window.location.origin, nextPath });
     // 관리자/테스터 로그인: 캘린더 권한(requestCalendar) TRUE
-    const url = buildGoogleAuthUrl(redirectTo, true);
+    const url = buildGoogleAuthUrl(redirectTo, true, { selectAccount: true });
     if (!url) {
       setBusy(false);
       setError("로그인 URL을 만들지 못했어요.");
+      return;
+    }
+    window.location.href = url;
+  }
+
+  function onClickReconnectGoogleAuth() {
+    setError("");
+    const nextPath = normalizeNextPath(redirectFrom) || "/";
+    const redirectTo = buildCallbackRedirectUrl({ origin: window.location.origin, nextPath });
+    const url = buildGoogleAuthUrl(redirectTo, true, { forceConsent: true });
+    if (!url) {
+      setError("권한 다시 연결 URL을 만들지 못했어요.");
       return;
     }
     window.location.href = url;
@@ -271,6 +312,28 @@ export default function HomePage() {
                   </span>
                   <span>{busy ? "Google 로그인으로 이동 중..." : "Sign in with Google"}</span>
                 </button>
+              </div>
+              <label
+                style={{
+                  marginTop: 10,
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 8,
+                  fontSize: 13,
+                  color: "var(--text-subtle)",
+                  userSelect: "none",
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={keepSignedIn}
+                  onChange={(event) => setKeepSignedIn(event.target.checked)}
+                  disabled={busy}
+                />
+                로그인 유지하기 (권장)
+              </label>
+              <div style={{ marginTop: 6, fontSize: 12, color: "var(--text-muted)" }}>
+                공용 PC라면 체크를 끄면 브라우저를 닫을 때 자동 로그아웃됩니다.
               </div>
             </>
           ) : (
@@ -387,7 +450,26 @@ export default function HomePage() {
                   }}
                 >
                   ⚠️ <b>구글 캘린더 연결 열쇠가 만료되었습니다.</b><br/>
-                  일정 동기화를 위해 반드시 <b>로그아웃 후 다시 로그인</b>해 주세요.
+                  <button
+                    type="button"
+                    onClick={onClickReconnectGoogleAuth}
+                    style={{
+                      marginTop: 8,
+                      display: "inline-flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      padding: "8px 12px",
+                      borderRadius: 8,
+                      border: "1px solid #be123c",
+                      background: "#be123c",
+                      color: "#fff",
+                      fontSize: 12,
+                      fontWeight: 700,
+                      cursor: "pointer",
+                    }}
+                  >
+                    구글 권한 다시 연결
+                  </button>
                 </div>
               )}
             </>

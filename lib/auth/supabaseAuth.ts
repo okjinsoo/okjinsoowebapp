@@ -5,7 +5,16 @@ import { browserStorage } from "@/lib/storage/browserStorage";
 export const AUTH_STORAGE_KEY = "tutorweb_auth_session_v1";
 export const AUTH_EVENT = "tutorweb:authUpdated";
 const AUTH_COOKIE_KEY = "tutorweb_auth_session_bridge_v1";
+const AUTH_PERSISTENCE_KEY = "tutorweb_auth_persistence_v1";
 const BRIDGE_SYNC_COOLDOWN_MS = 5000;
+
+type AuthPersistence = "local" | "session";
+
+type GoogleAuthUrlOptions = {
+  requestCalendar?: boolean;
+  forceConsent?: boolean;
+  selectAccount?: boolean;
+};
 
 export type AuthSession = {
   accessToken: string;
@@ -67,6 +76,60 @@ function parseAuthSessionRaw(raw: string | null): AuthSession | null {
   }
 }
 
+function getSessionStorage(): Storage | null {
+  if (typeof window === "undefined") return null;
+  try {
+    return window.sessionStorage;
+  } catch {
+    return null;
+  }
+}
+
+function readSessionScopedAuthRaw(): string | null {
+  const storage = getSessionStorage();
+  if (!storage) return null;
+  try {
+    return storage.getItem(AUTH_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function writeSessionScopedAuthRaw(raw: string): void {
+  const storage = getSessionStorage();
+  if (!storage) return;
+  try {
+    storage.setItem(AUTH_STORAGE_KEY, raw);
+  } catch {
+    // sessionStorage 쓰기 실패 시 localStorage 경로가 이미 있으므로 무시
+  }
+}
+
+function clearSessionScopedAuthRaw(): void {
+  const storage = getSessionStorage();
+  if (!storage) return;
+  try {
+    storage.removeItem(AUTH_STORAGE_KEY);
+  } catch {
+    // no-op
+  }
+}
+
+function loadAuthPersistence(): AuthPersistence {
+  if (typeof window === "undefined") return "local";
+  const raw = browserStorage.getItem(AUTH_PERSISTENCE_KEY);
+  return raw === "session" ? "session" : "local";
+}
+
+export function loadKeepSignedInPreference(): boolean {
+  return loadAuthPersistence() === "local";
+}
+
+export function saveKeepSignedInPreference(keepSignedIn: boolean): void {
+  if (typeof window === "undefined") return;
+  browserStorage.setItem(AUTH_PERSISTENCE_KEY, keepSignedIn ? "local" : "session");
+}
+
 function clearCookie(name: string): void {
   if (typeof document === "undefined") return;
   const secure = typeof window !== "undefined" && window.location.protocol === "https:" ? "; Secure" : "";
@@ -125,9 +188,22 @@ export function getSupabaseConfig(): SupabaseConfig | null {
   return { url, anonKey };
 }
 
-export function buildGoogleAuthUrl(redirectTo: string, requestCalendar: boolean = false): string | null {
+export function buildGoogleAuthUrl(
+  redirectTo: string,
+  requestCalendarOrOptions: boolean | GoogleAuthUrlOptions = false,
+  legacyOptions?: Omit<GoogleAuthUrlOptions, "requestCalendar">
+): string | null {
   const cfg = getSupabaseConfig();
   if (!cfg) return null;
+
+  const requestCalendar =
+    typeof requestCalendarOrOptions === "boolean"
+      ? requestCalendarOrOptions
+      : Boolean(requestCalendarOrOptions.requestCalendar);
+  const options =
+    typeof requestCalendarOrOptions === "boolean"
+      ? legacyOptions
+      : requestCalendarOrOptions;
 
   const url = new URL("/auth/v1/authorize", cfg.url);
   url.searchParams.set("provider", "google");
@@ -146,7 +222,12 @@ export function buildGoogleAuthUrl(redirectTo: string, requestCalendar: boolean 
       "email profile openid https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/drive.metadata.readonly"
     );
   }
-  url.searchParams.set("prompt", "select_account consent");
+  const promptTokens: string[] = [];
+  if (options?.selectAccount) promptTokens.push("select_account");
+  if (options?.forceConsent) promptTokens.push("consent");
+  if (promptTokens.length > 0) {
+    url.searchParams.set("prompt", promptTokens.join(" "));
+  }
   url.searchParams.set("access_type", "offline");
   url.searchParams.set("include_granted_scopes", "true");
   return url.toString();
@@ -222,8 +303,11 @@ function isAuthSession(v: unknown): v is AuthSession {
 
 export function loadAuthSession(): AuthSession | null {
   if (typeof window === "undefined") return null;
-  const storageRaw = browserStorage.getItem(AUTH_STORAGE_KEY);
-  const storageSession = parseAuthSessionRaw(storageRaw);
+  const localRaw = browserStorage.getItem(AUTH_STORAGE_KEY);
+  const localSession = parseAuthSessionRaw(localRaw);
+  const sessionRaw = readSessionScopedAuthRaw();
+  const sessionScoped = parseAuthSessionRaw(sessionRaw);
+  const storageSession = localSession ?? sessionScoped;
   if (!storageSession) return null;
 
   syncAuthBridgeCookieServerDedup(buildAuthBridgeCookiePayload(storageSession));
@@ -233,7 +317,14 @@ export function loadAuthSession(): AuthSession | null {
 export function saveAuthSession(session: AuthSession): void {
   if (typeof window === "undefined") return;
   const raw = JSON.stringify(session);
-  browserStorage.setItem(AUTH_STORAGE_KEY, raw);
+  const persistence = loadAuthPersistence();
+  if (persistence === "session") {
+    writeSessionScopedAuthRaw(raw);
+    browserStorage.removeItem(AUTH_STORAGE_KEY);
+  } else {
+    browserStorage.setItem(AUTH_STORAGE_KEY, raw);
+    clearSessionScopedAuthRaw();
+  }
   syncAuthBridgeCookieServerDedup(buildAuthBridgeCookiePayload(session));
   dispatchAuthUpdated();
 }
@@ -241,6 +332,7 @@ export function saveAuthSession(session: AuthSession): void {
 export function clearAuthSession(): void {
   if (typeof window === "undefined") return;
   browserStorage.removeItem(AUTH_STORAGE_KEY);
+  clearSessionScopedAuthRaw();
   // 구버전(클라이언트 작성 쿠키) 잔재 정리
   clearCookie(AUTH_COOKIE_KEY);
   syncAuthBridgeCookieServerDedup(null);
