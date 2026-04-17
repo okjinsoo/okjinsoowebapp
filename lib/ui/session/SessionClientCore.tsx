@@ -38,6 +38,10 @@ type Props = {
   sessionIndex: number; // 1-based
   role: SessionRole;
   headerSlot?: React.ReactNode;
+  canGoPrevSession?: boolean;
+  canGoNextSession?: boolean;
+  onGoPrevSession?: () => void;
+  onGoNextSession?: () => void;
 };
 
 // ===== Final storage =====
@@ -117,7 +121,16 @@ function pickLectureTree(localTree: LectureTree, remoteTree: LectureTree | null)
   };
 }
 
-export default function SessionClientCore({ token, sessionIndex, role, headerSlot }: Props) {
+export default function SessionClientCore({
+  token,
+  sessionIndex,
+  role,
+  headerSlot,
+  canGoPrevSession = false,
+  canGoNextSession = false,
+  onGoPrevSession,
+  onGoNextSession,
+}: Props) {
   const canAssignLectures = canAssignSessionLectures(role); // ✅ t/a만 강의 배치(추가/삭제/추천저장) 가능
   const canEditProgress = true; // ✅ 학생도 체크/링크 입력은 가능
   const canSeeInternalFields = canSeeSessionInternalFields(role); // ✅ 학생에게는 내부 식별값/제출 URL 숨김
@@ -416,8 +429,28 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
         @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
       `}} />
 
-      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
         <div className="card-title">오늘의 학습</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <button
+            type="button"
+            className="btn btn-white"
+            onClick={() => onGoPrevSession?.()}
+            disabled={!canGoPrevSession}
+            style={!canGoPrevSession ? { opacity: 0.5, cursor: "not-allowed" } : undefined}
+          >
+            이전 학습
+          </button>
+          <button
+            type="button"
+            className="btn btn-white"
+            onClick={() => onGoNextSession?.()}
+            disabled={!canGoNextSession}
+            style={!canGoNextSession ? { opacity: 0.5, cursor: "not-allowed" } : undefined}
+          >
+            이후 학습
+          </button>
+        </div>
       </div>
 
       {headerSlot ? <div style={{ marginTop: 8 }}>{headerSlot}</div> : null}

@@ -1,7 +1,7 @@
 // v1/lib/ui/student/StudentMainSessionDetailBase.tsx
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { AUTH_EVENT } from "@/lib/auth/supabaseAuth";
 import { resolveSelectionForRole } from "@/lib/auth/loginSelection";
@@ -31,6 +31,20 @@ export default function StudentMainSessionDetailBase({ role }: { role: "a" | "t"
   const [students, setStudents] = useState<Student[]>([]);
   const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [teacherId, setTeacherId] = useState<string | null>(null);
+
+  const selectedStudent = useMemo(() => {
+    if (!token) return null;
+    return students.find((student) => student.token === token) ?? null;
+  }, [students, token]);
+
+  const maxSessionIndex = useMemo(() => {
+    const planCount = Number(selectedStudent?.planCount ?? 0);
+    const safePlanCount = Number.isFinite(planCount) ? Math.max(0, Math.floor(planCount)) : 0;
+    return Math.max(1, safePlanCount, Number.isFinite(index) ? index : 1);
+  }, [selectedStudent, index]);
+
+  const canGoPrevSession = Number.isFinite(index) && index > 1;
+  const canGoNextSession = Number.isFinite(index) && index < maxSessionIndex;
 
   const applySelection = useCallback((nextStudents: Student[], nextTeachers: Teacher[]) => {
     const selection = resolveSelectionForRole({
@@ -127,6 +141,16 @@ export default function StudentMainSessionDetailBase({ role }: { role: "a" | "t"
             role={role}
             token={token}
             sessionIndex={index}
+            canGoPrevSession={canGoPrevSession}
+            canGoNextSession={canGoNextSession}
+            onGoPrevSession={() => {
+              if (!canGoPrevSession) return;
+              router.push(`/${role}/smain/session/${index - 1}`);
+            }}
+            onGoNextSession={() => {
+              if (!canGoNextSession) return;
+              router.push(`/${role}/smain/session/${index + 1}`);
+            }}
             headerSlot={<SessionTopBarCore role={role} token={token} index={index} />}
           />
         ) : (
