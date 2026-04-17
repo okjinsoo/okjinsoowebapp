@@ -1,6 +1,6 @@
 # Project Status (Latest)
 
-기준 시각: 2026-03-26 16:39 (KST)
+기준 시각: 2026-04-17 11:49 (KST)
 대상 프로젝트: `v1`
 
 ## 현재 확정 상태
@@ -19,10 +19,12 @@
 
 4. 운영 배포
 - Vercel 프로덕션 배포 완료 상태입니다.
-- 운영 주소: `https://okjinsoowebapp.vercel.app`
+- 운영 주소(현재 프로덕션 alias): `https://v1-rho-five.vercel.app`
+- 운영 alias 참고: `https://v1-okjinsoos-projects.vercel.app`
 - 2026-03-23 15:34 (KST) 프로덕션 재배포 완료: `dpl_FZatVHcJjYb629hszj7PMX75LzBF`
 - 2026-03-24 20:02 (KST) 프로덕션 배포 완료: `dpl_HF18LnEMHKoPvgpfipXpeCgmU2vM`
-- 2026-03-24 20:02 (KST) 기준, 위 프로덕션 배포가 최신 운영 반영본입니다.
+- 2026-04-17 11:48 (KST) 프로덕션 배포 완료: `dpl_GqPaSWvhUuUcMn6KVpAoEU5kVd2N`
+- 2026-04-17 11:48 (KST) 기준, 위 프로덕션 배포가 최신 운영 반영본입니다.
 
 5. 관리자 계정 정책(현재 고정)
 - 관리자 이메일은 현재 고정값입니다: `rapah0310@gmail.com`
@@ -66,7 +68,13 @@
 - 홈 로그인의 Google OAuth URL에서 `prompt=select_account consent` 강제값을 제거해, 매 로그인마다 권한 동의창이 뜨는 빈도를 줄였습니다.
 - `/a|/t|/s` 접근 실패로 `/?next=...`로 돌아온 경우, 이미 로그인된 상태면 가능한 경로로 자동 복귀하도록 보강했습니다.
 - 기존 `로그아웃 후 다시 로그인` 안내 문구를 `구글 권한 다시 연결` 중심으로 통일했습니다.
-- 위 변경사항은 현재 코드에 반영되었고, 아직 프로덕션 배포는 진행하지 않았습니다.
+- 위 변경사항은 2026-04-17 11:48 (KST) 프로덕션 배포(`dpl_GqPaSWvhUuUcMn6KVpAoEU5kVd2N`)에 반영되었습니다.
+
+12. 회차 상세 이전/이후 학습 이동 버튼 추가 (2026-04-17)
+- `smain/session/[index]`의 `오늘의 학습` 제목 우측에 `이전 학습`, `이후 학습` 버튼을 추가했습니다.
+- 현재 회차 기준으로 이전(`index-1`), 이후(`index+1`) 회차로 바로 이동할 수 있습니다.
+- 첫 회차/마지막 회차에서는 버튼을 비활성화해 잘못된 이동을 막았습니다.
+- 위 변경사항은 2026-04-17 11:48 (KST) 프로덕션 배포(`dpl_GqPaSWvhUuUcMn6KVpAoEU5kVd2N`)에 반영되었습니다.
 
 ## 배포 전 체크 표준
 
