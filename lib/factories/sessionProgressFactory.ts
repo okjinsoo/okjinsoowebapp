@@ -8,6 +8,7 @@ import {
 export type SessionProgressItem = {
   noteDone?: boolean;
   solveDone?: boolean;
+  wrongNoteDone?: boolean;
 };
 
 export type SessionProgressMap = Record<string, SessionProgressItem>;
@@ -66,7 +67,14 @@ export function calculateSessionProgressSummary(args: {
       continue;
     }
 
-    // 3. 일반 강의 카드는 필기/풀이 두 개가 모두 있으므로 만점이 2점
+    // 3. 오답 노트 카드는 '오답 노트 제출' 체크박스만 있으므로 만점이 1점
+    if (id.startsWith("wrongnote_")) {
+      total += 1;
+      done += row?.wrongNoteDone ? 1 : 0;
+      continue;
+    }
+
+    // 4. 일반 강의 카드는 필기/풀이 두 개가 모두 있으므로 만점이 2점
     total += 2;
     done += (row?.noteDone ? 1 : 0) + (row?.solveDone ? 1 : 0);
   }

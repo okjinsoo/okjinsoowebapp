@@ -24,7 +24,7 @@ type Props = {
   token: string;
   sessionIndex: number;
   contentTitle: string;
-  submitType: "필기 제출" | "풀이 제출";
+  submitType: "필기 제출" | "풀이 제출" | "오답 노트 제출";
   initialValue: string; 
   rootFolderId?: string | null; // 부모가 이미 알고 있는 본진 ID
   onClose: () => void;

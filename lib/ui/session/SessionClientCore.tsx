@@ -44,12 +44,27 @@ type Props = {
   onGoNextSession?: () => void;
 };
 
+type CustomModalState = {
+  mode: "create" | "edit";
+  leafId?: string;
+  title: string;
+  url: string;
+};
+
+type NoticeModalState = {
+  mode: "create" | "edit";
+  leafId?: string;
+  content: string;
+};
+
 // ===== Final storage =====
 type LeafProgress = {
   noteDone: boolean;
   solveDone: boolean;
   noteLink: string;
   solveLink: string;
+  wrongNoteDone?: boolean;
+  wrongNoteLink?: string;
   // --- 임의 문제(Ad-hoc) 전용 정보 ---
   customTitle?: string;
   customProblemUrl?: string;
@@ -68,7 +83,14 @@ function keyLastAdded(token: string, sessionIndex: number) {
 }
 
 function defaultProgress(): LeafProgress {
-  return { noteDone: false, solveDone: false, noteLink: "", solveLink: "" };
+  return {
+    noteDone: false,
+    solveDone: false,
+    noteLink: "",
+    solveLink: "",
+    wrongNoteDone: false,
+    wrongNoteLink: "",
+  };
 }
 
 function updatedAtMs(tree: LectureTree): number | null {
@@ -143,10 +165,11 @@ export default function SessionClientCore({
   const [lastAddedLeafId, setLastAddedLeafId] = useState<string>("");
   const [noteModal, setNoteModal] = useState<{ leafId: string; title: string } | null>(null);
   const [solveModal, setSolveModal] = useState<{ leafId: string; title: string } | null>(null);
+  const [wrongNoteModal, setWrongNoteModal] = useState<{ leafId: string; title: string } | null>(null);
 
   // 신규 모달 상태
-  const [customModal, setCustomModal] = useState<{ title: string; url: string } | null>(null);
-  const [noticeModal, setNoticeModal] = useState<{ content: string } | null>(null);
+  const [customModal, setCustomModal] = useState<CustomModalState | null>(null);
+  const [noticeModal, setNoticeModal] = useState<NoticeModalState | null>(null);
 
   const [isReordering, setIsReordering] = useState(false);
   const [isHydrating, setIsHydrating] = useState(true); // [V3 추가] 서버 데이터 수신 대기 상태
@@ -497,7 +520,7 @@ export default function SessionClientCore({
               {isSaving ? "변경 중..." : isReordering ? "순서 완료" : "순서 변경"}
             </button>
             <button
-              onClick={() => setNoticeModal({ content: "" })}
+              onClick={() => setNoticeModal({ mode: "create", content: "" })}
               disabled={isHydrating || isSaving}
               className="btn btn-black"
               style={{ padding: "6px 12px", background: "var(--color-bg)", border: "1px solid var(--control-border)", color: "var(--text-main)" }}
@@ -505,12 +528,58 @@ export default function SessionClientCore({
               + 공지
             </button>
             <button
-              onClick={() => setCustomModal({ title: "", url: "" })}
+              onClick={() => setCustomModal({ mode: "create", title: "", url: "" })}
               disabled={isHydrating || isSaving}
               className="btn btn-black"
               style={{ padding: "6px 12px", background: "var(--color-bg)", border: "1px solid var(--control-border)", color: "var(--text-main)" }}
             >
               + 문제 추가
+            </button>
+            <button
+              onClick={async () => {
+                if (isHydrating || isSaving) return;
+
+                const randId =
+                  typeof crypto !== "undefined" && crypto.randomUUID
+                    ? crypto.randomUUID().slice(0, 8)
+                    : Math.random().toString(36).slice(2, 10);
+                const leafId = `wrongnote_${randId}`;
+
+                setSavingActionName("오답 노트 카드를 추가하는 중...");
+                setIsSaving(true);
+                try {
+                  const nextIds = [...lectureLeafIds, leafId];
+                  const nextProg = {
+                    ...progressByLeafId,
+                    [leafId]: {
+                      ...defaultProgress(),
+                    },
+                  };
+
+                  await pushSharedSnapshot({
+                    stateKv: {
+                      [keyLeafIds(token, sessionIndex)]: JSON.stringify(nextIds),
+                      [keyProgress(token, sessionIndex)]: JSON.stringify(nextProg),
+                      [keyLastAdded(token, sessionIndex)]: leafId,
+                    },
+                  });
+
+                  setLectureLeafIds(nextIds);
+                  setProgressByLeafId(nextProg);
+                  setLastAddedLeafId(leafId);
+                } catch (err) {
+                  console.error("오답 노트 카드 추가 실패:", err);
+                  window.alert("저장에 실패했습니다.");
+                } finally {
+                  setIsSaving(false);
+                  setSavingActionName("");
+                }
+              }}
+              disabled={isHydrating || isSaving}
+              className="btn btn-black"
+              style={{ padding: "6px 12px", background: "var(--color-bg)", border: "1px solid var(--control-border)", color: "var(--text-main)" }}
+            >
+              + 오답 노트
             </button>
             <button onClick={() => void openPicker()} className="btn btn-black" disabled={isHydrating || isSaving || pickerSyncing}>
               {pickerSyncing ? "강의 동기화 중..." : "+ 강의 추가"}
@@ -530,14 +599,17 @@ export default function SessionClientCore({
           const lectureUrl = leaf?.lectureUrl?.trim() ?? "";
           const problemUrl =
             leaf?.problemUrls?.map((u) => (u ?? "").trim()).find((u) => u) ?? "";
+          const isNotice = leafId.startsWith("notice_");
           const isCustom = leafId.startsWith("custom_");
+          const isWrongNote = leafId.startsWith("wrongnote_");
           const targetProblemUrl = isCustom ? (p.customProblemUrl || "") : problemUrl;
           const noteLocked = !!p.noteDone;
           const solveLocked = !!p.solveDone;
+          const wrongNoteLocked = !!p.wrongNoteDone;
           const canOpenLecture = !!lectureUrl && !noteLocked;
           const canOpenProblem = isCustom ? !!targetProblemUrl : (!!problemUrl && noteLocked);
           const canSubmitNote = !noteLocked;
-          const canSubmitSolveFinal = isCustom ? !solveLocked : (noteLocked && !solveLocked); 
+          const canSubmitSolveFinal = isCustom ? !solveLocked : (noteLocked && !solveLocked);
 
           return (
             <div
@@ -608,10 +680,12 @@ export default function SessionClientCore({
                 <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
                   <div>
                     <div style={{ fontWeight: 600 }}>
-                      {leafId.startsWith("notice_") ? (
+                      {isNotice ? (
                         p.noticeContent || "내용 없음"
-                      ) : leafId.startsWith("custom_") ? (
+                      ) : isCustom ? (
                         p.customTitle || "제목 없는 문제"
+                      ) : isWrongNote ? (
+                        "📕 오답노트"
                       ) : (
                         leaf?.title ?? "(삭제되었거나 찾을 수 없는 강의)"
                       )}
@@ -626,6 +700,42 @@ export default function SessionClientCore({
 
                    {canAssignLectures ? (
                     <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                      {(isCustom || isNotice) ? (
+                        <button
+                          onClick={() => {
+                            if (isCustom) {
+                              setCustomModal({
+                                mode: "edit",
+                                leafId,
+                                title: p.customTitle ?? "",
+                                url: p.customProblemUrl ?? "",
+                              });
+                              return;
+                            }
+
+                            if (isNotice) {
+                              setNoticeModal({
+                                mode: "edit",
+                                leafId,
+                                content: p.noticeContent ?? "",
+                              });
+                            }
+                          }}
+                          disabled={isSaving}
+                          style={{
+                            padding: "6px 10px",
+                            borderRadius: 8,
+                            border: "1px solid var(--control-border)",
+                            background: "var(--surface-bg)",
+                            cursor: isSaving ? "not-allowed" : "pointer",
+                            height: 32,
+                            fontWeight: 500,
+                            opacity: isSaving ? 0.6 : 1,
+                          }}
+                        >
+                          수정
+                        </button>
+                      ) : null}
                       <button
                         onClick={async () => {
                           const ok = window.confirm("이 강의를 이 회차에서 삭제할까요?");
@@ -680,7 +790,7 @@ export default function SessionClientCore({
                   ) : null}
                 </div>
 
-                {!leafId.startsWith("notice_") && (
+                {!isNotice && (
                   <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
                     {(() => {
                       // 1. 스타일 결정 로직 (원장님 가이드 반영)
@@ -744,111 +854,188 @@ export default function SessionClientCore({
                         fontWeight: 700,
                       } as const;
 
+                      const wrongNoteStatus = wrongNoteLocked ? doneStyle : activeStyle;
+                      const wrongNoteStyle = {
+                        padding: "8px 10px",
+                        borderRadius: 10,
+                        border: `1px solid ${wrongNoteStatus.border} !important`,
+                        background: `${wrongNoteStatus.bg} !important`,
+                        color: `${wrongNoteStatus.text} !important`,
+                        cursor: wrongNoteLocked ? "not-allowed" : "pointer",
+                        fontWeight: 700,
+                      } as const;
+
                       return (
                         <div style={{ display: "grid", gap: 8 }}>
-                          <div style={{ display: "grid", gridTemplateColumns: isCustom ? "repeat(2, minmax(90px, 1fr))" : "repeat(4, minmax(90px, 1fr))", gap: 8, alignItems: "center" }}>
-                            {!isCustom && (
-                              <button
-                                onClick={() => {
-                                  if (!lectureUrl) return;
-                                  if (noteLocked) return;
-                                  window.open(lectureUrl, "_blank", "noopener,noreferrer");
-                                }}
-                                disabled={!canOpenLecture}
-                                style={lectureStyle}
-                              >
-                                강의
-                              </button>
-                            )}
-
-                            {!isCustom && (
-                              <div style={{ position: "relative", width: "100%" }}>
-                                {noteLocked ? (
-                                  <div style={{
-                                    ...noteStyle,
-                                    cursor: "default",
-                                    display: "flex",
-                                    alignItems: "center",
-                                    justifyContent: "center"
-                                  }}>
-                                    <span style={{ fontSize: 13, lineHeight: 1, fontWeight: 700 }}>필기 제출 완료</span>
+                          {isWrongNote ? (
+                            <>
+                              <div style={{ display: "grid", gridTemplateColumns: "minmax(160px, 260px)", gap: 8, alignItems: "center" }}>
+                                {wrongNoteLocked ? (
+                                  <div
+                                    style={{
+                                      ...wrongNoteStyle,
+                                      cursor: "default",
+                                      display: "flex",
+                                      alignItems: "center",
+                                      justifyContent: "center",
+                                    }}
+                                  >
+                                    <span style={{ fontSize: 13, lineHeight: 1, fontWeight: 700 }}>오답 노트 제출 완료</span>
                                   </div>
                                 ) : (
                                   <button
                                     onClick={() => {
-                                      if (!canSubmitNote) return;
-                                    const leaf = getLeaf(leafId);
-                                    const modalTitle = isCustom ? (p.customTitle || "문제 풀이") : (leaf?.title || "필기 제출");
-                                    setNoteModal({ leafId, title: modalTitle });
+                                      if (wrongNoteLocked) return;
+                                      setWrongNoteModal({ leafId, title: "📕 오답노트" });
                                     }}
-                                    disabled={!canSubmitNote}
-                                    style={{ ...noteStyle, width: "100%" }}
+                                    disabled={wrongNoteLocked}
+                                    style={{ ...wrongNoteStyle, width: "100%" }}
                                   >
-                                    필기 제출
+                                    오답 노트 제출
                                   </button>
                                 )}
                               </div>
-                            )}
 
-                            <button
-                              onClick={() => {
-                                if (!targetProblemUrl) return;
-                                if (!canOpenProblem) return;
-                                window.open(targetProblemUrl, "_blank", "noopener,noreferrer");
-                              }}
-                              disabled={!canOpenProblem}
-                              style={problemStyle}
-                            >
-                              문제
-                            </button>
+                              <div style={{ display: "flex", gap: 16, alignItems: "center", color: "var(--text-muted)", fontSize: 13 }}>
+                                <label style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
+                                  <input type="checkbox" checked={Boolean(p.wrongNoteDone)} readOnly />
+                                  오답 노트 제출
+                                </label>
+                              </div>
+                            </>
+                          ) : (
+                            <>
+                              <div style={{ display: "grid", gridTemplateColumns: isCustom ? "repeat(2, minmax(90px, 1fr))" : "repeat(4, minmax(90px, 1fr))", gap: 8, alignItems: "center" }}>
+                                {!isCustom && (
+                                  <button
+                                    onClick={() => {
+                                      if (!lectureUrl) return;
+                                      if (noteLocked) return;
+                                      window.open(lectureUrl, "_blank", "noopener,noreferrer");
+                                    }}
+                                    disabled={!canOpenLecture}
+                                    style={lectureStyle}
+                                  >
+                                    강의
+                                  </button>
+                                )}
 
-                            <div style={{ position: "relative", width: "100%" }}>
-                              {solveLocked ? (
-                                <div style={{
-                                  ...solveStyle,
-                                  cursor: "default",
-                                  display: "flex",
-                                  alignItems: "center",
-                                  justifyContent: "center"
-                                }}>
-                                  <span style={{ fontSize: 13, lineHeight: 1, fontWeight: 700 }}>풀이 제출 완료</span>
-                                </div>
-                              ) : (
+                                {!isCustom && (
+                                  <div style={{ position: "relative", width: "100%" }}>
+                                    {noteLocked ? (
+                                      <div
+                                        style={{
+                                          ...noteStyle,
+                                          cursor: "default",
+                                          display: "flex",
+                                          alignItems: "center",
+                                          justifyContent: "center",
+                                        }}
+                                      >
+                                        <span style={{ fontSize: 13, lineHeight: 1, fontWeight: 700 }}>필기 제출 완료</span>
+                                      </div>
+                                    ) : (
+                                      <button
+                                        onClick={() => {
+                                          if (!canSubmitNote) return;
+                                          const leaf = getLeaf(leafId);
+                                          const modalTitle = isCustom ? (p.customTitle || "문제 풀이") : (leaf?.title || "필기 제출");
+                                          setNoteModal({ leafId, title: modalTitle });
+                                        }}
+                                        disabled={!canSubmitNote}
+                                        style={{ ...noteStyle, width: "100%" }}
+                                      >
+                                        필기 제출
+                                      </button>
+                                    )}
+                                  </div>
+                                )}
+
                                 <button
                                   onClick={() => {
-                                    // For custom problems, canSubmitSolveFinal is always true if not solveLocked
-                                    if (!isCustom && !canSubmitSolveFinal) return;
-                                    const leaf = getLeaf(leafId);
-                                    const modalTitle = isCustom ? (p.customTitle || "문제 풀이") : (leaf?.title || "풀이 제출");
-                                    setSolveModal({ leafId, title: modalTitle });
+                                    if (!targetProblemUrl) return;
+                                    if (!canOpenProblem) return;
+                                    window.open(targetProblemUrl, "_blank", "noopener,noreferrer");
                                   }}
-                                  disabled={isCustom ? solveLocked : !canSubmitSolveFinal}
-                                  style={{ ...solveStyle, width: "100%" }}
+                                  disabled={!canOpenProblem}
+                                  style={problemStyle}
                                 >
-                                  풀이 제출
+                                  문제
                                 </button>
-                              )}
-                            </div>
-                          </div>
 
-                          <div style={{ display: "flex", gap: 16, alignItems: "center", color: "var(--text-muted)", fontSize: 13 }}>
-                            {!isCustom && (
-                              <label style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
-                                <input type="checkbox" checked={Boolean(p.noteDone)} readOnly />
-                                필기 제출
-                              </label>
-                            )}
-                            <label style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
-                              <input type="checkbox" checked={Boolean(p.solveDone)} readOnly />
-                              풀이 제출
-                            </label>
-                          </div>
+                                <div style={{ position: "relative", width: "100%" }}>
+                                  {solveLocked ? (
+                                    <div
+                                      style={{
+                                        ...solveStyle,
+                                        cursor: "default",
+                                        display: "flex",
+                                        alignItems: "center",
+                                        justifyContent: "center",
+                                      }}
+                                    >
+                                      <span style={{ fontSize: 13, lineHeight: 1, fontWeight: 700 }}>풀이 제출 완료</span>
+                                    </div>
+                                  ) : (
+                                    <button
+                                      onClick={() => {
+                                        // For custom problems, canSubmitSolveFinal is always true if not solveLocked
+                                        if (!isCustom && !canSubmitSolveFinal) return;
+                                        const leaf = getLeaf(leafId);
+                                        const modalTitle = isCustom ? (p.customTitle || "문제 풀이") : (leaf?.title || "풀이 제출");
+                                        setSolveModal({ leafId, title: modalTitle });
+                                      }}
+                                      disabled={isCustom ? solveLocked : !canSubmitSolveFinal}
+                                      style={{ ...solveStyle, width: "100%" }}
+                                    >
+                                      풀이 제출
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+
+                              <div style={{ display: "flex", gap: 16, alignItems: "center", color: "var(--text-muted)", fontSize: 13 }}>
+                                {!isCustom && (
+                                  <label style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
+                                    <input type="checkbox" checked={Boolean(p.noteDone)} readOnly />
+                                    필기 제출
+                                  </label>
+                                )}
+                                <label style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
+                                  <input type="checkbox" checked={Boolean(p.solveDone)} readOnly />
+                                  풀이 제출
+                                </label>
+                              </div>
+                            </>
+                          )}
                         </div>
                       );
                     })()}
 
                     {canSeeInternalFields && (
                       <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginTop: 4 }}>
+                        {/* 오답 노트 섹션 */}
+                        {isWrongNote && p.wrongNoteDone && (
+                          <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                            <button
+                              onClick={() => p.wrongNoteLink && window.open(p.wrongNoteLink, "_blank")}
+                              style={{ padding: "6px 12px", borderRadius: 8, background: "var(--surface-hover)", border: "1px solid var(--surface-border)", fontSize: 12, fontWeight: 700, cursor: "pointer" }}
+                            >
+                              📂 오답 노트 폴더 바로가기
+                            </button>
+                            <button
+                              onClick={() => {
+                                if (window.confirm("이 학생의 오답 노트 제출을 초기화하고 다시 제출하게 할까요?")) {
+                                  updateProgress(leafId, { wrongNoteDone: false, wrongNoteLink: "" });
+                                }
+                              }}
+                              style={{ padding: "6px 12px", borderRadius: 8, background: "#fee2e2", border: "1px solid #fecaca", color: "#dc2626", fontSize: 12, fontWeight: 700, cursor: "pointer" }}
+                            >
+                              오답 노트 초기화
+                            </button>
+                          </div>
+                        )}
+
                         {/* 필기 섹션 (커스텀 문제는 제외) */}
                         {!isCustom && p.noteDone && (
                           <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
@@ -936,7 +1123,9 @@ export default function SessionClientCore({
               }}
               onClick={(e) => e.stopPropagation()}
             >
-              <div style={{ fontWeight: 800, marginBottom: 8 }}>+ 문제 추가</div>
+              <div style={{ fontWeight: 800, marginBottom: 8 }}>
+                {customModal.mode === "edit" ? "문제 수정" : "+ 문제 추가"}
+              </div>
               <div style={{ color: "var(--text-muted)", marginBottom: 12 }}>
                 회차에 일회성 문제(쪽지시험, 숙제 등)를 추가합니다.
               </div>
@@ -965,35 +1154,57 @@ export default function SessionClientCore({
               <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
                 <button
                   onClick={async () => {
-                    const titleStr = customModal?.title || ''.trim() || "제목 없는 문제";
-                    const urlStr = customModal?.url || ''.trim();
+                    const titleStr = (customModal?.title ?? "").trim() || "제목 없는 문제";
+                    const urlStr = (customModal?.url ?? "").trim();
+                    const editingLeafId = customModal.mode === "edit" ? customModal.leafId : undefined;
 
-                    const randId = typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID().slice(0, 8) : Math.random().toString(36).slice(2, 10);
-                    const leafId = `custom_${randId}`;
-
-                    setSavingActionName("문제를 추가하는 중...");
+                    setSavingActionName(customModal.mode === "edit" ? "문제 정보를 수정하는 중..." : "문제를 추가하는 중...");
                     setIsSaving(true);
                     try {
-                      const nextIds = [...lectureLeafIds, leafId];
-                      const nextProg = {
-                        ...progressByLeafId,
-                        [leafId]: { ...defaultProgress(), customTitle: titleStr, customProblemUrl: urlStr },
-                      };
+                      if (customModal.mode === "edit" && editingLeafId) {
+                        const nextProg = {
+                          ...progressByLeafId,
+                          [editingLeafId]: {
+                            ...(progressByLeafId[editingLeafId] ?? defaultProgress()),
+                            customTitle: titleStr,
+                            customProblemUrl: urlStr,
+                          },
+                        };
 
-                      await pushSharedSnapshot({
-                        stateKv: {
-                          [keyLeafIds(token, sessionIndex)]: JSON.stringify(nextIds),
-                          [keyProgress(token, sessionIndex)]: JSON.stringify(nextProg),
-                          [keyLastAdded(token, sessionIndex)]: leafId,
-                        },
-                      });
+                        await pushSharedSnapshot({
+                          stateKv: {
+                            [keyProgress(token, sessionIndex)]: JSON.stringify(nextProg),
+                          },
+                        });
 
-                      setLectureLeafIds(nextIds);
-                      setProgressByLeafId(nextProg);
-                      setLastAddedLeafId(leafId);
+                        setProgressByLeafId(nextProg);
+                      } else {
+                        const randId =
+                          typeof crypto !== "undefined" && crypto.randomUUID
+                            ? crypto.randomUUID().slice(0, 8)
+                            : Math.random().toString(36).slice(2, 10);
+                        const leafId = `custom_${randId}`;
+                        const nextIds = [...lectureLeafIds, leafId];
+                        const nextProg = {
+                          ...progressByLeafId,
+                          [leafId]: { ...defaultProgress(), customTitle: titleStr, customProblemUrl: urlStr },
+                        };
+
+                        await pushSharedSnapshot({
+                          stateKv: {
+                            [keyLeafIds(token, sessionIndex)]: JSON.stringify(nextIds),
+                            [keyProgress(token, sessionIndex)]: JSON.stringify(nextProg),
+                            [keyLastAdded(token, sessionIndex)]: leafId,
+                          },
+                        });
+
+                        setLectureLeafIds(nextIds);
+                        setProgressByLeafId(nextProg);
+                        setLastAddedLeafId(leafId);
+                      }
                       setCustomModal(null);
                     } catch (err) {
-                      console.error("문제 추가 실패:", err);
+                      console.error("문제 저장 실패:", err);
                       window.alert("저장에 실패했습니다. 다시 시도해주세요.");
                     } finally {
                       setIsSaving(false);
@@ -1011,7 +1222,7 @@ export default function SessionClientCore({
                     minWidth: 90,
                   }}
                 >
-                  {isSaving ? "적용 중..." : "문제 추가"}
+                  {isSaving ? "적용 중..." : customModal.mode === "edit" ? "문제 수정" : "문제 추가"}
                 </button>
                 <button
                   onClick={() => setCustomModal(null)}
@@ -1052,14 +1263,16 @@ export default function SessionClientCore({
               }}
               onClick={(e) => e.stopPropagation()}
             >
-              <div style={{ fontWeight: 800, marginBottom: 8 }}>+ 공지사항 등록</div>
+              <div style={{ fontWeight: 800, marginBottom: 8 }}>
+                {noticeModal.mode === "edit" ? "공지 수정" : "+ 공지사항 등록"}
+              </div>
               <div style={{ color: "var(--text-muted)", marginBottom: 12 }}>
                 진도율에 포함되지 않는 텍스트 알림을 회차에 추가합니다.
               </div>
 
               <textarea
                 value={noticeModal?.content || ''}
-                onChange={(e) => setNoticeModal((prev) => prev ? { content: e.target.value } : null)}
+                onChange={(e) => setNoticeModal((prev) => prev ? { ...prev, content: e.target.value } : null)}
                 placeholder="전달할 내용을 입력하세요."
                 rows={4}
                 style={{ width: "100%", padding: "8px 10px", borderRadius: 10, border: "1px solid var(--control-border)", resize: "vertical" }}
@@ -1068,38 +1281,60 @@ export default function SessionClientCore({
               <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
                 <button
                   onClick={async () => {
-                    const contentStr = noticeModal?.content || ''.trim();
+                    const contentStr = (noticeModal?.content ?? "").trim();
                     if (!contentStr) {
                       window.alert("내용을 입력해주세요.");
                       return;
                     }
 
-                    const randId = typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID().slice(0, 8) : Math.random().toString(36).slice(2, 10);
-                    const leafId = `notice_${randId}`;
+                    const editingLeafId = noticeModal.mode === "edit" ? noticeModal.leafId : undefined;
 
-                    setSavingActionName("공지를 등록하는 중...");
+                    setSavingActionName(noticeModal.mode === "edit" ? "공지 내용을 수정하는 중..." : "공지를 등록하는 중...");
                     setIsSaving(true);
                     try {
-                      const nextIds = [...lectureLeafIds, leafId];
-                      const nextProg = {
-                        ...progressByLeafId,
-                        [leafId]: { ...defaultProgress(), noticeContent: contentStr },
-                      };
+                      if (noticeModal.mode === "edit" && editingLeafId) {
+                        const nextProg = {
+                          ...progressByLeafId,
+                          [editingLeafId]: {
+                            ...(progressByLeafId[editingLeafId] ?? defaultProgress()),
+                            noticeContent: contentStr,
+                          },
+                        };
 
-                      await pushSharedSnapshot({
-                        stateKv: {
-                          [keyLeafIds(token, sessionIndex)]: JSON.stringify(nextIds),
-                          [keyProgress(token, sessionIndex)]: JSON.stringify(nextProg),
-                          [keyLastAdded(token, sessionIndex)]: leafId,
-                        },
-                      });
+                        await pushSharedSnapshot({
+                          stateKv: {
+                            [keyProgress(token, sessionIndex)]: JSON.stringify(nextProg),
+                          },
+                        });
 
-                      setLectureLeafIds(nextIds);
-                      setProgressByLeafId(nextProg);
-                      setLastAddedLeafId(leafId);
+                        setProgressByLeafId(nextProg);
+                      } else {
+                        const randId =
+                          typeof crypto !== "undefined" && crypto.randomUUID
+                            ? crypto.randomUUID().slice(0, 8)
+                            : Math.random().toString(36).slice(2, 10);
+                        const leafId = `notice_${randId}`;
+                        const nextIds = [...lectureLeafIds, leafId];
+                        const nextProg = {
+                          ...progressByLeafId,
+                          [leafId]: { ...defaultProgress(), noticeContent: contentStr },
+                        };
+
+                        await pushSharedSnapshot({
+                          stateKv: {
+                            [keyLeafIds(token, sessionIndex)]: JSON.stringify(nextIds),
+                            [keyProgress(token, sessionIndex)]: JSON.stringify(nextProg),
+                            [keyLastAdded(token, sessionIndex)]: leafId,
+                          },
+                        });
+
+                        setLectureLeafIds(nextIds);
+                        setProgressByLeafId(nextProg);
+                        setLastAddedLeafId(leafId);
+                      }
                       setNoticeModal(null);
                     } catch (err) {
-                      console.error("공지 등록 실패:", err);
+                      console.error("공지 저장 실패:", err);
                       window.alert("저장에 실패했습니다.");
                     } finally {
                       setIsSaving(false);
@@ -1117,7 +1352,7 @@ export default function SessionClientCore({
                     minWidth: 90,
                   }}
                 >
-                  {isSaving ? "적용 중..." : "공지 등록"}
+                  {isSaving ? "적용 중..." : noticeModal.mode === "edit" ? "공지 수정" : "공지 등록"}
                 </button>
                 <button
                   onClick={() => setNoticeModal(null)}
@@ -1343,6 +1578,49 @@ export default function SessionClientCore({
             setNoteModal(null);
           } catch (err) {
             console.error("필기 제출 저장 실패:", err);
+            window.alert("제출 기록 저장에 실패했습니다.");
+          } finally {
+            setIsSaving(false);
+            setSavingActionName("");
+          }
+        }}
+      />
+
+      {/* 구글 드라이브 업로드 모달 (오답 노트) */}
+      <DriveUploadModal
+        open={!!wrongNoteModal}
+        token={token}
+        sessionIndex={sessionIndex}
+        contentTitle={wrongNoteModal?.title || ""}
+        submitType="오답 노트 제출"
+        initialValue=""
+        rootFolderId={remoteDriveRootId}
+        onClose={() => setWrongNoteModal(null)}
+        onComplete={async (driveLink) => {
+          if (!wrongNoteModal) return;
+          const { leafId } = wrongNoteModal;
+
+          setSavingActionName("오답 노트 제출을 확정하는 중...");
+          setIsSaving(true);
+          try {
+            const nextProg = {
+              ...progressByLeafId,
+              [leafId]: {
+                ...(progressByLeafId[leafId] || defaultProgress()),
+                wrongNoteDone: true,
+                wrongNoteLink: driveLink,
+              }
+            };
+
+            await pushSharedSnapshot({
+              stateKv: {
+                [keyProgress(token, sessionIndex)]: JSON.stringify(nextProg),
+              },
+            });
+            setProgressByLeafId(nextProg);
+            setWrongNoteModal(null);
+          } catch (err) {
+            console.error("오답 노트 제출 저장 실패:", err);
             window.alert("제출 기록 저장에 실패했습니다.");
           } finally {
             setIsSaving(false);
