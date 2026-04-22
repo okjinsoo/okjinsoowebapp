@@ -1,12 +1,14 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useCallback, useEffect, useState, useRef } from "react";
 import { 
   ensurePath, 
   uploadToDrive, 
   listFiles, 
   deleteFileFromDrive, 
-  DriveFile 
+  DriveFile,
+  isGoogleDriveAuthExpiredErrorMessage,
+  logoutForDriveReauth,
 } from "@/lib/integrations/googleDriveSync";
 import { loadAuthSession } from "@/lib/auth/supabaseAuth";
 import {
@@ -68,9 +70,11 @@ export default function DriveUploadModal({
   const [files, setFiles] = useState<DriveFile[]>([]);
   const [uploading, setUploading] = useState(false);
   const [folderId, setFolderId] = useState<string | null>(null);
+  const isAuthExpiredError = isGoogleDriveAuthExpiredErrorMessage(error);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
+  const authRecoveryTriggeredRef = useRef(false);
 
   // 모달 열릴 때 초기화 및 폴더 준비
   useEffect(() => {
@@ -78,6 +82,7 @@ export default function DriveUploadModal({
     
     setLoading(true);
     setError("");
+    authRecoveryTriggeredRef.current = false;
     
     void (async () => {
       try {
@@ -87,7 +92,9 @@ export default function DriveUploadModal({
 
         const auth = loadAuthSession();
         const providerToken = auth?.providerAccessToken;
-        if (!providerToken) throw new Error("구글 드라이브 연결 권한이 없습니다. 다시 로그인 해주세요.");
+        if (!providerToken) {
+          throw new Error("구글 권한이 종료되었어요. 재인증을 위해 로그아웃 후 다시 로그인해 주세요.");
+        }
 
         // 최신 학생 목록을 서버 우선으로 다시 조회 (사물함 배정 직후 반영용)
         const allStudents = await readStudentsServerRequired();
@@ -140,7 +147,10 @@ export default function DriveUploadModal({
 
     const auth = loadAuthSession();
     const providerToken = auth?.providerAccessToken;
-    if (!providerToken) return;
+    if (!providerToken) {
+      setError("401 구글 드라이브 권한이 종료되었습니다. 보안을 위해 자동 로그아웃 후 홈으로 이동합니다.");
+      return;
+    }
 
     setUploading(true);
     setError("");
@@ -158,8 +168,8 @@ export default function DriveUploadModal({
       // 목록 새로고침
       const nextFiles = await listFiles({ token: providerToken, folderId });
       setFiles(nextFiles);
-    } catch {
-      setError("업로드 중 오류가 발생했습니다.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "업로드 중 오류가 발생했습니다.");
     } finally {
       setUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
@@ -172,13 +182,16 @@ export default function DriveUploadModal({
     
     const auth = loadAuthSession();
     const providerToken = auth?.providerAccessToken;
-    if (!providerToken) return;
+    if (!providerToken) {
+      setError("401 구글 드라이브 권한이 종료되었습니다. 보안을 위해 자동 로그아웃 후 홈으로 이동합니다.");
+      return;
+    }
 
     try {
       await deleteFileFromDrive({ token: providerToken, fileId });
       setFiles(prev => prev.filter(f => f.id !== fileId));
-    } catch {
-      setError("삭제 중 오류가 발생했습니다.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "삭제 중 오류가 발생했습니다.");
     }
   };
 
@@ -196,6 +209,20 @@ export default function DriveUploadModal({
     const folderLink = `https://drive.google.com/drive/folders/${folderId}`;
     onComplete(folderLink);
   };
+
+  const handleLogoutForReauth = useCallback(() => {
+    logoutForDriveReauth({ force: true });
+  }, []);
+
+  useEffect(() => {
+    if (!open || !isAuthExpiredError) return;
+    if (authRecoveryTriggeredRef.current) return;
+    authRecoveryTriggeredRef.current = true;
+    const timerId = window.setTimeout(() => {
+      handleLogoutForReauth();
+    }, 900);
+    return () => window.clearTimeout(timerId);
+  }, [open, isAuthExpiredError, handleLogoutForReauth]);
 
   if (!open) return null;
 
@@ -229,10 +256,18 @@ export default function DriveUploadModal({
             <div className="rounded-2xl bg-red-50 p-4 text-red-600 text-sm border border-red-100">
               <p className="font-semibold">오류 발생</p>
               <p>{error}</p>
-              {error.includes("만료") && (
-                <p className="mt-2 font-bold text-red-800">
-                  ⚠️ 홈 화면에서 &apos;구글 권한 다시 연결&apos;을 눌러 Drive 권한을 다시 연결해 주세요.
-                </p>
+              {isAuthExpiredError && (
+                <div className="mt-2 rounded-xl border border-red-200 bg-red-100 p-3">
+                  <p className="font-bold text-red-800">
+                    구글 권한이 종료되었어요. 잠시 후 자동으로 로그아웃 후 홈으로 이동해 재인증을 진행할게요.
+                  </p>
+                  <button
+                    onClick={handleLogoutForReauth}
+                    className="mt-2 rounded-lg bg-red-700 px-3 py-2 text-xs font-bold text-white hover:bg-red-800"
+                  >
+                    지금 바로 재인증하기
+                  </button>
+                </div>
               )}
               <button 
                 onClick={onClose}

@@ -2,7 +2,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { AUTH_EVENT } from "@/lib/auth/supabaseAuth";
 import { resolveSelectionForRole } from "@/lib/auth/loginSelection";
 import {
@@ -26,13 +26,28 @@ import { readRosterServerFirst } from "@/lib/storage/serverRead";
 export default function StudentMainSessionDetailBase({ role }: { role: "a" | "t" | "s" }) {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const index = Number(params?.index ?? 0);
+  const queryToken = (searchParams?.get("token") ?? "").trim();
   const [token, setToken] = useState<string | null>(null);
   const [students, setStudents] = useState<Student[]>([]);
   const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [teacherId, setTeacherId] = useState<string | null>(null);
 
   const applySelection = useCallback((nextStudents: Student[], nextTeachers: Teacher[]) => {
+    if (queryToken) {
+      const matched = nextStudents.find((student) => student.token === queryToken);
+      if (matched?.token) {
+        const matchedTeacherId = matched.teacherId ?? null;
+        setToken(matched.token);
+        setTeacherId(matchedTeacherId);
+        saveCurrentStudentToken(matched.token);
+        if (matchedTeacherId) saveCurrentTeacherId(matchedTeacherId);
+        else clearCurrentTeacherId();
+        return;
+      }
+    }
+
     const selection = resolveSelectionForRole({
       role,
       teachers: nextTeachers,
@@ -49,7 +64,7 @@ export default function StudentMainSessionDetailBase({ role }: { role: "a" | "t"
 
     if (selection.teacherId) saveCurrentTeacherId(selection.teacherId);
     else clearCurrentTeacherId();
-  }, [role]);
+  }, [queryToken, role]);
 
   useEffect(() => {
     let cancelled = false;
@@ -109,7 +124,9 @@ export default function StudentMainSessionDetailBase({ role }: { role: "a" | "t"
           onStudentChange={(next) => {
             setToken(next);
             if (Number.isFinite(index)) {
-              router.push(`/${role}/smain/session/${index}`);
+              const basePath = `/${role}/smain/session/${index}`;
+              const href = next ? `${basePath}?token=${encodeURIComponent(next)}` : basePath;
+              router.push(href);
             }
           }}
         />

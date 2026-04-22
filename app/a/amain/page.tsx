@@ -20,13 +20,14 @@ export default function AdminMainPage() {
   const { metricsMap } = useStudentRegistry();
 
   const statusCards = useMemo(() => {
-    return Array.from(metricsMap.values()).map(({ student, teacher, status, passedCount, remainingCount, lastSessionISO }) => ({
+    return Array.from(metricsMap.values()).map(({ student, teacher, status, passedCount, remainingCount, lastSessionISO, latestExtensionRequest }) => ({
       studentId: student.id,
       token: student.token ?? "",
       studentName: student.name ?? "-",
       teacherId: student.teacherId ?? null,
       teacherName: teacher?.name ?? "-",
       status,
+      hasExtensionDecision: Boolean(latestExtensionRequest?.extensionResult),
       passedCount,
       remainingCount,
       lastSessionLabel: lastSessionISO ? fmtKST_yyyyMMdd_HHmm_noSeconds(lastSessionISO) : "-",
@@ -59,7 +60,7 @@ export default function AdminMainPage() {
 
   const extensionRequestCards = useMemo(() => {
     return Array.from(metricsMap.values())
-      .filter(({ latestExtensionRequest }) => latestExtensionRequest && !latestExtensionRequest.finalResult)
+      .filter(({ status }) => status === "need_extension")
       .map((metrics) => {
         const { student, teacher, status, remainingCount, latestExtensionRequest, sessions } = metrics;
         const consultDate = latestExtensionRequest?.date;
@@ -164,7 +165,11 @@ export default function AdminMainPage() {
 
       {/* 섹션별 학생 현황 요약 */}
       {["need_extension", "overdue_extension", "paused", "pause_scheduled", "new", "active"].map((sectionType) => {
-        const sectionCards = statusCards.filter(c => c.status === sectionType);
+        const sectionCards = statusCards.filter((c) => {
+          if (c.status !== sectionType) return false;
+          if (sectionType === "need_extension" && c.hasExtensionDecision) return false;
+          return true;
+        });
         if (sectionCards.length === 0) return null;
         return (
           <section key={sectionType} style={{ marginTop: 16, border: "1px solid var(--surface-border)", borderRadius: 12, padding: 14, background: "var(--surface-bg)" }}>

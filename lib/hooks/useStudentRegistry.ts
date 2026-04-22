@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { TEACHERS_EVENT } from "@/lib/storage/teachers";
-import { buildStudentSessionsFromRows, readSnapshotServerFirst } from "@/lib/storage/serverRead";
+import { readSnapshotServerFirst } from "@/lib/storage/serverRead";
 import {
   buildBaseDatesISO,
   computeEffectiveISO,
@@ -60,7 +60,6 @@ export function useStudentRegistry() {
       setTeachers(next.teachers);
       setAllSessions(next.sessions);
       setConsultationsByStudent(next.consultations);
-      setTick((t) => t + 1);
     };
 
     const requestSnapshotRefresh = () => {
@@ -91,15 +90,41 @@ export function useStudentRegistry() {
     const today = todayYmdKST();
     const todayMs = kstDateMs(today);
     const metricsMap = new Map<string, StudentMetrics>();
+    const teachersById = new Map(teachers.map((teacher) => [teacher.id, teacher]));
+    const sessionsByStudentId = new Map<string, Session[]>();
+
+    for (const session of allSessions) {
+      const bucket = sessionsByStudentId.get(session.studentId);
+      if (bucket) bucket.push(session);
+      else sessionsByStudentId.set(session.studentId, [session]);
+    }
+
+    for (const bucket of sessionsByStudentId.values()) {
+      bucket.sort((a, b) => a.index - b.index);
+    }
 
     for (const st of students) {
       if (!st.token) continue;
       
-      const teacher = teachers.find((t) => t.id === st.teacherId) ?? null;
-      const rawSessions = buildStudentSessionsFromRows({
-        student: st,
-        allSessions,
-      });
+      const teacher = st.teacherId ? teachersById.get(st.teacherId) ?? null : null;
+      const realSessions = sessionsByStudentId.get(st.id) ?? [];
+      const planCount = st.planCount || 12;
+      const sessionsByIndex = new Map(realSessions.map((session) => [session.index, session]));
+      const rawSessions: Session[] = [];
+      for (let i = 1; i <= planCount; i += 1) {
+        const existing = sessionsByIndex.get(i);
+        if (existing) {
+          rawSessions.push(existing);
+          continue;
+        }
+        rawSessions.push({
+          id: `virtual_${st.id}_${i}`,
+          studentId: st.id,
+          index: i,
+          displayAt: "",
+          state: "normal",
+        });
+      }
       const baseDatesISO = buildBaseDatesISO(st, 60);
       const metaMap = readMetaMap(st.token);
       const consultations = consultationsByStudent[st.id] ?? [];

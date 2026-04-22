@@ -1,9 +1,13 @@
 "use client";
 
-import { loadAuthSession } from "@/lib/auth/supabaseAuth";
+import { clearAuthSession, loadAuthSession } from "@/lib/auth/supabaseAuth";
 
 const GOOGLE_DRIVE_BASE_URL = "https://www.googleapis.com/drive/v3";
 const GOOGLE_UPLOAD_BASE_URL = "https://www.googleapis.com/upload/drive/v3";
+const GOOGLE_DRIVE_AUTO_LOGOUT_KEY = "tutorweb_google_drive_auto_logout_ts_v1";
+const GOOGLE_DRIVE_AUTO_LOGOUT_COOLDOWN_MS = 60 * 1000;
+const GOOGLE_DRIVE_AUTH_ERROR_DEDUP_MS = 15 * 1000;
+const GOOGLE_DRIVE_AUTH_ERROR_PREFIX = "[GOOGLE_DRIVE_AUTH_401]";
 
 export type DriveFile = {
   id: string;
@@ -17,6 +21,103 @@ type GoogleDriveErrorBody = {
     message?: string;
   };
 };
+
+const recentDriveAuthErrorAt = new Map<string, number>();
+let driveAuthLogoutRedirecting = false;
+
+function shouldNotifyDriveAuthError(key: string): boolean {
+  const now = Date.now();
+  const last = recentDriveAuthErrorAt.get(key) ?? 0;
+  if (now - last < GOOGLE_DRIVE_AUTH_ERROR_DEDUP_MS) return false;
+  recentDriveAuthErrorAt.set(key, now);
+
+  // 장시간 실행 탭에서 메모리 누적 방지
+  if (recentDriveAuthErrorAt.size > 80) {
+    for (const [k, ts] of recentDriveAuthErrorAt.entries()) {
+      if (now - ts > GOOGLE_DRIVE_AUTH_ERROR_DEDUP_MS * 4) {
+        recentDriveAuthErrorAt.delete(k);
+      }
+    }
+  }
+  return true;
+}
+
+function parseDriveErrorMessage(body: unknown): string {
+  if (!body || typeof body !== "object") return "Google Drive API 오류";
+  const rec = body as Record<string, unknown>;
+  const rootMessage = typeof rec.message === "string" ? rec.message.trim() : "";
+  const error = rec.error;
+  if (typeof error === "string" && error.trim()) return error.trim();
+  if (error && typeof error === "object") {
+    const nestedMessage = (error as GoogleDriveErrorBody["error"])?.message;
+    if (typeof nestedMessage === "string" && nestedMessage.trim()) return nestedMessage.trim();
+  }
+  return rootMessage || "Google Drive API 오류";
+}
+
+export function isGoogleDriveAuthExpiredErrorMessage(message: string): boolean {
+  const raw = (message ?? "").trim();
+  if (!raw) return false;
+  if (raw.includes(GOOGLE_DRIVE_AUTH_ERROR_PREFIX)) return true;
+
+  const lower = raw.toLowerCase();
+  if (
+    raw.includes("구글 드라이브 권한") ||
+    raw.includes("구글 권한이 종료") ||
+    (raw.includes("권한") && (raw.includes("만료") || raw.includes("종료")))
+  ) {
+    return true;
+  }
+  if (
+    lower.includes("invalid credentials") ||
+    lower.includes("invalid authentication credentials")
+  ) {
+    return true;
+  }
+  return lower.includes("401") && (lower.includes("google") || lower.includes("drive") || lower.includes("credential"));
+}
+
+function canAutoLogoutForDriveReauth(args?: { force?: boolean }): boolean {
+  if (typeof window === "undefined") return false;
+  if (driveAuthLogoutRedirecting) return false;
+  if ((window.location.pathname ?? "").startsWith("/auth/callback")) return false;
+  if (args?.force) return true;
+  try {
+    const raw = window.sessionStorage.getItem(GOOGLE_DRIVE_AUTO_LOGOUT_KEY) ?? "";
+    const last = Number(raw);
+    if (Number.isFinite(last) && last > 0) {
+      if (Date.now() - last < GOOGLE_DRIVE_AUTO_LOGOUT_COOLDOWN_MS) return false;
+    }
+  } catch {
+    // sessionStorage 미지원 환경에서는 쿨다운 없이 진행
+  }
+  return true;
+}
+
+export function logoutForDriveReauth(args?: { force?: boolean }): boolean {
+  if (!canAutoLogoutForDriveReauth(args)) return false;
+  if (typeof window === "undefined") return false;
+  try {
+    window.sessionStorage.setItem(GOOGLE_DRIVE_AUTO_LOGOUT_KEY, String(Date.now()));
+  } catch {
+    // no-op
+  }
+  const nextPath = `${window.location.pathname}${window.location.search}`;
+  clearAuthSession();
+  driveAuthLogoutRedirecting = true;
+  window.location.replace(`/?next=${encodeURIComponent(nextPath || "/")}&reauth=1`);
+  return true;
+}
+
+function buildDriveAuthExpiredErrorMessage(args: {
+  reason: string;
+  autoLoggedOut: boolean;
+}): string {
+  const hint = args.autoLoggedOut
+    ? "보안을 위해 자동 로그아웃 후 홈으로 이동합니다."
+    : "보안을 위해 로그아웃 후 다시 로그인해 주세요.";
+  return `${GOOGLE_DRIVE_AUTH_ERROR_PREFIX} 401 구글 드라이브 권한이 종료되었습니다. 사유: ${args.reason}. ${hint}`;
+}
 
 /**
  * 구글 API 요청을 위한 공용 래퍼
@@ -67,8 +168,7 @@ export async function requestDrive(args: {
   }
 
   if (!res.ok) {
-    const errorData = body as GoogleDriveErrorBody | null;
-    const message = errorData?.error?.message || "Google Drive API 오류";
+    const message = parseDriveErrorMessage(body);
     
   // 401 발생 시 토큰 만료 재시도 (googleCalendarSync와 동일 로직)
     if (res.status === 401 && !args._retry) {
@@ -83,7 +183,7 @@ export async function requestDrive(args: {
 
       console.warn(`[Drive API] 401 감지됨. 세션 갱신 시도 중...`);
       try {
-        const { forceRefreshAuthSession, loadAuthSession } = await import("@/lib/auth/supabaseAuth");
+        const { forceRefreshAuthSession } = await import("@/lib/auth/supabaseAuth");
         const current = loadAuthSession();
         if (current?.providerAccessToken && current.providerAccessToken !== args.token) {
           console.log("[Drive API] 이미 토큰이 갱신되어 있습니다. 새 토큰으로 재시도합니다.");
@@ -103,17 +203,29 @@ export async function requestDrive(args: {
     }
     
     if (res.status === 401) {
+      const shouldNotify = shouldNotifyDriveAuthError(`${args.method}:${args.path}:${message}`);
+      if (shouldNotify) {
+        console.error(`[Drive API Persistent 401] ${args.method} ${args.path}: ${message}`);
+      } else {
+        console.warn(`[Drive API Persistent 401: deduped] ${args.method} ${args.path}: ${message}`);
+      }
+
       // 재로그인 유도를 위해 전역 이벤트를 발생시킵니다.
       if (typeof window !== "undefined") {
-        try {
-          const { TUTORWEB_EVENTS } = await import("@/lib/events/tutorwebEvents");
-          window.dispatchEvent(new CustomEvent(TUTORWEB_EVENTS.googleAuthError, { detail: { msg: message } }));
-        } catch (err) {
-          console.error("Failed to dispatch auth error event", err);
+        if (shouldNotify) {
+          try {
+            const { TUTORWEB_EVENTS } = await import("@/lib/events/tutorwebEvents");
+            window.dispatchEvent(new CustomEvent(TUTORWEB_EVENTS.googleAuthError, { detail: { msg: message } }));
+          } catch (err) {
+            console.error("Failed to dispatch auth error event", err);
+          }
         }
       }
-      throw new Error(`구글 권한이 만료되었습니다. '구글 권한 다시 연결' 버튼을 눌러 다시 연결해 주세요. (사유: ${message})`);
+      const autoLoggedOut = logoutForDriveReauth();
+      throw new Error(buildDriveAuthExpiredErrorMessage({ reason: message, autoLoggedOut }));
     }
+
+    throw new Error(`${res.status} ${message}`);
   }
 
   return body;

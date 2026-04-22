@@ -54,13 +54,18 @@ export default function HomePage() {
   const [busy, setBusy] = useState(false);
   const [keepSignedIn, setKeepSignedIn] = useState(true);
   const [pendingPath, setPendingPath] = useState<string | null>(null);
+  const [autoReauthRequested, setAutoReauthRequested] = useState(false);
   const [isPending, startTransition] = useTransition();
   const studentAutoRedirectedRef = useRef(false);
   const nextAutoRedirectedRef = useRef(false);
+  const autoReauthStartedRef = useRef(false);
 
   useEffect(() => {
-    const from = new URLSearchParams(window.location.search).get("next");
+    const search = new URLSearchParams(window.location.search);
+    const from = search.get("next");
+    const reauth = search.get("reauth") === "1";
     setRedirectFrom((from ?? "").trim());
+    setAutoReauthRequested(reauth);
   }, []);
 
   useEffect(() => {
@@ -111,7 +116,14 @@ export default function HomePage() {
   }, [session, roleLoading, role, router]);
 
   useEffect(() => {
+    if (!session || roleLoading) return;
+    if (canAccessRole(role, "admin")) void router.prefetch("/a/amain");
+    if (canAccessRole(role, "teacher")) void router.prefetch("/t/tmain");
+  }, [session, roleLoading, role, router]);
+
+  useEffect(() => {
     if (nextAutoRedirectedRef.current) return;
+    if (autoReauthRequested) return;
     if (!session || roleLoading || role === "guest") return;
 
     const nextPath = normalizeNextPath(redirectFrom);
@@ -125,10 +137,11 @@ export default function HomePage() {
     startTransition(() => {
       router.replace(nextPath);
     });
-  }, [session, roleLoading, role, redirectFrom, router, startTransition]);
+  }, [session, roleLoading, role, redirectFrom, autoReauthRequested, router, startTransition]);
 
   useEffect(() => {
     if (studentAutoRedirectedRef.current) return;
+    if (autoReauthRequested) return;
     if (normalizeNextPath(redirectFrom)) return;
     if (!session || roleLoading || role !== "student") return;
 
@@ -155,9 +168,42 @@ export default function HomePage() {
     return () => {
       cancelled = true;
     };
-  }, [session, roleLoading, role, redirectFrom, router, startTransition]);
+  }, [session, roleLoading, role, redirectFrom, autoReauthRequested, router, startTransition]);
 
   const loginReady = useMemo(() => Boolean(getSupabaseConfig()), []);
+
+  useEffect(() => {
+    if (!autoReauthRequested) return;
+    if (autoReauthStartedRef.current) return;
+    if (session) {
+      setAutoReauthRequested(false);
+      return;
+    }
+
+    autoReauthStartedRef.current = true;
+    setError("");
+
+    if (!loginReady) {
+      setAutoReauthRequested(false);
+      setError("환경변수가 비어 있어 자동 재로그인을 시작할 수 없습니다.");
+      return;
+    }
+
+    setBusy(true);
+    saveKeepSignedInPreference(keepSignedIn);
+
+    const nextPath = normalizeNextPath(redirectFrom);
+    const redirectTo = buildCallbackRedirectUrl({ origin: window.location.origin, nextPath });
+    const requestCalendar = shouldRequestCalendarScope(nextPath);
+    const url = buildGoogleAuthUrl(redirectTo, requestCalendar, { forceConsent: true });
+    if (!url) {
+      setBusy(false);
+      setAutoReauthRequested(false);
+      setError("자동 재로그인 URL을 만들지 못했어요. 다시 로그인 버튼을 눌러주세요.");
+      return;
+    }
+    window.location.href = url;
+  }, [autoReauthRequested, session, loginReady, keepSignedIn, redirectFrom]);
 
   function onClickGoogleLogin() {
     setError("");
@@ -545,6 +591,44 @@ export default function HomePage() {
           </div>
         </div>
       </section>
+      {autoReauthRequested ? (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 2000,
+            background: "rgba(15, 23, 42, 0.45)",
+            display: "grid",
+            placeItems: "center",
+            padding: 16,
+          }}
+          aria-live="polite"
+          aria-busy="true"
+        >
+          <section
+            style={{
+              width: "100%",
+              maxWidth: 520,
+              borderRadius: 14,
+              border: "1px solid #cbd5e1",
+              background: "#fff",
+              padding: 18,
+              boxShadow: "0 16px 40px rgba(15, 23, 42, 0.28)",
+              textAlign: "center",
+            }}
+          >
+            <h2 style={{ fontSize: 20, fontWeight: 900, color: "#0f172a" }}>
+              재로그인을 위해 홈으로 이동했습니다.
+            </h2>
+            <p style={{ marginTop: 10, color: "#334155", fontWeight: 700 }}>
+              잠시만 기다려 주세요.
+            </p>
+            <p style={{ marginTop: 8, fontSize: 13, color: "#64748b" }}>
+              자동으로 Google 로그인 화면으로 이동 중입니다.
+            </p>
+          </section>
+        </div>
+      ) : null}
     </main>
   );
 }

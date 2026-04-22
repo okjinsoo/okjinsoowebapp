@@ -267,6 +267,7 @@ export default function TodaySessionsCard({
         <div style={{ display: "grid", gap: 8 }}>
           {rows.map((r) => {
             const statusBadge = getSessionStatusBadge(r.status);
+            const detailHref = `/${role}/smain/session/${r.index}?token=${encodeURIComponent(r.token)}`;
 
             return (
               <div
@@ -285,7 +286,7 @@ export default function TodaySessionsCard({
                 onMouseLeave={(e) => (e.currentTarget.style.background = "var(--surface-bg)")}
               >
                 <Link
-                  href={`/${role}/smain/session/${r.index}`}
+                  href={detailHref}
                   style={{
                     flex: 1,
                     display: "grid",
