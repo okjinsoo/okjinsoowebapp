@@ -1,6 +1,6 @@
 # Project Status (Latest)
 
-기준 시각: 2026-04-23 11:32 (KST)
+기준 시각: 2026-04-23 12:53 (KST)
 대상 프로젝트: `v1`
 
 ## 현재 확정 상태
@@ -29,7 +29,8 @@
 - 2026-04-21 20:46 (KST) 프로덕션 배포 완료: `dpl_ETHPSvFavkySD4ErHAfptV1SZiKL`
 - 2026-04-22 21:02 (KST) 프로덕션 배포 완료: `dpl_2WMDamHCB5W6c8aQ8v9kkqBgZNwf`
 - 2026-04-23 11:32 (KST) 프로덕션 배포 완료: `dpl_CWrbY6FbyQvvgCa4xdHpyDzh8zLY`
-- 2026-04-23 11:32 (KST) 기준, 위 프로덕션 배포가 최신 운영 반영본입니다.
+- 2026-04-23 12:53 (KST) 프로덕션 배포 완료: `dpl_Dp3LAnLUkrDshb6HCqaB1FLAYx9o`
+- 2026-04-23 12:53 (KST) 기준, 위 프로덕션 배포가 최신 운영 반영본입니다.
 
 5. 관리자 계정 정책(현재 고정)
 - 관리자 이메일은 현재 고정값입니다: `rapah0310@gmail.com`
@@ -111,6 +112,11 @@
 - 진도율 계산에서 `wrongnote_*` 카드는 오답노트 제출 1개 항목으로 계산되도록 반영했습니다.
 - 관리자 경로 `app/a/tmain/[token]/session/[index]` 페이지를 복구해 관리자-담당학생 회차 상세 접근이 누락되지 않도록 정리했습니다.
 - 위 변경사항은 2026-04-23 11:32 (KST) 프로덕션 배포(`dpl_CWrbY6FbyQvvgCa4xdHpyDzh8zLY`)에 반영되었습니다.
+
+18. 세션 상세 이전/이후 버튼 위치 조정 (2026-04-23, 배포 반영)
+- `session/[index]`의 `오늘의 학습` 타이틀 행 오른쪽에 `이전 학습`, `이후 학습` 버튼을 배치했습니다.
+- 기존 `SessionTopBarCore` 우측 영역에 있던 이전/이후 버튼은 제거하고, 버튼 이동 로직은 `SessionClientCore`에 통합했습니다.
+- 위 변경사항은 2026-04-23 12:53 (KST) 프로덕션 배포(`dpl_Dp3LAnLUkrDshb6HCqaB1FLAYx9o`)에 반영되었습니다.
 
 ## 배포 전 체크 표준
 
