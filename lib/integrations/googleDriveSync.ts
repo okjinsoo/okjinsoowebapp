@@ -295,7 +295,7 @@ export async function ensurePath(args: {
   token: string;
   sessionIndex: number;
   contentTitle: string; 
-  submitType: "필기 제출" | "풀이 제출";
+  submitType: "필기 제출" | "오답 노트 제출" | "풀이 제출";
   startStudentFolderId: string; // 필수: 학생 전용 사물함 ID
 }): Promise<string> {
   const { token, submitType, sessionIndex, contentTitle, startStudentFolderId } = args;
