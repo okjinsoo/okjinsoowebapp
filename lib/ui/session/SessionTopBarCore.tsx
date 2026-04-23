@@ -3,7 +3,6 @@
 import { BROWSER_STORAGE_EVENT } from "@/lib/storage/browserStorage";
 
 import { useEffect, useMemo, useState } from "react";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   buildBaseDatesISO,
   computeEffectiveISO,
@@ -55,9 +54,6 @@ function isNonNegInt(n: unknown): boolean {
 export default function SessionTopBarCore({ role, token, index }: Props) {
   const canEdit = canEditSessionMeta(role);
   const isAdmin = role === "a";
-  const router = useRouter();
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
 
   // hydration mismatch 방지(오늘 날짜 기반 요소는 mounted 이후)
   const [mounted, setMounted] = useState(false);
@@ -234,30 +230,6 @@ export default function SessionTopBarCore({ role, token, index }: Props) {
   const currentSession = useMemo(() => {
     return sessions.find((s) => s.index === index) ?? null;
   }, [sessions, index]);
-  const maxSessionIndex = useMemo(() => {
-    if (sessions.length === 0) return 0;
-    return sessions.reduce((max, row) => Math.max(max, row.index), 0);
-  }, [sessions]);
-
-  const buildSessionHref = (targetIndex: number): string | null => {
-    if (!Number.isFinite(targetIndex) || targetIndex < 1) return null;
-
-    const path = pathname ?? "";
-    const nextPath = /\/session\/\d+\/?$/.test(path)
-      ? path.replace(/\/session\/\d+\/?$/, `/session/${targetIndex}`)
-      : `/${role}/smain/session/${targetIndex}`;
-
-    const nextQuery = new URLSearchParams(searchParams?.toString() ?? "");
-    const hasTokenPath = /\/(?:tmain|students)\/[^/]+\/session\//.test(nextPath);
-    if (hasTokenPath) nextQuery.delete("token");
-    else nextQuery.set("token", token);
-
-    const query = nextQuery.toString();
-    return query ? `${nextPath}?${query}` : nextPath;
-  };
-
-  const prevHref = buildSessionHref(index - 1);
-  const nextHref = maxSessionIndex > 0 && index >= maxSessionIndex ? null : buildSessionHref(index + 1);
 
   const meetUrl = typeof currentSession?.googleMeetUrl === "string" ? currentSession.googleMeetUrl.trim() : "";
   const calendarStatus = currentSession?.googleCalendarStatus ?? "pending";
@@ -709,26 +681,6 @@ export default function SessionTopBarCore({ role, token, index }: Props) {
 
       {/* 우측 버튼 */}
       <div className="flex items-center gap-2">
-        <button
-          className="btn"
-          onClick={() => {
-            if (!prevHref) return;
-            router.push(prevHref);
-          }}
-          disabled={!prevHref || isSaving}
-        >
-          이전 학습
-        </button>
-        <button
-          className="btn"
-          onClick={() => {
-            if (!nextHref) return;
-            router.push(nextHref);
-          }}
-          disabled={!nextHref || isSaving}
-        >
-          이후 학습
-        </button>
         <button className={meetUrl ? "btn btn-green" : "btn"} onClick={openMeet} title="Google Meet 바로가기">
           미트
         </button>

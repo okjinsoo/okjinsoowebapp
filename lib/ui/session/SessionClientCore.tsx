@@ -18,6 +18,8 @@ import {
   canSeeSessionInternalFields,
   type SessionRole,
 } from "@/lib/policies/sessionRolePolicy";
+import { useStudentSessionContext } from "@/lib/hooks/useStudentSessionContext";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import type {
@@ -130,6 +132,38 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
   const canAssignLectures = canAssignSessionLectures(role); // ✅ t/a만 강의 배치(추가/삭제/추천저장) 가능
   const canEditProgress = true; // ✅ 학생도 체크/링크 입력은 가능
   const canSeeInternalFields = canSeeSessionInternalFields(role); // ✅ 학생에게는 내부 식별값/제출 URL 숨김
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const { sessions } = useStudentSessionContext(token);
+
+  const maxSessionIndex = useMemo(() => {
+    if (sessions.length === 0) return 0;
+    return sessions.reduce((max, row) => Math.max(max, row.index), 0);
+  }, [sessions]);
+
+  const buildSessionHref = (targetIndex: number): string | null => {
+    if (!Number.isFinite(targetIndex) || targetIndex < 1) return null;
+
+    const path = pathname ?? "";
+    const nextPath = /\/session\/\d+\/?$/.test(path)
+      ? path.replace(/\/session\/\d+\/?$/, `/session/${targetIndex}`)
+      : `/${role}/smain/session/${targetIndex}`;
+
+    const nextQuery = new URLSearchParams(searchParams?.toString() ?? "");
+    const hasTokenPath = /\/(?:tmain|students)\/[^/]+\/session\//.test(nextPath);
+    if (hasTokenPath) nextQuery.delete("token");
+    else nextQuery.set("token", token);
+
+    const query = nextQuery.toString();
+    return query ? `${nextPath}?${query}` : nextPath;
+  };
+
+  const prevHref = buildSessionHref(sessionIndex - 1);
+  const nextHref =
+    maxSessionIndex > 0 && sessionIndex >= maxSessionIndex
+      ? null
+      : buildSessionHref(sessionIndex + 1);
 
   const [mounted, setMounted] = useState(false);
 
@@ -426,8 +460,30 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
         @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
       `}} />
 
-      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
         <div className="card-title">오늘의 학습</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <button
+            className="btn"
+            onClick={() => {
+              if (!prevHref) return;
+              router.push(prevHref);
+            }}
+            disabled={!prevHref || isSaving}
+          >
+            이전 학습
+          </button>
+          <button
+            className="btn"
+            onClick={() => {
+              if (!nextHref) return;
+              router.push(nextHref);
+            }}
+            disabled={!nextHref || isSaving}
+          >
+            이후 학습
+          </button>
+        </div>
       </div>
 
       {headerSlot ? <div style={{ marginTop: 8 }}>{headerSlot}</div> : null}
