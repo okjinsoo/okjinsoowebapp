@@ -105,7 +105,7 @@ export function logoutForDriveReauth(args?: { force?: boolean }): boolean {
   const nextPath = `${window.location.pathname}${window.location.search}`;
   clearAuthSession();
   driveAuthLogoutRedirecting = true;
-  window.location.replace(`/?next=${encodeURIComponent(nextPath || "/")}&reauth=1`);
+  window.location.replace(`/auth/reauth?next=${encodeURIComponent(nextPath || "/")}`);
   return true;
 }
 
@@ -114,7 +114,7 @@ function buildDriveAuthExpiredErrorMessage(args: {
   autoLoggedOut: boolean;
 }): string {
   const hint = args.autoLoggedOut
-    ? "보안을 위해 자동 로그아웃 후 홈으로 이동합니다."
+    ? "보안을 위해 자동 로그아웃 후 재인증 화면으로 이동합니다."
     : "보안을 위해 로그아웃 후 다시 로그인해 주세요.";
   return `${GOOGLE_DRIVE_AUTH_ERROR_PREFIX} 401 구글 드라이브 권한이 종료되었습니다. 사유: ${args.reason}. ${hint}`;
 }

@@ -56,7 +56,7 @@ describe("logoutForDriveReauth", () => {
     vi.unstubAllGlobals();
   });
 
-  test("현재 경로를 next로 보존하며 홈으로 이동한다", async () => {
+  test("현재 경로를 next로 보존하며 재인증 화면으로 이동한다", async () => {
     const replaceSpy = installWindow({
       pathname: "/s/smain/session/1",
       search: "?from=drive",
@@ -67,7 +67,7 @@ describe("logoutForDriveReauth", () => {
 
     expect(moved).toBe(true);
     expect(clearAuthSessionMock).toHaveBeenCalledTimes(1);
-    expect(replaceSpy).toHaveBeenCalledWith("/?next=%2Fs%2Fsmain%2Fsession%2F1%3Ffrom%3Ddrive&reauth=1");
+    expect(replaceSpy).toHaveBeenCalledWith("/auth/reauth?next=%2Fs%2Fsmain%2Fsession%2F1%3Ffrom%3Ddrive");
   });
 
   test("쿨다운 시간 내 중복 자동 로그아웃은 막는다", async () => {
@@ -105,7 +105,7 @@ describe("logoutForDriveReauth", () => {
 
     expect(moved).toBe(true);
     expect(clearAuthSessionMock).toHaveBeenCalledTimes(1);
-    expect(replaceSpy).toHaveBeenCalledWith("/?next=%2Fs%2Fsmain%2Fsession%2F2&reauth=1");
+    expect(replaceSpy).toHaveBeenCalledWith("/auth/reauth?next=%2Fs%2Fsmain%2Fsession%2F2");
   });
 
   test("auth/callback 경로에서는 자동 로그아웃을 수행하지 않는다", async () => {
