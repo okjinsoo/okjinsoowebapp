@@ -1,6 +1,6 @@
 # Project Status (Latest)
 
-기준 시각: 2026-04-23 12:53 (KST)
+기준 시각: 2026-04-25 16:35 (KST)
 대상 프로젝트: `v1`
 
 ## 현재 확정 상태
@@ -30,7 +30,8 @@
 - 2026-04-22 21:02 (KST) 프로덕션 배포 완료: `dpl_2WMDamHCB5W6c8aQ8v9kkqBgZNwf`
 - 2026-04-23 11:32 (KST) 프로덕션 배포 완료: `dpl_CWrbY6FbyQvvgCa4xdHpyDzh8zLY`
 - 2026-04-23 12:53 (KST) 프로덕션 배포 완료: `dpl_Dp3LAnLUkrDshb6HCqaB1FLAYx9o`
-- 2026-04-23 12:53 (KST) 기준, 위 프로덕션 배포가 최신 운영 반영본입니다.
+- 2026-04-25 16:33 (KST) 프로덕션 배포 완료: `dpl_FuUwcXQ4q7HSVNtetJ1jagZFtXDu`
+- 2026-04-25 16:35 (KST) 기준, 위 프로덕션 배포가 최신 운영 반영본입니다.
 
 5. 관리자 계정 정책(현재 고정)
 - 관리자 이메일은 현재 고정값입니다: `rapah0310@gmail.com`
@@ -117,6 +118,13 @@
 - `session/[index]`의 `오늘의 학습` 타이틀 행 오른쪽에 `이전 학습`, `이후 학습` 버튼을 배치했습니다.
 - 기존 `SessionTopBarCore` 우측 영역에 있던 이전/이후 버튼은 제거하고, 버튼 이동 로직은 `SessionClientCore`에 통합했습니다.
 - 위 변경사항은 2026-04-23 12:53 (KST) 프로덕션 배포(`dpl_Dp3LAnLUkrDshb6HCqaB1FLAYx9o`)에 반영되었습니다.
+
+19. Drive 401 재인증 전용 경로 분리 (2026-04-25, 배포 반영)
+- Drive 401 자동 복구 시 홈(`/?reauth=1`)으로 보내던 흐름을 전용 경로(`/auth/reauth?next=...`)로 변경했습니다.
+- `/auth/reauth`에서 전체 안내 화면을 먼저 보여준 뒤, 자동으로 Google 재로그인을 시작하도록 정리했습니다.
+- `next` 복귀 경로는 그대로 유지되어, 재인증 완료 후 기존 페이지로 돌아갑니다.
+- 관련 로그아웃 플로우 테스트(`lib/integrations/googleDriveLogoutFlow.test.ts`) 기대값도 전용 경로 기준으로 갱신했습니다.
+- 위 변경사항은 2026-04-25 16:33 (KST) 프로덕션 배포(`dpl_FuUwcXQ4q7HSVNtetJ1jagZFtXDu`)에 반영되었습니다.
 
 ## 배포 전 체크 표준
 
