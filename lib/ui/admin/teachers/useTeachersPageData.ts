@@ -4,9 +4,10 @@ import { useCallback, useEffect, useState } from "react";
 import type { Student, Teacher } from "@/lib/types/index";
 import { saveTeachers, TEACHERS_EVENT } from "@/lib/storage/teachers";
 import { saveStudents } from "@/lib/storage/students";
+import { isLocalOnlySnapshotMode } from "@/lib/storage/sharedSnapshot";
 import { pushSharedSnapshot } from "@/lib/storage/sharedSnapshot";
 import { loadLatestCoreSnapshotBaselineServerRequired } from "@/lib/storage/safeSnapshotMerge";
-import { readTeachersServerRequired } from "@/lib/storage/serverRead";
+import { readTeachersServerFirst } from "@/lib/storage/serverRead";
 import {
   SERVER_REFRESH_RETRY_MESSAGE,
   SERVER_SAVE_RETRY_MESSAGE,
@@ -27,13 +28,21 @@ export function useTeachersPageData(): UseTeachersPageDataResult {
 
     const refresh = async () => {
       try {
-        const nextTeachers = await readTeachersServerRequired();
+        const result = await readTeachersServerFirst();
         if (cancelled) return;
-        setTeachers(nextTeachers);
+        setTeachers(result.teachers);
+        if (result.source !== "server" && !isLocalOnlySnapshotMode()) {
+          setError(SERVER_REFRESH_RETRY_MESSAGE);
+          return;
+        }
         setError("");
       } catch {
         if (cancelled) return;
-        setError(SERVER_REFRESH_RETRY_MESSAGE);
+        if (!isLocalOnlySnapshotMode()) {
+          setError(SERVER_REFRESH_RETRY_MESSAGE);
+          return;
+        }
+        setError("");
       }
     };
 

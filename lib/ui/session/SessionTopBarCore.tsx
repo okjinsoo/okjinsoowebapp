@@ -36,7 +36,7 @@ import {
 import { useConsultationSubmit } from "../student/hooks/useConsultationSubmit";
 import { todayYmdKST } from "@/lib/utils/date";
 import { syncSessionDisplayAtByToken } from "@/lib/ui/session/syncSessionDisplayAt";
-import { canEditSessionMeta, type SessionRole } from "@/lib/policies/sessionRolePolicy";
+import { canEditSessionMeta, canUseConsultFeatures, type SessionRole } from "@/lib/policies/sessionRolePolicy";
 import { ConsultationRecord, PaymentRecord, Student } from "@/lib/types/index";
 import { useStudentSessionContext } from "@/lib/hooks/useStudentSessionContext";
 
@@ -53,6 +53,7 @@ function isNonNegInt(n: unknown): boolean {
 
 export default function SessionTopBarCore({ role, token, index }: Props) {
   const canEdit = canEditSessionMeta(role);
+  const canUseConsult = canUseConsultFeatures(role);
   const isAdmin = role === "a";
 
   // hydration mismatch 방지(오늘 날짜 기반 요소는 mounted 이후)
@@ -288,6 +289,7 @@ export default function SessionTopBarCore({ role, token, index }: Props) {
   };
 
   const openConsultModal = () => {
+    if (!canUseConsult) return;
     if (consultTag?.recordId) {
       const record = consultRecords.find((r) => r.id === consultTag.recordId);
       if (record) {
@@ -336,6 +338,7 @@ export default function SessionTopBarCore({ role, token, index }: Props) {
 
   const { submit: submitConsult } = useConsultationSubmit({
     isAdmin,
+    actorRole: role,
     student,
     history: studentHistory,
     consultRecords: consultRecords ?? [],
@@ -658,7 +661,7 @@ export default function SessionTopBarCore({ role, token, index }: Props) {
           <div>{mounted ? (effectiveISO ? fmtKST_yyyyMMdd_HHmm_noSeconds(effectiveISO) : "예정일 없음") : "-"}</div>
           <Badge style={statusBadge.style}>{statusBadge.label}</Badge>
           <AchievementBadge percent={achievementPercent} />
-          {!(
+          {canUseConsult && !(
             lastClassIndex &&
             index === lastClassIndex &&
             consultTag &&
@@ -709,7 +712,7 @@ export default function SessionTopBarCore({ role, token, index }: Props) {
               조정
             </button>
 
-            <ConsultButton tag={consultTag} onClick={openConsultModal} />
+            {canUseConsult ? <ConsultButton tag={consultTag} onClick={openConsultModal} /> : null}
           </>
         ) : null}
       </div>
@@ -940,17 +943,19 @@ export default function SessionTopBarCore({ role, token, index }: Props) {
         </div>
       )}
 
-      <ConsultModal
-        open={consultOpen}
-        role={role}
-        state={consultForm}
-        error={consultError}
-        onClose={() => setConsultOpen(false)}
-        onSave={saveConsultRecord}
-        onDelete={isAdmin ? deleteConsultRecord : undefined}
-        loading={isSaving}
-        computeRefundRatioValue={computeRefundRatioValue}
-      />
+      {canUseConsult ? (
+        <ConsultModal
+          open={consultOpen}
+          role={role}
+          state={consultForm}
+          error={consultError}
+          onClose={() => setConsultOpen(false)}
+          onSave={saveConsultRecord}
+          onDelete={isAdmin ? deleteConsultRecord : undefined}
+          loading={isSaving}
+          computeRefundRatioValue={computeRefundRatioValue}
+        />
+      ) : null}
     </div>
   );
 }

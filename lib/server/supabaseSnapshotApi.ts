@@ -8,6 +8,11 @@ import {
   normalizeEmail,
   resolveAccessTokenFromRequest,
 } from "@/lib/security/requestAuth";
+import {
+  LOCAL_DEV_ADMIN_EMAIL,
+  LOCAL_DEV_ADMIN_USER_ID,
+  hasLocalDevAdminSession,
+} from "@/lib/auth/localDevAuth";
 import { logSecurityEvent } from "@/lib/security/securityLog";
 import { SHARED_CONSULTATIONS_KEY, isSharedStateKvKey } from "@/lib/storage/sharedStateKeys";
 import type { ConsultationRecord, Session, Student, Teacher } from "@/lib/types/index";
@@ -18,6 +23,7 @@ const FIXED_ADMIN_EMAILS = new Set(["rapah0310@gmail.com"]);
 type SupabaseConfig = {
   url: string;
   anonKey: string;
+  serviceRoleKey: string | null;
 };
 
 type SnapshotRow = {
@@ -50,6 +56,7 @@ export type ViewerContext = {
   studentId: string | null;
   snapshot: NormalizedSnapshot;
   digest: string;
+  isLocalDevAdmin: boolean;
 };
 
 export type SnapshotPatch = {
@@ -91,7 +98,13 @@ export function calculateSnapshotDigest(snapshot: NormalizedSnapshot): string {
 }
 
 function getSupabaseServerConfig(): SupabaseConfig | null {
-  return getSupabaseAnonConfigFromEnv();
+  const anonCfg = getSupabaseAnonConfigFromEnv();
+  if (!anonCfg) return null;
+  const serviceRoleKey = (process.env.SUPABASE_SERVICE_ROLE_KEY ?? "").trim();
+  return {
+    ...anonCfg,
+    serviceRoleKey: serviceRoleKey || null,
+  };
 }
 
 function requestIdOf(request: NextRequest): string {
@@ -107,10 +120,14 @@ function buildHeaders(args: {
   accessToken: string;
   json?: boolean;
   preferMerge?: boolean;
+  useServiceRole?: boolean;
 }): Record<string, string> {
+  const useServiceRole = Boolean(args.useServiceRole && args.cfg.serviceRoleKey);
+  const apikey = useServiceRole ? args.cfg.serviceRoleKey! : args.cfg.anonKey;
+  const bearer = useServiceRole ? args.cfg.serviceRoleKey! : args.accessToken;
   const headers: Record<string, string> = {
-    apikey: args.cfg.anonKey,
-    Authorization: `Bearer ${args.accessToken}`,
+    apikey,
+    Authorization: `Bearer ${bearer}`,
   };
   if (args.json) headers["Content-Type"] = "application/json";
   if (args.preferMerge) headers.Prefer = "resolution=merge-duplicates";
@@ -179,6 +196,7 @@ async function fetchSnapshotRow(args: {
   cfg: SupabaseConfig;
   accessToken: string;
   select?: string[];
+  useServiceRole?: boolean;
 }): Promise<{ row: SnapshotRow | null; missing: MissingColumns }> {
   const baseUrl = new URL("/rest/v1/app_state_snapshots", args.cfg.url);
   const selectFields = [...(args.select ?? ["teachers", "students", "sessions", "state_kv"])];
@@ -192,7 +210,11 @@ async function fetchSnapshotRow(args: {
 
     const res = await fetch(requestUrl.toString(), {
       method: "GET",
-      headers: buildHeaders({ cfg: args.cfg, accessToken: args.accessToken }),
+      headers: buildHeaders({
+        cfg: args.cfg,
+        accessToken: args.accessToken,
+        useServiceRole: args.useServiceRole,
+      }),
       cache: "no-store",
     });
 
@@ -272,12 +294,35 @@ function resolveStudentId(email: string, snapshot: NormalizedSnapshot): string |
 
 export async function resolveViewerContext(request: NextRequest): Promise<ViewerContext | null> {
   const cfg = getSupabaseServerConfig();
+  if (!cfg) return null;
+
+  if (hasLocalDevAdminSession(request)) {
+    if (!cfg.serviceRoleKey) return null;
+    const snapshotResult = await fetchSnapshotRow({
+      cfg,
+      accessToken: cfg.serviceRoleKey,
+      useServiceRole: true,
+    });
+    const snapshot = normalizeSnapshot(snapshotResult.row, snapshotResult.missing);
+    return {
+      accessToken: cfg.serviceRoleKey,
+      email: LOCAL_DEV_ADMIN_EMAIL,
+      userId: LOCAL_DEV_ADMIN_USER_ID,
+      role: "admin",
+      teacherId: null,
+      studentId: null,
+      snapshot,
+      digest: calculateSnapshotDigest(snapshot),
+      isLocalDevAdmin: true,
+    };
+  }
+
   const accessToken =
     (await resolveAccessTokenFromRequest(request, {
       allowAuthorizationHeader: true,
       allowLegacyCookieJson: true,
     })) ?? "";
-  if (!cfg || !accessToken) return null;
+  if (!accessToken) return null;
 
   const user = await fetchSupabaseAuthUser({ cfg, accessToken });
   if (!user) return null;
@@ -314,6 +359,7 @@ export async function resolveViewerContext(request: NextRequest): Promise<Viewer
     studentId,
     snapshot,
     digest: calculateSnapshotDigest(snapshot), // [V18 추가]
+    isLocalDevAdmin: false,
   };
 }
 
@@ -481,6 +527,7 @@ export async function upsertSnapshotPatch(args: {
       cfg,
       accessToken: viewer.accessToken,
       select: ["state_kv"],
+      useServiceRole: viewer.isLocalDevAdmin,
     });
     const current = normalizeSnapshot(currentResult.row, currentResult.missing).stateKv;
     const dropStateKeys = Array.from(
@@ -555,6 +602,7 @@ export async function upsertSnapshotPatch(args: {
         accessToken: viewer.accessToken,
         json: true,
         preferMerge: true,
+        useServiceRole: viewer.isLocalDevAdmin,
       }),
       body: JSON.stringify([bodyPayload]),
       cache: "no-store",

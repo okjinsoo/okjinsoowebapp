@@ -1,5 +1,6 @@
 import { ConsultationRecord } from "@/lib/types/index";
 import { useStudentConsult } from "../hooks/useStudentConsult";
+import { canUseConsultFeatures } from "@/lib/policies/sessionRolePolicy";
 import { type SessionRole as Role } from "@/lib/policies/sessionRolePolicy";
 import Badge from "@/lib/ui/common/Badge";
 import ConsultModal from "@/lib/ui/common/ConsultModal";
@@ -25,10 +26,11 @@ export function StudentConsultPanel({
     canEdit,
 }: StudentConsultPanelProps) {
     const { state, actions } = consultHooks;
+    const canUseConsult = canUseConsultFeatures(accessRole);
 
     return (
         <>
-            {canEdit ? (
+            {canEdit && canUseConsult ? (
                 <section style={{ marginTop: 12, border: "1px solid var(--surface-border)", borderRadius: 12, padding: 14, background: "var(--surface-bg)" }}>
                     <div className="card-title">상담 기록</div>
                     {consultRecords.length === 0 ? (
@@ -154,16 +156,18 @@ export function StudentConsultPanel({
                 </section>
             ) : null}
 
-            <ConsultModal
-                open={state.consultOpen}
-                role={accessRole}
-                state={state.consultForm}
-                error={state.consultError}
-                onClose={() => actions.setConsultOpen(false)}
-                onSave={actions.saveConsultRecord}
-                onDelete={state.consultEditingId ? actions.deleteConsultRecord : undefined}
-                computeRefundRatioValue={actions.getLiveRefundRatio}
-            />
+            {canUseConsult ? (
+                <ConsultModal
+                    open={state.consultOpen}
+                    role={accessRole}
+                    state={state.consultForm}
+                    error={state.consultError}
+                    onClose={() => actions.setConsultOpen(false)}
+                    onSave={actions.saveConsultRecord}
+                    onDelete={state.consultEditingId ? actions.deleteConsultRecord : undefined}
+                    computeRefundRatioValue={actions.getLiveRefundRatio}
+                />
+            ) : null}
         </>
     );
 }

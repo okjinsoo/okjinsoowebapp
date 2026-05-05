@@ -29,44 +29,209 @@ function normalizeHour(n: number): number {
   return Math.max(0, Math.min(23, Math.floor(n)));
 }
 
-function normalizeMinute(n: number): 0 | 30 {
-  if (!Number.isFinite(n)) return 0;
-  const clamped = Math.max(0, Math.min(30, Math.floor(n)));
-  return clamped >= 15 ? 30 : 0;
+function normalizeWeeklyCount(n: number) {
+  if (!Number.isFinite(n)) return 1;
+  return Math.max(1, Math.min(7, Math.floor(n)));
 }
 
-function normalizePlanCount(n: number) {
-  if (!Number.isFinite(n)) return 12;
-  return Math.max(1, Math.min(60, Math.floor(n)));
-}
-
-// 주 n회 규칙 기반으로 회차 날짜 생성 (startDate부터 2년 범위에서 후보 생성 → 앞에서 count개)
-function generateSessionDates(startDateYmd: string, rules: ScheduleRule[], count: number): Date[] {
-  const start = new Date(`${startDateYmd}T00:00:00`);
-  if (isNaN(start.getTime())) return [];
-
-  const candidates: Date[] = [];
-
-  for (let dayOffset = 0; dayOffset < 365 * 2; dayOffset++) {
-    const base = new Date(start);
-    base.setDate(start.getDate() + dayOffset);
-
-    const weekday = base.getDay();
-    for (const r of rules) {
-      if (r.weekday !== weekday) continue;
-      const dt = new Date(base);
-      dt.setHours(r.hour, r.minute, 0, 0);
-      candidates.push(dt);
-    }
-  }
-
-  candidates.sort((a, b) => a.getTime() - b.getTime());
-  return candidates.slice(0, count);
+function normalizeDurationHour(n: number): number {
+  if (!Number.isFinite(n)) return 1;
+  const clamped = Math.max(0.5, Math.min(6, n));
+  return Math.round(clamped * 2) / 2;
 }
 
 export type StudentNewMode = "admin" | "teacher";
 
-type DayTime = { on: boolean; hour: number; minute: 0 | 30 };
+type InitialSessionBox = {
+  weekday: Weekday;
+  hour: number;
+  durationHour: number;
+};
+
+type SheetPasteFields = {
+  startDate?: string;
+  name?: string;
+  studentPhone?: string;
+  school?: string;
+  grade?: string;
+  googleEmail?: string;
+  parentPhone?: string;
+};
+
+type SheetPair = {
+  label: string;
+  value: string;
+};
+
+function normalizeSheetKey(raw: string): string {
+  return raw
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "")
+    .replace(/[()\-_:./]/g, "");
+}
+
+function resolveSheetFieldKey(rawLabel: string): keyof SheetPasteFields | null {
+  const key = normalizeSheetKey(rawLabel);
+  if (!key) return null;
+
+  if (key === "시작일") return "startDate";
+  if (key === "학생이름") return "name";
+  if (key === "학생전화번호" || key === "학생연락처" || key === "학생핸드폰") return "studentPhone";
+  if (key === "학교") return "school";
+  if (key === "학년") return "grade";
+  if (
+    key === "학생구글이메일" ||
+    key === "학생googleemail" ||
+    key === "학생이메일" ||
+    key === "학생email"
+  ) {
+    return "googleEmail";
+  }
+  if (key === "학부모연락처" || key === "학부모전화번호" || key === "학부모핸드폰") return "parentPhone";
+  return null;
+}
+
+function parseSheetDate(value: string): string | null {
+  const raw = value.trim();
+  if (!raw) return null;
+
+  const ymd = raw.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  const dotted = raw.match(/^(\d{4})[./\s년]+(\d{1,2})[./\s월]+(\d{1,2})/);
+  const slash = raw.match(/^(\d{4})\/(\d{1,2})\/(\d{1,2})$/);
+  const match = ymd ?? dotted ?? slash;
+  if (!match) return null;
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) return null;
+  if (month < 1 || month > 12 || day < 1 || day > 31) return null;
+
+  return `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
+function parseSheetGrade(value: string): string | null {
+  const raw = value.trim();
+  if (!raw) return null;
+  const compact = raw.replace(/\s+/g, "");
+
+  if (/^n수$/i.test(compact)) return "N수";
+
+  const num = Number(compact);
+  if (Number.isFinite(num)) {
+    if (num >= 20) return "N수";
+    const map: Record<number, string> = {
+      19: "12",
+      18: "11",
+      17: "10",
+      16: "9",
+      15: "8",
+      14: "7",
+      13: "6",
+      12: "5",
+      11: "4",
+      10: "3",
+      9: "2",
+      8: "1",
+    };
+    return map[Math.floor(num)] ?? null;
+  }
+
+  const high = compact.match(/^고([123])$/);
+  if (high) return String(Number(high[1]) + 9);
+
+  const middle = compact.match(/^중([123])$/);
+  if (middle) return String(Number(middle[1]) + 6);
+
+  const elem = compact.match(/^초([1-6])$/);
+  if (elem) return String(Number(elem[1]));
+
+  return null;
+}
+
+function extractFieldsFromPairs(pairs: SheetPair[]): { fields: SheetPasteFields; recognizedCount: number } {
+  const fields: SheetPasteFields = {};
+  let recognizedCount = 0;
+
+  for (const pair of pairs) {
+    const fieldKey = resolveSheetFieldKey(pair.label);
+    if (!fieldKey) continue;
+
+    const value = pair.value.trim();
+    if (!value) continue;
+    recognizedCount += 1;
+
+    if (fieldKey === "startDate") {
+      const parsed = parseSheetDate(value);
+      if (parsed) fields.startDate = parsed;
+      continue;
+    }
+    if (fieldKey === "grade") {
+      const parsed = parseSheetGrade(value);
+      if (parsed) fields.grade = parsed;
+      continue;
+    }
+    if (fieldKey === "studentPhone") {
+      fields.studentPhone = normalizePhoneDigits(value);
+      continue;
+    }
+    if (fieldKey === "parentPhone") {
+      fields.parentPhone = normalizePhoneDigits(value);
+      continue;
+    }
+    fields[fieldKey] = value;
+  }
+
+  return { fields, recognizedCount };
+}
+
+function parseSheetPaste(rawInput: string): { fields: SheetPasteFields; recognizedCount: number } {
+  const lines = rawInput
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+
+  if (lines.length === 0) {
+    return { fields: {}, recognizedCount: 0 };
+  }
+
+  let best: { fields: SheetPasteFields; recognizedCount: number } = {
+    fields: {},
+    recognizedCount: 0,
+  };
+
+  const verticalPairs: SheetPair[] = [];
+  for (const line of lines) {
+    const tabIndex = line.indexOf("\t");
+    if (tabIndex < 0) continue;
+    const label = line.slice(0, tabIndex).trim();
+    const value = line.slice(tabIndex + 1).trim();
+    if (!label || !value) continue;
+    verticalPairs.push({ label, value });
+  }
+  if (verticalPairs.length > 0) {
+    const verticalResult = extractFieldsFromPairs(verticalPairs);
+    if (verticalResult.recognizedCount > best.recognizedCount) {
+      best = verticalResult;
+    }
+  }
+
+  if (lines.length >= 2 && lines[0].includes("\t")) {
+    const headers = lines[0].split("\t").map((v) => v.trim());
+    const values = lines[1].split("\t").map((v) => v.trim());
+    const horizontalPairs: SheetPair[] = headers.map((label, index) => ({
+      label,
+      value: values[index] ?? "",
+    }));
+    const horizontalResult = extractFieldsFromPairs(horizontalPairs);
+    if (horizontalResult.recognizedCount > best.recognizedCount) {
+      best = horizontalResult;
+    }
+  }
+
+  return best;
+}
 
 export default function StudentNewClient(props: {
   mode: StudentNewMode;
@@ -90,17 +255,17 @@ export default function StudentNewClient(props: {
   const [parentRole, setParentRole] = useState<"" | "father" | "mother">("");
   const [parentPhone, setParentPhone] = useState("");
 
-  const [planCount, setPlanCount] = useState<number>(12);
-
-  // 요일별 설정(최소 1개 on)
-  const [days, setDays] = useState<Record<number, DayTime>>(() => {
-    const init: Record<number, DayTime> = {};
-    for (const d of [0, 1, 2, 3, 4, 5, 6]) init[d] = { on: false, hour: 17, minute: 0 };
-    return init;
-  });
+  const [initialWeeklyCount, setInitialWeeklyCount] = useState<number>(1);
+  const [initialBoxes, setInitialBoxes] = useState<InitialSessionBox[]>([
+    { weekday: 1, hour: 17, durationHour: 1 },
+  ]);
 
   const [error, setError] = useState<string>("");
   const [saving, setSaving] = useState(false);
+  const [sheetModalOpen, setSheetModalOpen] = useState(false);
+  const [sheetRawInput, setSheetRawInput] = useState("");
+  const [sheetModalError, setSheetModalError] = useState("");
+  const [sheetApplyInfo, setSheetApplyInfo] = useState("");
 
   const [startDate, setStartDate] = useState(() => todayYmdLocal());
 
@@ -114,32 +279,58 @@ export default function StudentNewClient(props: {
   }, []);
 
   const selectedRules = useMemo(() => {
-    const rules: ScheduleRule[] = [];
-    for (const d of [0, 1, 2, 3, 4, 5, 6]) {
-      const it = days[d];
-      if (!it?.on) continue;
-      rules.push({ weekday: d as Weekday, hour: it.hour, minute: it.minute });
-    }
-    // 정렬(요일 → 시간)
-    rules.sort((a, b) => a.weekday - b.weekday || a.hour - b.hour || a.minute - b.minute);
-    return rules;
-  }, [days]);
+    const weeklyCount = normalizeWeeklyCount(initialWeeklyCount);
+    const rules = initialBoxes
+      .slice(0, weeklyCount)
+      .map((box) => ({
+        weekday: box.weekday,
+        hour: normalizeHour(box.hour),
+        minute: 0,
+        durationMin: Math.max(30, Math.round(normalizeDurationHour(box.durationHour) * 60)),
+      }));
+    rules.sort((a, b) => a.weekday - b.weekday || a.hour - b.hour);
+    return rules as ScheduleRule[];
+  }, [initialBoxes, initialWeeklyCount]);
 
   const teacherLabel = useMemo(() => {
     if (!teacherId) return "미선택";
     return teachers.find((t) => t.id === teacherId)?.name ?? teacherId;
   }, [teacherId, teachers]);
 
-  function toggleDay(d: number) {
-    setDays((prev) => ({ ...prev, [d]: { ...prev[d], on: !prev[d].on } }));
+  function setWeeklyCount(nextRawCount: number) {
+    const nextCount = normalizeWeeklyCount(nextRawCount);
+    setInitialWeeklyCount(nextCount);
+    setInitialBoxes((prev) => {
+      const source = prev.length > 0 ? prev : [{ weekday: 1, hour: 17, durationHour: 1 }];
+      const next: InitialSessionBox[] = [];
+      for (let i = 0; i < nextCount; i++) {
+        const picked = prev[i] ?? source[i % source.length];
+        const weekday = Math.max(0, Math.min(6, Math.floor(Number(picked.weekday) || 0))) as Weekday;
+        next.push({
+          weekday,
+          hour: normalizeHour(Number(picked.hour)),
+          durationHour: normalizeDurationHour(Number(picked.durationHour)),
+        });
+      }
+      return next;
+    });
   }
 
-  function setDayHour(d: number, hour: number) {
-    setDays((prev) => ({ ...prev, [d]: { ...prev[d], hour: normalizeHour(hour) } }));
-  }
-
-  function setDayMinute(d: number, minute: 0 | 30) {
-    setDays((prev) => ({ ...prev, [d]: { ...prev[d], minute: normalizeMinute(minute) } }));
+  function updateInitialBox(index: number, patch: Partial<InitialSessionBox>) {
+    setInitialBoxes((prev) =>
+      prev.map((box, i) => {
+        if (i !== index) return box;
+        return {
+          weekday:
+            patch.weekday === undefined
+              ? box.weekday
+              : (Math.max(0, Math.min(6, Math.floor(Number(patch.weekday)))) as Weekday),
+          hour: patch.hour === undefined ? box.hour : normalizeHour(Number(patch.hour)),
+          durationHour:
+            patch.durationHour === undefined ? box.durationHour : normalizeDurationHour(Number(patch.durationHour)),
+        };
+      })
+    );
   }
 
   function validate(): boolean {
@@ -163,10 +354,13 @@ export default function StudentNewClient(props: {
     if (!grade) return fail("학년을 선택해주세요.");
     if (!normalizePhoneDigits(parentPhone)) return fail("학부모 전화번호를 입력해주세요.");
 
-    if (selectedRules.length < 1) return fail("수업 시간(요일)을 최소 1개 이상 선택해주세요.");
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate)) return fail("시작일을 입력해주세요.");
+    const startDateMs = new Date(`${startDate}T00:00:00+09:00`).getTime();
+    if (!Number.isFinite(startDateMs)) return fail("시작일 형식이 올바르지 않습니다.");
+    if (selectedRules.length < 1) return fail("초기 회차 설정을 최소 1개 이상 입력해주세요.");
 
-    const pc = normalizePlanCount(planCount);
-    if (pc < 1) return fail("회차 수를 확인해주세요.");
+    const pc = selectedRules.length;
+    if (pc < 1) return fail("초기 회차 수를 계산하지 못했습니다.");
 
     return true;
 
@@ -179,14 +373,8 @@ export default function StudentNewClient(props: {
   async function onSubmit() {
     if (!validate()) return;
 
-    const pc = normalizePlanCount(planCount);
+    const pc = selectedRules.length;
     const rules = selectedRules;
-
-    const dates = generateSessionDates(startDate, rules, pc);
-    if (dates.length !== pc) {
-      setError("회차 날짜 생성에 실패했습니다. 요일/시간을 확인해주세요.");
-      return;
-    }
 
     const st: Student = {
       id: makeId(),
@@ -236,6 +424,55 @@ export default function StudentNewClient(props: {
     }
   }
 
+  function onApplySheetInput() {
+    setSheetModalError("");
+
+    const parsed = parseSheetPaste(sheetRawInput);
+    if (parsed.recognizedCount === 0) {
+      setSheetModalError("인식된 항목이 없습니다. 시트에서 복사한 값을 다시 확인해주세요.");
+      return;
+    }
+
+    let appliedCount = 0;
+    if (parsed.fields.startDate) {
+      setStartDate(parsed.fields.startDate);
+      appliedCount += 1;
+    }
+    if (parsed.fields.name) {
+      setName(parsed.fields.name);
+      appliedCount += 1;
+    }
+    if (parsed.fields.studentPhone) {
+      setStudentPhone(parsed.fields.studentPhone);
+      appliedCount += 1;
+    }
+    if (parsed.fields.school) {
+      setSchool(parsed.fields.school);
+      appliedCount += 1;
+    }
+    if (parsed.fields.grade) {
+      setGrade(parsed.fields.grade);
+      appliedCount += 1;
+    }
+    if (parsed.fields.googleEmail) {
+      setGoogleEmail(parsed.fields.googleEmail);
+      appliedCount += 1;
+    }
+    if (parsed.fields.parentPhone) {
+      setParentPhone(parsed.fields.parentPhone);
+      appliedCount += 1;
+    }
+
+    if (appliedCount === 0) {
+      setSheetModalError("붙여넣기 형식은 맞지만 반영할 값이 없습니다.");
+      return;
+    }
+
+    setSheetApplyInfo(`시트값 ${appliedCount}개를 자동 입력했습니다.`);
+    setSheetRawInput("");
+    setSheetModalOpen(false);
+  }
+
   return (
     <main style={{ padding: 20, maxWidth: 860, margin: "0 auto"}}>
       <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
@@ -248,6 +485,17 @@ export default function StudentNewClient(props: {
 
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
           <button
+            type="button"
+            onClick={() => {
+              setSheetModalError("");
+              setSheetModalOpen(true);
+            }}
+            style={{ padding: "8px 12px" }}
+            disabled={saving}
+          >
+            시트값 입력
+          </button>
+          <button
             onClick={() => router.push(onDoneGoTo)}
             style={{ padding: "8px 12px" }}
             title="목록으로 돌아가기"
@@ -257,6 +505,23 @@ export default function StudentNewClient(props: {
           </button>
         </div>
       </div>
+
+      {sheetApplyInfo ? (
+        <div
+          style={{
+            marginTop: 10,
+            borderRadius: 8,
+            border: "1px solid #bfdbfe",
+            background: "#eff6ff",
+            color: "#1d4ed8",
+            padding: "8px 10px",
+            fontSize: 13,
+            fontWeight: 700,
+          }}
+        >
+          {sheetApplyInfo}
+        </div>
+      ) : null}
 
       <section style={{ marginTop: 14, display: "grid", gap: 14 }}>
         {/* start date */}
@@ -496,101 +761,84 @@ export default function StudentNewClient(props: {
           </div>
         </div>
 
-        {/* 수업 시간 */}
+        {/* 초기 회차 설정 */}
         <div style={{ border: "1px solid var(--surface-border)", borderRadius: 10, padding: 12, background: "var(--surface-bg)" }}>
-          <div className="card-title">수업 시간 설정 *</div>
+          <div className="card-title">초기 회차 설정 *</div>
           <div style={{ marginTop: 6, color: "var(--text-muted)" }}>
-            요일을 최소 1개 이상 선택하세요. 선택한 요일마다 시/분(00, 30)을 설정합니다.
+            주당 횟수만큼 박스를 채우면, 생성 시 1주치 회차가 자동 계산됩니다.
           </div>
 
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
-            {[0, 1, 2, 3, 4, 5, 6].map((d) => {
-              const on = days[d]?.on;
-              return (
-                <button
-                  key={d}
-                  type="button"
-                  onClick={() => toggleDay(d)}
+          <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "120px 1fr", gap: 10, alignItems: "center" }}>
+            <div style={{ fontWeight: 700 }}>주당 횟수</div>
+            <input
+              type="number"
+              min={1}
+              max={7}
+              value={initialWeeklyCount}
+              onChange={(e) => setWeeklyCount(Number(e.target.value))}
+              style={{
+                width: "100%",
+                height: 40,
+                padding: 10,
+                border: "1px solid #ccc",
+                borderRadius: 8,
+              }}
+            />
+          </div>
+
+          <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
+            {initialBoxes.slice(0, normalizeWeeklyCount(initialWeeklyCount)).map((box, i) => (
+              <div
+                key={`initial-box-${i}`}
+                style={{ padding: 10, border: "1px solid var(--surface-border)", borderRadius: 10, background: "var(--surface-bg)" }}
+              >
+                <div style={{ fontWeight: 800, marginBottom: 8 }}>{i + 1}번째 수업 박스</div>
+                <div
                   style={{
-                    padding: "8px 12px",
-                    borderRadius: 999,
-                    border: "1px solid #ccc",
-                    background: on ? "#111" : "#fff",
-                    color: on ? "#fff" : "#111",
+                    display: "grid",
+                    gridTemplateColumns: "1fr 1fr 1fr",
+                    gap: 10,
+                    alignItems: "center",
                   }}
-                  aria-pressed={on}
                 >
-                  {weekdayLabel(d)}
-                </button>
-              );
-            })}
-          </div>
-
-          <div style={{ marginTop: 12, display: "grid", gap: 10, gridTemplateColumns: "repeat(2, minmax(0, 1fr))" }}>
-            {[0, 1, 2, 3, 4, 5, 6]
-              .filter((d) => days[d]?.on)
-              .map((d) => (
-                <div key={d} style={{ padding: 10, border: "1px solid var(--surface-border)", borderRadius: 10, background: "var(--surface-bg)" }}>
-                  <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "minmax(180px, 50%) 1fr 1fr",
-                      gap: 10,
-                      alignItems: "center",
-                    }}
+                  <select
+                    value={box.weekday}
+                    onChange={(e) => updateInitialBox(i, { weekday: Number(e.target.value) as Weekday })}
+                    style={{ width: "100%", height: 40, padding: 8, border: "1px solid #ccc", borderRadius: 8 }}
                   >
-                    <div style={{ fontWeight: 800 }}>{weekdayLabel(d)}요일</div>
-                    <input
-                      type="number"
-                      min={0}
-                      max={23}
-                      step={1}
-                      value={days[d].hour}
-                      onChange={(e) => setDayHour(d, Number(e.target.value))}
-                      style={{ width: "100%", padding: 10, border: "1px solid #ccc", borderRadius: 8, minWidth: 80 }}
-                    />
-
-                    <input
-                      type="number"
-                      min={0}
-                      max={30}
-                      step={30}
-                      value={days[d].minute}
-                      onChange={(e) => {
-                        setDayMinute(d, normalizeMinute(Number(e.target.value)));
-                      }}
-                      style={{ width: "100%", padding: 10, border: "1px solid #ccc", borderRadius: 8, minWidth: 80 }}
-                    />
-                  </div>
+                    {[0, 1, 2, 3, 4, 5, 6].map((d) => (
+                      <option key={`weekday-${i}-${d}`} value={d}>
+                        {weekdayLabel(d)}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    type="number"
+                    min={0}
+                    max={23}
+                    step={1}
+                    value={box.hour}
+                    onChange={(e) => updateInitialBox(i, { hour: Number(e.target.value) })}
+                    style={{ width: "100%", height: 40, padding: 8, border: "1px solid #ccc", borderRadius: 8 }}
+                    aria-label={`${i + 1}번째 시작 시`}
+                  />
+                  <input
+                    type="number"
+                    min={0.5}
+                    max={6}
+                    step={0.5}
+                    value={box.durationHour}
+                    onChange={(e) => updateInitialBox(i, { durationHour: Number(e.target.value) })}
+                    style={{ width: "100%", height: 40, padding: 8, border: "1px solid #ccc", borderRadius: 8 }}
+                    aria-label={`${i + 1}번째 수업 시간`}
+                  />
                 </div>
-              ))}
-
-            {[0, 1, 2, 3, 4, 5, 6].every((d) => !days[d]?.on) ? (
-              <div style={{ color: "var(--text-muted)"}}>선택된 요일이 없습니다.</div>
-            ) : null}
+              </div>
+            ))}
           </div>
-        </div>
 
-        {/* 회차 수 */}
-        <div style={{ border: "1px solid var(--surface-border)", borderRadius: 10, padding: 12, background: "var(--surface-bg)" }}>
-          <div className="card-title">회차 수 *</div>
-          <input
-            type="number"
-            min={1}
-            max={60}
-            value={planCount}
-            onChange={(e) => setPlanCount(Number(e.target.value))}
-            style={{
-              width: "100%",
-              height: 40,
-              padding: 10,
-              border: "1px solid #ccc",
-              borderRadius: 8,
-              marginTop: 8,
-            }}
-          />
-          <div style={{ marginTop: 6, color: "var(--text-muted)" }}>
-            기본 12회 (1~60 범위). 생성과 동시에 회차가 자동 생성됩니다.
+          <div style={{ marginTop: 8, color: "var(--text-muted)" }}>
+            생성될 초기 회차 수: {selectedRules.length}회
           </div>
         </div>
 
@@ -605,6 +853,94 @@ export default function StudentNewClient(props: {
           </button>
         </div>
       </section>
+
+      {sheetModalOpen ? (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 2200,
+            background: "rgba(15, 23, 42, 0.45)",
+            display: "grid",
+            placeItems: "center",
+            padding: 16,
+          }}
+        >
+          <section
+            style={{
+              width: "100%",
+              maxWidth: 640,
+              borderRadius: 14,
+              border: "1px solid #cbd5e1",
+              background: "#fff",
+              padding: 16,
+              boxShadow: "0 16px 40px rgba(15, 23, 42, 0.28)",
+            }}
+          >
+            <h2 style={{ margin: 0, fontSize: 20, fontWeight: 900, color: "#0f172a" }}>
+              시트값 입력
+            </h2>
+            <p style={{ marginTop: 8, marginBottom: 0, color: "#334155", fontWeight: 700 }}>
+              파란 셀값을 붙혀넣으시오.
+            </p>
+
+            <textarea
+              value={sheetRawInput}
+              onChange={(e) => setSheetRawInput(e.target.value)}
+              placeholder={
+                "예시)\n시작일\t1994. 1. 29.\n학생이름\t옥진수\n학생전화번호\t01089727209\n학교\t남천중학교\n학년\t13\n학생 구글 이메일\trapah0310@gmail.com\n학부모 연락처\t01089727209"
+              }
+              style={{
+                marginTop: 12,
+                width: "100%",
+                minHeight: 220,
+                resize: "vertical",
+                borderRadius: 10,
+                border: "1px solid #cbd5e1",
+                padding: 12,
+                fontSize: 14,
+                lineHeight: 1.45,
+              }}
+            />
+
+            {sheetModalError ? (
+              <div
+                style={{
+                  marginTop: 10,
+                  borderRadius: 8,
+                  border: "1px solid #fecaca",
+                  background: "#fef2f2",
+                  color: "#b91c1c",
+                  padding: "8px 10px",
+                  fontSize: 13,
+                  fontWeight: 700,
+                }}
+              >
+                {sheetModalError}
+              </div>
+            ) : null}
+
+            <div style={{ marginTop: 12, display: "flex", justifyContent: "flex-end", gap: 8 }}>
+              <button
+                type="button"
+                onClick={() => setSheetModalOpen(false)}
+                style={{ padding: "10px 14px" }}
+                disabled={saving}
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                onClick={onApplySheetInput}
+                style={{ padding: "10px 14px", fontWeight: 800 }}
+                disabled={saving}
+              >
+                적용
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
     </main>
   );
 }

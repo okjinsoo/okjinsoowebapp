@@ -40,7 +40,52 @@ export function fmtKST_yyyyMMdd_HHmm_noSeconds(iso: string) {
     return "";
   }
 }
-export function parseDateTime(iso: string | null | undefined) {
+
+function formatTimeLabelKST(hour: string, minute: string): string {
+  if (minute === "00") return `${hour}시`;
+  return `${hour}시 ${minute}분`;
+}
+
+export function fmtKST_yyyyMMdd_TimeRange(iso: string, durationMin?: number) {
+  try {
+    const dt = new Date(iso);
+    if (!Number.isFinite(dt.getTime())) return "";
+
+    const startParts = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Seoul",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    }).formatToParts(dt);
+    const y = startParts.find((p) => p.type === "year")?.value ?? "1970";
+    const m = startParts.find((p) => p.type === "month")?.value ?? "01";
+    const d = startParts.find((p) => p.type === "day")?.value ?? "01";
+    const hh = startParts.find((p) => p.type === "hour")?.value ?? "00";
+    const mm = startParts.find((p) => p.type === "minute")?.value ?? "00";
+    const dateText = `${y}. ${m}. ${d}.`;
+    const normalizedDuration = Math.max(0, Math.floor(Number(durationMin)));
+    if (!Number.isFinite(normalizedDuration) || normalizedDuration <= 0) {
+      return `${dateText} ${hh}시 ${mm}분`;
+    }
+
+    const end = new Date(dt.getTime() + normalizedDuration * 60 * 1000);
+    const endParts = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Seoul",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    }).formatToParts(end);
+    const ehh = endParts.find((p) => p.type === "hour")?.value ?? "00";
+    const emm = endParts.find((p) => p.type === "minute")?.value ?? "00";
+    return `${dateText} ${formatTimeLabelKST(hh, mm)} ~ ${formatTimeLabelKST(ehh, emm)}`;
+  } catch {
+    return "";
+  }
+}
+export function parseDateTime(iso: string | null | undefined, durationMin?: number) {
   if (!iso) return { dateText: "날짜 없음", timeText: "-" };
   const dt = new Date(iso);
   if (!Number.isFinite(dt.getTime())) return { dateText: "날짜 없음", timeText: "-" };
@@ -60,5 +105,21 @@ export function parseDateTime(iso: string | null | undefined) {
   const d = parts.find((p) => p.type === "day")?.value ?? "01";
   const hh = parts.find((p) => p.type === "hour")?.value ?? "00";
   const mm = parts.find((p) => p.type === "minute")?.value ?? "00";
-  return { dateText: `${y}. ${m}. ${d}.`, timeText: `${hh}시 ${mm}분` };
+  const normalizedDuration = Math.max(0, Math.floor(Number(durationMin)));
+  if (!Number.isFinite(normalizedDuration) || normalizedDuration <= 0) {
+    return { dateText: `${y}. ${m}. ${d}.`, timeText: `${hh}시 ${mm}분` };
+  }
+  const end = new Date(dt.getTime() + normalizedDuration * 60 * 1000);
+  const endParts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Seoul",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(end);
+  const ehh = endParts.find((p) => p.type === "hour")?.value ?? "00";
+  const emm = endParts.find((p) => p.type === "minute")?.value ?? "00";
+  return {
+    dateText: `${y}. ${m}. ${d}.`,
+    timeText: `${formatTimeLabelKST(hh, mm)} ~ ${formatTimeLabelKST(ehh, emm)}`,
+  };
 }

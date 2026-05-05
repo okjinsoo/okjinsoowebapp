@@ -18,6 +18,7 @@ import { submitConsultation } from "@/lib/ui/student/hooks/useConsultationSubmit
 import { TUTORWEB_EVENTS } from "@/lib/events/tutorwebEvents";
 import { readSnapshotServerFirst } from "@/lib/storage/serverRead";
 import { ConsultationRecord, PaymentRecord, Session, Student } from "@/lib/types/index";
+import { canUseConsultFeatures } from "@/lib/policies/sessionRolePolicy";
 
 export type TodaySessionRow = {
   studentId: string;
@@ -66,6 +67,7 @@ export default function TodaySessionsCard({
   leadBadgeClassName = "bg-emerald-600 text-white",
 }: Props) {
   const isAdmin = role === "a";
+  const canUseConsult = canUseConsultFeatures(role);
   const [consultOpen, setConsultOpen] = useState(false);
   const [consultStudentId, setConsultStudentId] = useState<string | null>(null);
   const [consultEditingId, setConsultEditingId] = useState<string | null>(null);
@@ -128,6 +130,7 @@ export default function TodaySessionsCard({
   };
 
   function openConsult(row: TodaySessionRow) {
+    if (!canUseConsult) return;
     setConsultStudentId(row.studentId);
     if (row.consultTag?.recordId) {
       const list = consultListOf(row.studentId);
@@ -179,6 +182,7 @@ export default function TodaySessionsCard({
   }
 
   async function saveConsult(finalForm: ConsultFormState) {
+    if (!canUseConsult) return;
     if (!consultStudentId) return;
     const student = studentsById[consultStudentId] ?? null;
     if (!student) return;
@@ -192,6 +196,7 @@ export default function TodaySessionsCard({
       const res = await submitConsultation(
         {
           isAdmin,
+          actorRole: role,
           student,
           history,
           consultRecords: list,
@@ -322,7 +327,7 @@ export default function TodaySessionsCard({
                     ))}
 
                     {/* 5. 상담 내역 배지 */}
-                    {!(r.lastClass && r.consultTag && r.consultTag.label === "휴회 예정") ? (
+                    {canUseConsult && !(r.lastClass && r.consultTag && r.consultTag.label === "휴회 예정") ? (
                       <ConsultBadge tag={r.consultTag} />
                     ) : null}
 
@@ -340,7 +345,7 @@ export default function TodaySessionsCard({
                   style={{ display: "flex", gap: 6, position: "relative", zIndex: 10 }}
                 >
                   <SessionQuickActions role={role} token={r.token} index={r.index} />
-                  <ConsultButton tag={r.consultTag} onClick={() => openConsult(r)} />
+                  {canUseConsult ? <ConsultButton tag={r.consultTag} onClick={() => openConsult(r)} /> : null}
                 </div>
               </div>
             );
@@ -348,16 +353,18 @@ export default function TodaySessionsCard({
         </div>
       )}
 
-      <ConsultModal
-        open={consultOpen}
-        role={role}
-        state={consultForm}
-        error={consultError}
-        onClose={() => setConsultOpen(false)}
-        onSave={saveConsult}
-        onDelete={consultEditingId ? deleteConsult : undefined}
-        loading={isSaving}
-      />
+      {canUseConsult ? (
+        <ConsultModal
+          open={consultOpen}
+          role={role}
+          state={consultForm}
+          error={consultError}
+          onClose={() => setConsultOpen(false)}
+          onSave={saveConsult}
+          onDelete={consultEditingId ? deleteConsult : undefined}
+          loading={isSaving}
+        />
+      ) : null}
     </section>
   );
 }

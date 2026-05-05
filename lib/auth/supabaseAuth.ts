@@ -159,6 +159,17 @@ function syncAuthBridgeCookieServer(payload: AuthBridgeCookie | null): void {
   });
 }
 
+function clearLocalDevAdminCookieServer(): void {
+  if (typeof window === "undefined") return;
+  void fetch("/api/auth/local-admin", {
+    method: "DELETE",
+    credentials: "same-origin",
+    keepalive: true,
+  }).catch(() => {
+    // 분리 모드가 아니면 4xx가 날 수 있으므로 무시합니다.
+  });
+}
+
 function syncAuthBridgeCookieServerDedup(payload: AuthBridgeCookie | null): void {
   if (!payload) {
     // 로그아웃은 실패 시 영향이 크므로 cooldown 없이 매번 서버 삭제를 시도합니다.
@@ -336,6 +347,7 @@ export function clearAuthSession(): void {
   // 구버전(클라이언트 작성 쿠키) 잔재 정리
   clearCookie(AUTH_COOKIE_KEY);
   syncAuthBridgeCookieServerDedup(null);
+  clearLocalDevAdminCookieServer();
   dispatchAuthUpdated();
 }
 

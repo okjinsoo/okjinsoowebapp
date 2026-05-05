@@ -11,6 +11,7 @@ import {
   getSupabaseConfig,
   isProviderTokenExpired,
   loadKeepSignedInPreference,
+  saveAuthSession,
   saveKeepSignedInPreference,
   type AuthSession,
 } from "@/lib/auth/supabaseAuth";
@@ -171,6 +172,10 @@ export default function HomePage() {
   }, [session, roleLoading, role, redirectFrom, autoReauthRequested, router, startTransition]);
 
   const loginReady = useMemo(() => Boolean(getSupabaseConfig()), []);
+  const localDevAdminLoginEnabled = useMemo(
+    () => process.env.NEXT_PUBLIC_TUTORWEB_ISOLATED === "1",
+    []
+  );
 
   useEffect(() => {
     if (!autoReauthRequested) return;
@@ -247,6 +252,46 @@ export default function HomePage() {
     window.location.href = url;
   }
 
+  async function onClickLocalDevAdminLogin() {
+    setError("");
+    setBusy(true);
+    saveKeepSignedInPreference(keepSignedIn);
+
+    try {
+      const res = await fetch("/api/auth/local-admin", {
+        method: "POST",
+        credentials: "same-origin",
+      });
+      if (!res.ok) {
+        setBusy(false);
+        setError("로컬 관리자 로그인은 분리 테스트 서버(4100)에서만 사용할 수 있어요.");
+        return;
+      }
+
+      saveAuthSession({
+        accessToken: "local-dev-admin-access-token",
+        refreshToken: null,
+        expiresAt: null,
+        userId: "local-dev-admin",
+        email: "rapah0310@gmail.com",
+        provider: "google",
+        providerAccessToken: null,
+        providerRefreshToken: null,
+        providerExpiresAt: null,
+      });
+      saveCurrentRole("a");
+
+      setBusy(false);
+      setPendingPath("/a/amain");
+      startTransition(() => {
+        router.replace("/a/amain");
+      });
+    } catch {
+      setBusy(false);
+      setError("로컬 관리자 로그인 중 오류가 발생했어요.");
+    }
+  }
+
   function onClickReconnectGoogleAuth() {
     setError("");
     const nextPath = normalizeNextPath(redirectFrom) || "/";
@@ -262,6 +307,10 @@ export default function HomePage() {
   async function onClickLogout() {
     try {
       await fetch("/api/auth/bridge", {
+        method: "DELETE",
+        credentials: "same-origin",
+      });
+      await fetch("/api/auth/local-admin", {
         method: "DELETE",
         credentials: "same-origin",
       });
@@ -359,6 +408,27 @@ export default function HomePage() {
                   <span>{busy ? "Google 로그인으로 이동 중..." : "Sign in with Google"}</span>
                 </button>
               </div>
+              {localDevAdminLoginEnabled ? (
+                <div style={{ marginTop: 10 }}>
+                  <button
+                    type="button"
+                    onClick={onClickLocalDevAdminLogin}
+                    disabled={busy}
+                    style={{
+                      width: "100%",
+                      minHeight: 44,
+                      borderRadius: 10,
+                      border: "1px dashed #2563eb",
+                      background: "#eff6ff",
+                      color: "#1d4ed8",
+                      fontWeight: 800,
+                      cursor: busy ? "not-allowed" : "pointer",
+                    }}
+                  >
+                    {busy ? "로컬 관리자 로그인 준비 중..." : "로컬 테스트용 관리자 바로 로그인"}
+                  </button>
+                </div>
+              ) : null}
               <label
                 style={{
                   marginTop: 10,

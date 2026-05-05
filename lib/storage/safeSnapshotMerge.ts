@@ -2,7 +2,12 @@
 
 import { browserStorage } from "@/lib/storage/browserStorage";
 import { safeParseJson } from "@/lib/storage/safeParse";
-import { pullSharedSnapshotAndHydrateWithOptions, readLocalStudents, readLocalTeachers } from "@/lib/storage/sharedSnapshot";
+import {
+  isLocalOnlySnapshotMode,
+  pullSharedSnapshotAndHydrateWithOptions,
+  readLocalStudents,
+  readLocalTeachers,
+} from "@/lib/storage/sharedSnapshot";
 import type { Session, Student, Teacher } from "@/lib/types/index";
 
 type WithId = { id: string };
@@ -31,6 +36,14 @@ export async function loadLatestCoreSnapshotBaseline(): Promise<CoreSnapshotBase
 }
 
 export async function loadLatestCoreSnapshotBaselineServerRequired(): Promise<CoreSnapshotBaseline> {
+  if (isLocalOnlySnapshotMode()) {
+    return {
+      teachers: readLocalTeachers(),
+      students: readLocalStudents(),
+      sessions: safeParseJson<Session[]>(browserStorage.getItem("tutorweb_sessions_v1"), []),
+    };
+  }
+
   const remote = await pullSharedSnapshotAndHydrateWithOptions({ forceRemote: true });
   if (!remote) {
     throw new Error("server_snapshot_unavailable");

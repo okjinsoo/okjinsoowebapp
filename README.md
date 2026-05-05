@@ -49,10 +49,31 @@ npm run dev
 
 브라우저에서 `http://localhost:3000` 접속
 
+### 2-4. 운영과 분리된 테스트 서버 실행 (권장)
+
+```bash
+cp env.sandbox.example .env.local.sandbox
+```
+
+`.env.local.sandbox`에 **운영과 다른 Supabase 프로젝트 키**를 넣은 뒤 실행하세요.
+
+```bash
+npm run dev:isolated
+```
+
+브라우저에서 `http://localhost:4100` 접속
+
+추가:
+- 분리 모드 홈에서 `로컬 테스트용 관리자 바로 로그인` 버튼을 사용할 수 있습니다.
+- 이 버튼은 `TUTORWEB_ISOLATED=1`일 때만 동작하며, 운영 서버에서는 비활성화됩니다.
+- 분리 모드 기본값은 `로컬 전용 저장`입니다. (`TUTORWEB_LOCAL_ONLY=1`)
+- 즉, 테스트 서버(4100)에서 데이터 수정 시 Supabase 서버에 쓰지 않고 브라우저 로컬에만 저장합니다.
+
 ## 3) 주요 명령어
 
 ```bash
 npm run dev       # 개발 서버
+npm run dev:isolated # 운영과 분리된 테스트 서버(기본 4100)
 npm run build     # 프로덕션 빌드
 npm run start     # 프로덕션 실행
 npm run lint      # ESLint

@@ -3,9 +3,10 @@
 import { useCallback, useEffect, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import type { Teacher } from "@/lib/types/index";
+import { isLocalOnlySnapshotMode } from "@/lib/storage/sharedSnapshot";
 import { saveTeachersServerFirst } from "@/lib/storage/teachers";
 import { loadLatestCoreSnapshotBaselineServerRequired } from "@/lib/storage/safeSnapshotMerge";
-import { readTeachersServerRequired } from "@/lib/storage/serverRead";
+import { readTeachersServerFirst } from "@/lib/storage/serverRead";
 import { todayYmdLocal } from "@/lib/utils/date";
 import { normalizePhoneDigits } from "@/lib/utils/phone";
 import {
@@ -55,9 +56,9 @@ export function useTeacherEditPageData(args: UseTeacherEditPageDataArgs): UseTea
           return;
         }
         try {
-          const teachers = await readTeachersServerRequired();
+          const result = await readTeachersServerFirst();
           if (cancelled) return;
-          const found = teachers.find((row) => row.id === teacherId) ?? null;
+          const found = result.teachers.find((row) => row.id === teacherId) ?? null;
           setTeacher(found);
           if (found) {
             setName(found.name ?? "");
@@ -65,9 +66,18 @@ export function useTeacherEditPageData(args: UseTeacherEditPageDataArgs): UseTea
             setEmail(found.email ?? "");
             setWorkStartDate(found.workStartDate ?? todayYmdLocal());
           }
+          if (result.source !== "server" && !isLocalOnlySnapshotMode()) {
+            setError(SERVER_LOAD_RETRY_MESSAGE);
+          } else {
+            setError("");
+          }
         } catch {
           if (cancelled) return;
-          setError(SERVER_LOAD_RETRY_MESSAGE);
+          if (!isLocalOnlySnapshotMode()) {
+            setError(SERVER_LOAD_RETRY_MESSAGE);
+          } else {
+            setError("");
+          }
         }
         setLoaded(true);
       })();

@@ -3,13 +3,12 @@
 import { BROWSER_STORAGE_EVENT, browserStorage } from "@/lib/storage/browserStorage";
 import { loadAuthSession } from "@/lib/auth/supabaseAuth";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { useRouter } from "next/navigation";
 import { saveStudents, saveStudentsServerFirst } from "@/lib/storage/students";
 import {
   saveAllConsultationsStore,
 } from "@/lib/storage/consultations";
-import { buildConsultationMap, pickPrimaryConsultTag } from "@/lib/ui/session/consultationMap";
 import { findLastClassIndex } from "@/lib/ui/session/pauseHelpers";
 import { formatGrade, formatPhone, formatSchedule } from "@/lib/ui/student/formatters";
 import AchievementBadge from "@/lib/ui/common/AchievementBadge";
@@ -45,18 +44,16 @@ import type {
   ScheduleRule,
   Session,
   Student,
+  Teacher,
   Weekday,
 } from "@/lib/types/index";
-import { fmtKST_yyyyMMdd_HHmm_noSeconds } from "@/lib/ui/session/format";
+import { fmtKST_yyyyMMdd_TimeRange } from "@/lib/ui/session/format";
 import Badge from "@/lib/ui/common/Badge";
 import SessionQuickActions from "@/lib/ui/session/SessionQuickActions";
-import { ConsultBadge, ConsultButton } from "@/lib/ui/common/ConsultParts";
 // REMOVED: import { getAchievementBadgeStyle } from "@/lib/ui/common/achievementBadge";
 import { getSessionStatusBadge } from "@/lib/ui/common/sessionStatusBadge";
 import { buildSessionContextBadges, getSessionExtraBadgeStyle } from "@/lib/ui/common/sessionExtraBadge";
 import { StudentPaymentPanel } from "./panels/StudentPaymentPanel";
-import { StudentConsultPanel } from "./panels/StudentConsultPanel";
-import { useStudentConsult } from "./hooks/useStudentConsult";
 import {
   calculateSessionAchievementPercent,
   isSessionProgressEventKeyForToken,
@@ -65,20 +62,29 @@ import { TUTORWEB_EVENTS } from "@/lib/events/tutorwebEvents";
 import {
   canEditSessionMeta,
   canTriggerCalendarSync,
-  canUseConsultFeatures,
   type SessionRole,
 } from "@/lib/policies/sessionRolePolicy";
 import {
+  isLocalOnlySnapshotMode,
   pullSharedSnapshotAndHydrateWithOptions,
   pushSharedSnapshot,
+  readLocalSharedStateKv,
   readRemoteSharedStateKvValue,
 } from "@/lib/storage/sharedSnapshot";
-import { SHARED_CONSULTATIONS_KEY, SHARED_DRIVE_ROOT_ID_KEY } from "@/lib/storage/sharedStateKeys";
+import {
+  SHARED_CONSULTATIONS_KEY,
+  SHARED_DRIVE_ROOT_ID_KEY,
+  SHARED_LECTURE_TREE_KEY,
+} from "@/lib/storage/sharedStateKeys";
 import { ensureFolder, shareFolderWithEmail } from "@/lib/integrations/googleDriveSync";
 import { loadLatestCoreSnapshotBaselineServerRequired } from "@/lib/storage/safeSnapshotMerge";
 import { makeId } from "@/lib/utils/id";
 import { kstDateMs, nowIso, todayYmdKST } from "@/lib/utils/date";
-import { buildStudentSessionsFromRows, readSnapshotServerRequired } from "@/lib/storage/serverRead";
+import {
+  buildStudentSessionsFromRows,
+  fetchServerJson,
+  readSnapshotServerFirst,
+} from "@/lib/storage/serverRead";
 import { useStudentSessionContext } from "@/lib/hooks/useStudentSessionContext";
 import { useTeachersServerFirst } from "@/lib/hooks/useTeachersServerFirst";
 import {
@@ -87,20 +93,158 @@ import {
 } from "@/lib/messages/serverMessages";
 
 type Role = SessionRole;
-
-function weekdayLabel(n: number) {
-  return ["일", "월", "화", "수", "목", "금", "토"][n] ?? String(n);
-}
+type SessionAddRuleDraft = {
+  weekday: Weekday;
+  hour: number;
+  minute: 0 | 30;
+  durationHour: 1 | 2;
+};
 
 function normalizeHour(n: number): number {
   if (!Number.isFinite(n)) return 0;
   return Math.max(0, Math.min(23, Math.floor(n)));
 }
 
-function normalizeMinute(n: number): 0 | 30 {
-  if (!Number.isFinite(n)) return 0;
-  const clamped = Math.max(0, Math.min(30, Math.floor(n)));
-  return clamped >= 15 ? 30 : 0;
+function normalizeSessionAddDurationHour(n: number): 1 | 2 {
+  if (!Number.isFinite(n)) return 1;
+  return n <= 1.5 ? 1 : 2;
+}
+
+function normalizeWeeklyCount(n: number): number {
+  if (!Number.isFinite(n)) return 1;
+  return Math.max(1, Math.min(7, Math.floor(n)));
+}
+
+function normalizeSessionAddCount(n: number): number {
+  if (!Number.isFinite(n)) return 1;
+  return Math.max(1, Math.floor(n));
+}
+
+function formatHourLabel(hour: number): string {
+  return `${String(normalizeHour(hour)).padStart(2, "0")}시`;
+}
+
+function weekdayFullLabel(n: number): string {
+  const map: Record<number, string> = {
+    0: "일요일",
+    1: "월요일",
+    2: "화요일",
+    3: "수요일",
+    4: "목요일",
+    5: "금요일",
+    6: "토요일",
+  };
+  return map[n] ?? `${n}요일`;
+}
+
+type StudentBackupFileV1 = {
+  format: "tutorweb_student_backup";
+  version: 1;
+  exportedAt: string;
+  exportedByRole: Role;
+  source: "server" | "local";
+  payload: {
+    student: Student;
+    teacher: Teacher | null;
+    sessions: Session[];
+    consultations: ConsultationRecord[];
+    stateKv: Record<string, string>;
+  };
+};
+
+function asObject(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  return value as Record<string, unknown>;
+}
+
+function normalizeStateKvStrings(raw: unknown): Record<string, string> {
+  const obj = asObject(raw);
+  if (!obj) return {};
+  const out: Record<string, string> = {};
+  for (const [key, value] of Object.entries(obj)) {
+    if (!key || typeof value !== "string") continue;
+    out[key] = value;
+  }
+  return out;
+}
+
+function parseConsultStoreFromRaw(raw: string): Record<string, ConsultationRecord[]> {
+  if (!raw.trim()) return {};
+  try {
+    const parsed = asObject(JSON.parse(raw));
+    if (!parsed) return {};
+    const out: Record<string, ConsultationRecord[]> = {};
+    for (const [studentId, value] of Object.entries(parsed)) {
+      if (!Array.isArray(value)) continue;
+      out[studentId] = value as ConsultationRecord[];
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
+function sanitizeFilePart(raw: string): string {
+  const compact = raw.trim().replace(/\s+/g, "_").replace(/[^A-Za-z0-9가-힣_-]/g, "");
+  return compact || "student";
+}
+
+function sessionStatePrefix(token: string): string {
+  return `mk3:${token}:session:`;
+}
+
+function collectStudentScopedStateKeys(stateKv: Record<string, string>, studentToken: string): string[] {
+  if (!studentToken) return [];
+  const prefix = sessionStatePrefix(studentToken);
+  const metaKey = metaMapKey(studentToken);
+  return Object.keys(stateKv).filter((key) => key === metaKey || key.startsWith(prefix));
+}
+
+function pickStudentBackupStateKv(stateKv: Record<string, string>, studentToken: string): Record<string, string> {
+  if (!studentToken) return {};
+  const prefix = sessionStatePrefix(studentToken);
+  const metaKey = metaMapKey(studentToken);
+  const out: Record<string, string> = {};
+  for (const [key, value] of Object.entries(stateKv)) {
+    if (key === SHARED_LECTURE_TREE_KEY || key === metaKey || key.startsWith(prefix)) {
+      out[key] = value;
+    }
+  }
+  return out;
+}
+
+function parseStudentBackupFile(raw: unknown): StudentBackupFileV1 | null {
+  const root = asObject(raw);
+  if (!root) return null;
+  if (root.format !== "tutorweb_student_backup") return null;
+  if (Number(root.version) !== 1) return null;
+  const payload = asObject(root.payload);
+  if (!payload) return null;
+  const student = asObject(payload.student);
+  if (!student || typeof student.id !== "string" || typeof student.token !== "string") return null;
+  const sessions = Array.isArray(payload.sessions) ? (payload.sessions as Session[]) : [];
+  const consultations = Array.isArray(payload.consultations)
+    ? (payload.consultations as ConsultationRecord[])
+    : [];
+  const teacherObj = payload.teacher === null ? null : asObject(payload.teacher);
+  const teacher = teacherObj ? (teacherObj as Teacher) : null;
+  const stateKv = normalizeStateKvStrings(payload.stateKv);
+  return {
+    format: "tutorweb_student_backup",
+    version: 1,
+    exportedAt: typeof root.exportedAt === "string" ? root.exportedAt : "",
+    exportedByRole: root.exportedByRole === "a" || root.exportedByRole === "t" || root.exportedByRole === "s"
+      ? (root.exportedByRole as Role)
+      : "a",
+    source: root.source === "local" ? "local" : "server",
+    payload: {
+      student: student as Student,
+      teacher,
+      sessions,
+      consultations,
+      stateKv,
+    },
+  };
 }
 
 function ymdFromISO_KST(iso?: string): string | null {
@@ -179,6 +323,59 @@ function nextIsoFromRules(args: {
   return null;
 }
 
+function kstWeekdayHourMinuteFromISO(iso: string): { weekday: number; hour: number; minute: number } | null {
+  try {
+    const dt = new Date(iso);
+    if (!Number.isFinite(dt.getTime())) return null;
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone: "Asia/Seoul",
+      weekday: "short",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    }).formatToParts(dt);
+    const wk = parts.find((p) => p.type === "weekday")?.value ?? "";
+    const hh = Number(parts.find((p) => p.type === "hour")?.value ?? "0");
+    const mm = Number(parts.find((p) => p.type === "minute")?.value ?? "0");
+    const weekdayMap: Record<string, number> = {
+      Sun: 0,
+      Mon: 1,
+      Tue: 2,
+      Wed: 3,
+      Thu: 4,
+      Fri: 5,
+      Sat: 6,
+    };
+    const weekday = weekdayMap[wk];
+    if (!Number.isFinite(weekday) || !Number.isFinite(hh) || !Number.isFinite(mm)) return null;
+    return { weekday, hour: hh, minute: mm };
+  } catch {
+    return null;
+  }
+}
+
+function resolveDurationMinForSession(iso: string, rules: ScheduleRule[]): number {
+  const normalizedRules = rules
+    .map((rule) => ({
+      weekday: Number(rule.weekday),
+      hour: normalizeHour(Number(rule.hour)),
+      minute: Math.max(0, Math.min(59, Math.floor(Number(rule.minute) || 0))),
+      durationMin:
+        Number.isFinite(Number(rule.durationMin)) && Number(rule.durationMin) > 0
+          ? Math.round(Number(rule.durationMin))
+          : 60,
+    }))
+    .sort((a, b) => a.weekday - b.weekday || a.hour - b.hour || a.minute - b.minute);
+  if (normalizedRules.length === 0) return 60;
+
+  const key = kstWeekdayHourMinuteFromISO(iso);
+  if (!key) return normalizedRules[0].durationMin;
+  const matched = normalizedRules.find(
+    (rule) => rule.weekday === key.weekday && rule.hour === key.hour && rule.minute === key.minute
+  );
+  return (matched ?? normalizedRules[0]).durationMin;
+}
+
 
 
 export default function StudentHubCore({
@@ -213,18 +410,28 @@ export default function StudentHubCore({
   const [scheduleEditOpen, setScheduleEditOpen] = useState(false);
   const [scheduleStartIndex, setScheduleStartIndex] = useState(1);
   const [scheduleStartDate, setScheduleStartDate] = useState("");
-  const [scheduleDays, setScheduleDays] = useState<Record<number, { on: boolean; hour: number; minute: 0 | 30 }>>(
-    () => {
-      const init: Record<number, { on: boolean; hour: number; minute: 0 | 30 }> = {};
-      for (const d of [0, 1, 2, 3, 4, 5, 6]) init[d] = { on: false, hour: 17, minute: 0 };
-      return init;
-    }
-  );
+  const [scheduleEditWeeklyCount, setScheduleEditWeeklyCount] = useState(1);
+  const [scheduleEditRules, setScheduleEditRules] = useState<SessionAddRuleDraft[]>([
+    { weekday: 1, hour: 17, minute: 0, durationHour: 1 },
+  ]);
   const [scheduleError, setScheduleError] = useState("");
+  const [sessionAddOpen, setSessionAddOpen] = useState(false);
+  const [sessionAddStartDate, setSessionAddStartDate] = useState(() => todayYmdKST());
+  const [sessionAddCount, setSessionAddCount] = useState(4);
+  const [sessionAddWeeklyCount, setSessionAddWeeklyCount] = useState(1);
+  const [sessionAddRules, setSessionAddRules] = useState<SessionAddRuleDraft[]>([
+    { weekday: 1, hour: 17, minute: 0, durationHour: 1 },
+  ]);
+  const [sessionAddError, setSessionAddError] = useState("");
+  const [sessionAddSaving, setSessionAddSaving] = useState(false);
   const [progressTick, setProgressTick] = useState(0);
   const [calendarSyncing, setCalendarSyncing] = useState(false);
   const [calendarSyncMessage, setCalendarSyncMessage] = useState("");
   const [isLockerSyncing, setIsLockerSyncing] = useState(false);
+  const [isBackupWorking, setIsBackupWorking] = useState(false);
+  const [isRestoreWorking, setIsRestoreWorking] = useState(false);
+  const restoreInputRef = useRef<HTMLInputElement | null>(null);
+  const localOnlyMode = isLocalOnlySnapshotMode();
 
   useEffect(() => {
     const id = setTimeout(() => setMounted(true), 0);
@@ -373,7 +580,7 @@ export default function StudentHubCore({
     return { label: meta.label, bg: meta.bg, color: meta.color };
   }, [student, sessions, token, baseDatesISO, metaMap, currentCount, consultRecords]);
 
-  const showParentPhone = canUseConsultFeatures(accessRole); // 학생은 숨김(정책 확정)
+  const showParentPhone = accessRole !== "s";
   const canEdit = canEditSessionMeta(accessRole); // 학생 편집 없음(정책 확정)
 
   const sessionListHref = hideTokenInRoute ? `${prefix}/session` : `${prefix}/${encodeURIComponent(token)}/session`;
@@ -566,6 +773,138 @@ export default function StudentHubCore({
     return Math.max(1, scanMax + 1);
   }
 
+  function resolveCurrentRules(sourceStudent: Student): ScheduleRule[] {
+    const sortedChanges = [...(sourceStudent.scheduleChangeEvents ?? [])].sort((a, b) => a.startIndex - b.startIndex);
+    const today = todayYmdKST();
+    let rules = [...(sourceStudent.scheduleRules ?? [])];
+    for (const ch of sortedChanges) {
+      if (!Array.isArray(ch.newRules) || ch.newRules.length === 0) continue;
+      if (ch.startDate && ch.startDate > today) continue;
+      rules = [...ch.newRules];
+    }
+    return rules;
+  }
+
+  function buildSessionAddRulesByCount(targetCount: number, seedRules: ScheduleRule[]): SessionAddRuleDraft[] {
+    const count = normalizeWeeklyCount(targetCount);
+    const source = seedRules.length > 0 ? seedRules : [{ weekday: 1 as Weekday, hour: 17, minute: 0, durationMin: 60 }];
+    const out: SessionAddRuleDraft[] = [];
+    for (let i = 0; i < count; i++) {
+      const picked = source[i] ?? source[i % source.length];
+      const rawDurationMin =
+        Number.isFinite(Number(picked?.durationMin)) && Number(picked.durationMin) > 0
+          ? Number(picked.durationMin)
+          : 60;
+      const nextWeekday = Math.max(0, Math.min(6, Math.floor(Number(picked?.weekday) || 0))) as Weekday;
+      out.push({
+        weekday: nextWeekday,
+        hour: normalizeHour(Number(picked?.hour)),
+        minute: 0,
+        durationHour: normalizeSessionAddDurationHour(rawDurationMin / 60),
+      });
+    }
+    return out;
+  }
+
+  function openSessionAddModal() {
+    if (!student) return;
+    const currentRules = resolveCurrentRules(student);
+    const defaultCount = normalizeWeeklyCount(currentRules.length > 0 ? currentRules.length : 1);
+    setSessionAddWeeklyCount(defaultCount);
+    setSessionAddCount(Math.max(1, defaultCount * 4));
+    setSessionAddRules(buildSessionAddRulesByCount(defaultCount, currentRules));
+    setSessionAddStartDate(todayYmdKST());
+    setSessionAddError("");
+    setSessionAddSaving(false);
+    setSessionAddOpen(true);
+  }
+
+  function closeSessionAddModal() {
+    if (sessionAddSaving) return;
+    setSessionAddOpen(false);
+    setSessionAddError("");
+  }
+
+  function updateSessionAddWeeklyCount(nextRawCount: number) {
+    const nextCount = normalizeWeeklyCount(nextRawCount);
+    setSessionAddWeeklyCount(nextCount);
+    setSessionAddRules((prev) => {
+      const source = prev.length > 0 ? prev : [{ weekday: 1, hour: 17, minute: 0, durationHour: 1 }];
+      const next: SessionAddRuleDraft[] = [];
+      for (let i = 0; i < nextCount; i++) {
+        const picked = prev[i] ?? source[i % source.length];
+        const nextWeekday = Math.max(0, Math.min(6, Math.floor(Number(picked.weekday) || 0))) as Weekday;
+        next.push({
+          weekday: nextWeekday,
+          hour: normalizeHour(Number(picked.hour)),
+          minute: 0,
+          durationHour: normalizeSessionAddDurationHour(Number(picked.durationHour)),
+        });
+      }
+      return next;
+    });
+  }
+
+  function updateSessionAddRule(index: number, patch: Partial<SessionAddRuleDraft>) {
+    setSessionAddRules((prev) =>
+      prev.map((rule, i) => {
+        if (i !== index) return rule;
+        return {
+          weekday:
+            patch.weekday === undefined
+              ? rule.weekday
+              : (Math.max(0, Math.min(6, Math.floor(Number(patch.weekday)))) as Weekday),
+          hour: patch.hour === undefined ? rule.hour : normalizeHour(Number(patch.hour)),
+          minute: 0,
+          durationHour:
+            patch.durationHour === undefined
+              ? rule.durationHour
+              : normalizeSessionAddDurationHour(Number(patch.durationHour)),
+        };
+      })
+    );
+  }
+
+  function updateScheduleEditWeeklyCount(nextRawCount: number) {
+    const nextCount = normalizeWeeklyCount(nextRawCount);
+    setScheduleEditWeeklyCount(nextCount);
+    setScheduleEditRules((prev) => {
+      const source = prev.length > 0 ? prev : [{ weekday: 1, hour: 17, minute: 0, durationHour: 1 }];
+      const next: SessionAddRuleDraft[] = [];
+      for (let i = 0; i < nextCount; i++) {
+        const picked = prev[i] ?? source[i % source.length];
+        const nextWeekday = Math.max(0, Math.min(6, Math.floor(Number(picked.weekday) || 0))) as Weekday;
+        next.push({
+          weekday: nextWeekday,
+          hour: normalizeHour(Number(picked.hour)),
+          minute: 0,
+          durationHour: normalizeSessionAddDurationHour(Number(picked.durationHour)),
+        });
+      }
+      return next;
+    });
+  }
+
+  function updateScheduleEditRule(index: number, patch: Partial<SessionAddRuleDraft>) {
+    setScheduleEditRules((prev) =>
+      prev.map((rule, i) => {
+        if (i !== index) return rule;
+        return {
+          weekday:
+            patch.weekday === undefined
+              ? rule.weekday
+              : (Math.max(0, Math.min(6, Math.floor(Number(patch.weekday)))) as Weekday),
+          hour: patch.hour === undefined ? rule.hour : normalizeHour(Number(patch.hour)),
+          minute: 0,
+          durationHour:
+            patch.durationHour === undefined
+              ? rule.durationHour
+              : normalizeSessionAddDurationHour(Number(patch.durationHour)),
+        };
+      })
+    );
+  }
+
   const backToTmain =
     accessRole === "a" ? "/a/tmain" : accessRole === "t" ? "/t/tmain" : null;
 
@@ -617,6 +956,7 @@ export default function StudentHubCore({
     const candidates: {
       index: number;
       iso: string;
+      durationMin: number;
       status?: string;
       badges: string[];
       percent: number | null;
@@ -643,6 +983,7 @@ export default function StudentHubCore({
       if (dday.diff === null) continue;
       if (dday.diff < 0) continue;
       const meta = metaMap[s.index] ?? {};
+      const durationMin = resolveDurationMinForSession(effectiveISO, rulesForIndex(student, s.index));
       const isLastClass = Boolean(lastClassIndex ? s.index === lastClassIndex : false);
       const refundStatus =
         refundCompletedIndex && s.index === refundCompletedIndex
@@ -653,6 +994,7 @@ export default function StudentHubCore({
       candidates.push({
         index: s.index,
         iso: effectiveISO,
+        durationMin,
         status: meta.status,
         badges: buildSessionContextBadges({
           baseBadges: buildBadges(meta),
@@ -666,30 +1008,6 @@ export default function StudentHubCore({
 
     return candidates.sort((a, b) => new Date(a.iso).getTime() - new Date(b.iso).getTime()).slice(0, 3);
   }, [student, sessions, token, baseDatesISO, metaMap, progressPercent, refundCompletedIndex, refundRequestedIndex]);
-
-  const consultMap = useMemo(() => {
-    if (!student) return {};
-    return buildConsultationMap({
-      token,
-      sessions,
-      records: consultRecords,
-      baseDatesISO,
-      metaMap,
-    });
-  }, [student, token, sessions, consultRecords, baseDatesISO, metaMap]);
-  const consultHooks = useStudentConsult({
-    isAdmin,
-    student,
-    history,
-    consultRecords,
-    token,
-    sessions,
-    baseDatesISO,
-    metaMap,
-    displayRecords,
-    applyHistory,
-    persistConsultationState,
-  });
 
   useEffect(() => {
     if (!mounted || !isInitialLoaded) return;
@@ -758,22 +1076,10 @@ export default function StudentHubCore({
     const startYmd = ymdFromISO_KST(startEffectiveISO ?? "");
     setScheduleStartDate(startYmd ?? "");
 
-    const sortedChanges = [...(student.scheduleChangeEvents ?? [])].sort((a, b) => a.startIndex - b.startIndex);
-    const today = todayYmdKST();
-    let rules = [...(student.scheduleRules ?? [])];
-    for (const ch of sortedChanges) {
-      if (!Array.isArray(ch.newRules) || ch.newRules.length === 0) continue;
-      if (ch.startDate && ch.startDate > today) continue;
-      rules = [...ch.newRules];
-    }
-    setScheduleDays((prev) => {
-      const next = { ...prev };
-      for (const d of [0, 1, 2, 3, 4, 5, 6]) next[d] = { ...next[d], on: false };
-      for (const r of rules) {
-        next[r.weekday] = { on: true, hour: r.hour, minute: r.minute as 0 | 30 };
-      }
-      return next;
-    });
+    const rules = resolveCurrentRules(student);
+    const defaultCount = normalizeWeeklyCount(rules.length > 0 ? rules.length : 1);
+    setScheduleEditWeeklyCount(defaultCount);
+    setScheduleEditRules(buildSessionAddRulesByCount(defaultCount, rules));
     setScheduleEditOpen(true);
   }
 
@@ -906,58 +1212,6 @@ export default function StudentHubCore({
     }
   }
 
-  async function persistConsultationState(nextConsultRecords: ConsultationRecord[], nextStudentOverride?: Student): Promise<boolean> {
-    if (!student) return false;
-
-    let serverSnapshot: Awaited<ReturnType<typeof readSnapshotServerRequired>>;
-    try {
-      serverSnapshot = await readSnapshotServerRequired();
-    } catch (err) {
-      console.error("상담 저장용 서버 기준 데이터 로드 실패:", err);
-      return false;
-    }
-    const nextStore = {
-      ...serverSnapshot.consultations,
-      [student.id]: nextConsultRecords,
-    };
-    const nextStudents = nextStudentOverride
-      ? buildNextStudentsList(nextStudentOverride, serverSnapshot.students)
-      : null;
-
-    try {
-      await pushSharedSnapshot({
-        ...(nextStudents ? { students: nextStudents } : {}),
-        stateKv: {
-          [SHARED_CONSULTATIONS_KEY]: JSON.stringify(nextStore),
-        },
-      });
-
-      if (nextStudents) {
-        saveStudents(nextStudents, { skipSharedSnapshot: true });
-        setStudent(nextStudentOverride ?? null);
-      }
-      saveAllConsultationsStore(nextStore, { skipSharedSnapshot: true });
-      setConsultRecords(nextConsultRecords);
-      void refreshStudentContext();
-      return true;
-    } catch (err) {
-      console.error("상담 서버 저장 실패:", err);
-      return false;
-    }
-  }
-
-  function toggleScheduleDay(d: number) {
-    setScheduleDays((prev) => ({ ...prev, [d]: { ...prev[d], on: !prev[d].on } }));
-  }
-
-  function setScheduleHour(d: number, hour: number) {
-    setScheduleDays((prev) => ({ ...prev, [d]: { ...prev[d], hour: normalizeHour(hour) } }));
-  }
-
-  function setScheduleMinute(d: number, minute: 0 | 30) {
-    setScheduleDays((prev) => ({ ...prev, [d]: { ...prev[d], minute: normalizeMinute(minute) } }));
-  }
-
   async function saveScheduleChange() {
     if (!student) return;
     setScheduleError("");
@@ -966,12 +1220,14 @@ export default function StudentHubCore({
     // startDate가 없으면 오늘 날짜를 기본값으로 사용
     const startDate = scheduleStartDate || todayYmdKST();
 
-    const rules: ScheduleRule[] = [];
-    for (const d of [0, 1, 2, 3, 4, 5, 6]) {
-      const it = scheduleDays[d];
-      if (!it?.on) continue;
-      rules.push({ weekday: d as Weekday, hour: it.hour, minute: it.minute });
-    }
+    const weeklyCount = normalizeWeeklyCount(scheduleEditWeeklyCount);
+    const drafts = scheduleEditRules.slice(0, weeklyCount);
+    const rules: ScheduleRule[] = drafts.map((rule) => ({
+      weekday: rule.weekday,
+      hour: normalizeHour(rule.hour),
+      minute: 0,
+      durationMin: normalizeSessionAddDurationHour(rule.durationHour) * 60,
+    }));
     if (rules.length === 0) return setScheduleError("수업 요일/시간을 최소 1개 선택해주세요.");
 
     const existing = (student?.scheduleChangeEvents ?? []).find((e) => e.startIndex === startIndex);
@@ -1009,6 +1265,101 @@ export default function StudentHubCore({
     closeScheduleEdit();
   }
 
+  async function saveSessionAdd() {
+    if (!student || sessionAddSaving) return;
+    setSessionAddError("");
+
+    const startDate = (sessionAddStartDate ?? "").trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate)) {
+      setSessionAddError("시작일을 정확히 입력해주세요.");
+      return;
+    }
+    const startDateMs = new Date(`${startDate}T00:00:00+09:00`).getTime();
+    if (!Number.isFinite(startDateMs)) {
+      setSessionAddError("시작일 형식이 올바르지 않습니다.");
+      return;
+    }
+
+    const weeklyCount = normalizeWeeklyCount(sessionAddWeeklyCount);
+    const drafts = sessionAddRules.slice(0, weeklyCount);
+    if (drafts.length < 1) {
+      setSessionAddError("주당 횟수를 먼저 설정해주세요.");
+      return;
+    }
+
+    const rules: ScheduleRule[] = drafts.map((rule) => ({
+      weekday: rule.weekday,
+      hour: normalizeHour(rule.hour),
+      minute: 0,
+      durationMin: normalizeSessionAddDurationHour(rule.durationHour) * 60,
+    }));
+    const addedCount = normalizeSessionAddCount(sessionAddCount);
+    if (addedCount <= 0) {
+      setSessionAddError("생성할 회차 수를 계산하지 못했습니다.");
+      return;
+    }
+
+    const baseDates = buildBaseDatesISO(student, Math.max(120, currentCount + addedCount + 8));
+    const localMetaMap = readMetaMap(token);
+    const maxExistingIndex = sessions.reduce((m, s) => Math.max(m, s.index), 0);
+    if (maxExistingIndex > 0) {
+      const { effectiveISO } = computeEffectiveISO({
+        token,
+        index: maxExistingIndex,
+        baseDatesISO: baseDates,
+        metaMap: localMetaMap,
+      });
+      const lastYmd = ymdFromISO_KST(effectiveISO ?? "");
+      if (lastYmd && startDate < lastYmd) {
+        setSessionAddError(`시작일은 마지막 수업일(${formatYmdDot(lastYmd)}) 이후로 입력해주세요.`);
+        return;
+      }
+    }
+
+    const paymentRecord: PaymentRecord = {
+      id: makeId(),
+      paymentDate: startDate,
+      addedCount,
+      startIndex: 0,
+      endIndex: 0,
+      memo: `회차 추가(${addedCount}회, 주 ${rules.length}회 패턴)`,
+      createdAt: nowIso(),
+    };
+    const nextHistory = [...history, paymentRecord];
+    const normalizedPreview = normalizePaymentHistoryRanges(nextHistory, baseCount);
+    const appended = normalizedPreview.at(-1);
+    const startIndex = Math.max(1, Math.floor(Number(appended?.startIndex) || 0));
+    if (!Number.isFinite(startIndex) || startIndex < 1) {
+      setSessionAddError("새 회차 시작 번호를 계산하지 못했습니다.");
+      return;
+    }
+
+    const existingEvent = (student.scheduleChangeEvents ?? []).find((e) => e.startIndex === startIndex);
+    if (existingEvent) {
+      const ok = confirm(`${startIndex}회차부터 적용되는 시간표가 이미 있어요. 새 값으로 바꿀까요?`);
+      if (!ok) return;
+    }
+
+    const nextEvents = (student.scheduleChangeEvents ?? []).filter((e) => e.startIndex !== startIndex);
+    nextEvents.push({
+      id: makeId(),
+      startIndex,
+      startDate,
+      newRules: rules,
+      createdAt: nowIso(),
+    });
+    nextEvents.sort((a, b) => a.startIndex - b.startIndex);
+
+    setSessionAddSaving(true);
+    const ok = await applyHistory(nextHistory, { scheduleChangeEvents: nextEvents }, false);
+    setSessionAddSaving(false);
+    if (!ok) {
+      setSessionAddError(SERVER_SAVE_RETRY_MESSAGE);
+      return;
+    }
+    closeSessionAddModal();
+  }
+
 
 
 
@@ -1023,9 +1374,12 @@ export default function StudentHubCore({
   ): Promise<boolean> {
     if (!student) return false;
 
-    let serverSnapshot: Awaited<ReturnType<typeof readSnapshotServerRequired>>;
+    let serverSnapshot: Awaited<ReturnType<typeof readSnapshotServerFirst>>;
     try {
-      serverSnapshot = await readSnapshotServerRequired();
+      serverSnapshot = await readSnapshotServerFirst();
+      if (!isLocalOnlySnapshotMode() && serverSnapshot.source !== "server") {
+        throw new Error("server_snapshot_unavailable");
+      }
     } catch (err) {
       console.error("결제/환불 저장용 서버 기준 데이터 로드 실패:", err);
       alert(SERVER_LOAD_RETRY_MESSAGE);
@@ -1033,7 +1387,11 @@ export default function StudentHubCore({
     }
 
     const normalized = normalizePaymentHistoryRanges(records, baseCount);
-    const nextTotal = baseCount + normalized.reduce((sum, r) => sum + r.addedCount, 0);
+    const calculatedTotal = baseCount + normalized.reduce((sum, r) => sum + r.addedCount, 0);
+    const currentMaxIndex = serverSnapshot.sessions
+      .filter((s) => s.studentId === student.id)
+      .reduce((m, s) => Math.max(m, s.index), 0);
+    const nextTotal = Math.max(calculatedTotal, currentMaxIndex);
     const updatedStudent = {
       ...student,
       ...basePatch,
@@ -1087,8 +1445,7 @@ export default function StudentHubCore({
 
     if (!skipSessions) {
       const all = serverSnapshot.sessions;
-      const prevStudentSessions = all.filter((s) => s.studentId === updatedStudent.id);
-      const prevMaxIndex = prevStudentSessions.reduce((m, s) => Math.max(m, s.index), 0);
+      const prevMaxIndex = currentMaxIndex;
       const kept = all.filter((s) => s.studentId !== updatedStudent.id || s.index <= nextTotal);
       const workingSessions = [...kept];
 
@@ -1205,14 +1562,219 @@ export default function StudentHubCore({
     }
   }
 
+  async function handleDownloadStudentBackup() {
+    if (!student || isBackupWorking) return;
+    setIsBackupWorking(true);
+    try {
+      const snapshot = await readSnapshotServerFirst();
+      if (!localOnlyMode && snapshot.source !== "server") {
+        throw new Error("server_snapshot_unavailable");
+      }
+
+      const sourceStudent =
+        snapshot.students.find((row) => row.id === student.id || row.token === student.token) ?? student;
+      const sourceTeacher = snapshot.teachers.find((row) => row.id === sourceStudent.teacherId) ?? null;
+      const sourceSessions = snapshot.sessions
+        .filter((row) => row.studentId === sourceStudent.id)
+        .sort((a, b) => a.index - b.index);
+      const sourceConsultations = snapshot.consultations[sourceStudent.id] ?? [];
+
+      let stateKvAll: Record<string, string> = {};
+      if (snapshot.source === "server") {
+        const stateSnapshot = await fetchServerJson<{
+          stateKv?: Record<string, string> | null;
+        }>("/api/snapshot", "snapshot");
+        if (!stateSnapshot.ok || !stateSnapshot.data) {
+          throw new Error("snapshot_state_kv_unavailable");
+        }
+        stateKvAll = normalizeStateKvStrings(stateSnapshot.data.stateKv);
+      } else {
+        stateKvAll = readLocalSharedStateKv();
+      }
+
+      const backupStateKv = pickStudentBackupStateKv(stateKvAll, sourceStudent.token ?? token);
+      const backup: StudentBackupFileV1 = {
+        format: "tutorweb_student_backup",
+        version: 1,
+        exportedAt: nowIso(),
+        exportedByRole: accessRole,
+        source: snapshot.source,
+        payload: {
+          student: sourceStudent,
+          teacher: sourceTeacher,
+          sessions: sourceSessions,
+          consultations: sourceConsultations,
+          stateKv: backupStateKv,
+        },
+      };
+
+      const blob = new Blob([JSON.stringify(backup, null, 2)], {
+        type: "application/json;charset=utf-8",
+      });
+      const url = URL.createObjectURL(blob);
+      const namePart = sanitizeFilePart(sourceStudent.name ?? "student");
+      const tokenPart = sanitizeFilePart(sourceStudent.token ?? token);
+      const stamp = todayYmdKST().replace(/-/g, "");
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `tutorweb-student-backup-${namePart}-${tokenPart}-${stamp}.json`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error("학생 데이터 백업 실패:", err);
+      alert("데이터 백업에 실패했습니다. 잠시 뒤 다시 시도해주세요.");
+    } finally {
+      setIsBackupWorking(false);
+    }
+  }
+
+  function openRestoreFilePicker() {
+    if (!localOnlyMode) {
+      alert("데이터 복원은 로컬 테스트 서버에서만 사용할 수 있습니다.");
+      return;
+    }
+    if (isRestoreWorking) return;
+    restoreInputRef.current?.click();
+  }
+
+  async function handleRestoreBackupFile(file: File) {
+    if (!localOnlyMode) {
+      alert("데이터 복원은 로컬 테스트 서버에서만 사용할 수 있습니다.");
+      return;
+    }
+    if (isRestoreWorking) return;
+    setIsRestoreWorking(true);
+    try {
+      const raw = await file.text();
+      const parsed = parseStudentBackupFile(JSON.parse(raw));
+      if (!parsed) {
+        throw new Error("invalid_backup_format");
+      }
+
+      const importedStudent = parsed.payload.student;
+      const importedTeacher = parsed.payload.teacher;
+      const importedToken = importedStudent.token ?? "";
+      if (!importedToken) {
+        throw new Error("invalid_student_token");
+      }
+
+      const confirmMessage =
+        `${importedStudent.name ?? "-"} 학생 데이터를 로컬에 복원합니다.\n` +
+        "기존 같은 학생(token) 데이터는 교체됩니다.\n" +
+        "계속 진행할까요?";
+      if (!window.confirm(confirmMessage)) {
+        return;
+      }
+
+      const baseline = await readSnapshotServerFirst();
+      const localStateKv = readLocalSharedStateKv();
+
+      const existingSameToken = baseline.students.find((row) => row.token === importedToken);
+      const removeStudentIds = new Set<string>([importedStudent.id]);
+      if (existingSameToken) {
+        removeStudentIds.add(existingSameToken.id);
+      }
+
+      const nextStudents = baseline.students
+        .filter((row) => !removeStudentIds.has(row.id) && row.token !== importedToken)
+        .concat(importedStudent);
+      const nextSessions = baseline.sessions
+        .filter((row) => !removeStudentIds.has(row.studentId))
+        .concat(parsed.payload.sessions.filter((row) => row.studentId === importedStudent.id));
+
+      const nextTeachers = importedTeacher
+        ? baseline.teachers.filter((row) => row.id !== importedTeacher.id).concat(importedTeacher)
+        : baseline.teachers;
+
+      const consultRaw = localStateKv[SHARED_CONSULTATIONS_KEY] ?? "";
+      const consultStore = parseConsultStoreFromRaw(consultRaw);
+      for (const studentId of removeStudentIds) {
+        delete consultStore[studentId];
+      }
+      consultStore[importedStudent.id] = parsed.payload.consultations ?? [];
+
+      const dropStateKeys = collectStudentScopedStateKeys(localStateKv, importedToken);
+      const nextStateKvPatch: Record<string, string> = {
+        ...parsed.payload.stateKv,
+        [SHARED_CONSULTATIONS_KEY]: JSON.stringify(consultStore),
+      };
+
+      await pushSharedSnapshot({
+        teachers: nextTeachers,
+        students: nextStudents,
+        sessions: nextSessions,
+        stateKv: nextStateKvPatch,
+        dropStateKeys,
+      });
+
+      alert("로컬 복원이 완료되었습니다.");
+      void refreshStudentContext();
+    } catch (err) {
+      console.error("학생 데이터 복원 실패:", err);
+      alert("데이터 복원에 실패했습니다. 파일 형식을 확인해주세요.");
+    } finally {
+      setIsRestoreWorking(false);
+    }
+  }
+
+  function onRestoreFileInputChange(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    void handleRestoreBackupFile(file);
+  }
+
   return (
     <main style={{ padding: 20, maxWidth: 980, margin: "0 auto" }}>
       <section style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
         {backToTmain ? (
-          <div style={{ width: "100%", marginBottom: 8 }}>
+          <div
+            style={{
+              width: "100%",
+              marginBottom: 8,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 8,
+              flexWrap: "wrap",
+            }}
+          >
             <button onClick={() => router.push(backToTmain)} className="btn btn-bold">
               학생 관리
             </button>
+            {canEdit ? (
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <button
+                  onClick={handleDownloadStudentBackup}
+                  className="btn"
+                  disabled={isBackupWorking || isRestoreWorking}
+                  title="현재 학생의 전체 데이터를 JSON 파일로 저장"
+                >
+                  {isBackupWorking ? "백업 중..." : "데이터 백업"}
+                </button>
+                {localOnlyMode ? (
+                  <>
+                    <button
+                      onClick={openRestoreFilePicker}
+                      className="btn"
+                      disabled={isRestoreWorking || isBackupWorking}
+                      title="로컬 테스트 서버 전용: 백업 JSON 파일 복원"
+                    >
+                      {isRestoreWorking ? "복원 중..." : "데이터 복원"}
+                    </button>
+                    <input
+                      ref={restoreInputRef}
+                      type="file"
+                      accept="application/json,.json"
+                      onChange={onRestoreFileInputChange}
+                      style={{ display: "none" }}
+                    />
+                  </>
+                ) : null}
+              </div>
+            ) : null}
           </div>
         ) : null}
         <div style={{ width: "100%" }}>
@@ -1235,13 +1797,13 @@ export default function StudentHubCore({
             <div style={{ fontWeight: 900 }}>학생 이름</div>
             <div style={{ fontWeight: 900, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
               {student?.name ?? "-"}
-              {canUseConsultFeatures(accessRole) ? (
+              {accessRole !== "s" ? (
                 <Badge style={{ background: studentStatusView.bg, color: studentStatusView.color }}>
                   {studentStatusView.label}
                 </Badge>
               ) : null}
             </div>
-            {canUseConsultFeatures(accessRole) ? (
+            {accessRole !== "s" ? (
               <>
                 <div style={{ fontWeight: 900 }}>학생 기수</div>
                 <div>{String(student?.cohort ?? "-")}</div>
@@ -1336,12 +1898,6 @@ export default function StudentHubCore({
           </button>
         ) : null}
 
-        {canEdit ? (
-          <button className="btn btn-bold" onClick={() => consultHooks.actions.openConsultNew("general")}>
-            일반 상담
-          </button>
-        ) : null}
-
         {canTriggerCalendarSync(accessRole) ? (
           <div style={{ display: "flex", gap: 8 }}>
             {(accessRole === "a" || accessRole === "t") && (
@@ -1381,20 +1937,11 @@ export default function StudentHubCore({
         </button>
 
         {isAdmin ? (
-          <button onClick={() => consultHooks.actions.openConsultNew("extension")} className="btn btn-blue" title="연장 요청">
-            연장 요청
+          <button onClick={openSessionAddModal} className="btn btn-blue" title="회차 추가">
+            회차 추가
           </button>
         ) : null}
 
-        {canEdit ? (
-          <button
-            className="btn btn-orange"
-            title="휴회 요청"
-            onClick={() => consultHooks.actions.openConsultNew("pause_request")}
-          >
-            휴회 요청
-          </button>
-        ) : null}
       </section>
 
       {canTriggerCalendarSync(accessRole) && calendarSyncMessage ? (
@@ -1410,7 +1957,6 @@ export default function StudentHubCore({
         ) : (
           <div style={{ marginTop: 8, display: "grid", gap: 8 }}>
             {upcomingSessions.map((item) => {
-              const consultTag = pickPrimaryConsultTag(consultMap[item.index]);
               return (
                 <div
                   key={`${item.index}-${item.iso}`}
@@ -1446,7 +1992,7 @@ export default function StudentHubCore({
                       <span>{item.index}회차</span>
                     </div>
                     <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                      <div>{fmtKST_yyyyMMdd_HHmm_noSeconds(item.iso)}</div>
+                      <div>{fmtKST_yyyyMMdd_TimeRange(item.iso, item.durationMin)}</div>
                       <AchievementBadge percent={item.percent} />
                       {(() => {
                         const statusBadge = getSessionStatusBadge(item.status as "present" | "absent" | "planned");
@@ -1457,21 +2003,10 @@ export default function StudentHubCore({
                           {badge}
                         </Badge>
                       ))}
-                      {canUseConsultFeatures(accessRole) &&
-                        !(
-                          item.lastClass &&
-                          consultTag &&
-                          consultTag.label === "휴회 예정"
-                        ) ? (
-                        <ConsultBadge tag={consultTag} />
-                      ) : null}
                     </div>
                   </div>
                   <div onClick={(e) => e.stopPropagation()} style={{ display: "flex", gap: 6 }}>
                     <SessionQuickActions role={accessRole} token={token} index={item.index} />
-                    {canUseConsultFeatures(accessRole) ? (
-                      <ConsultButton tag={consultTag} onClick={() => consultHooks.actions.openConsultForSession(consultTag)} />
-                    ) : null}
                   </div>
                 </div>
               );
@@ -1479,68 +2014,6 @@ export default function StudentHubCore({
           </div>
         )}
       </section>
-
-      {student?.scheduleChangeEvents?.length ? (
-        <section style={{ marginTop: 12, border: "1px solid var(--surface-border)", borderRadius: 12, padding: 14, background: "var(--surface-bg)" }}>
-          <div className="card-title">시간 변경 기록</div>
-          <div style={{ display: "grid", gap: 6, marginTop: 6 }}>
-            {[...student.scheduleChangeEvents]
-              .sort((a, b) => a.startIndex - b.startIndex)
-              .map((e) => (
-                <div
-                  key={e.id}
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                    gap: 12,
-                    padding: "8px 10px",
-                    border: "1px solid var(--surface-border)",
-                    borderRadius: 8,
-                    background: "var(--surface-bg)",
-                  }}
-                >
-                  <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "110px 90px 1fr",
-                      gap: 30,
-                      flex: "1 1 auto",
-                      alignItems: "center",
-                    }}
-                  >
-                    <div style={{ fontWeight: 700 }}>{formatYmdDot(e.createdAt?.slice(0, 10))}</div>
-                    <div>{e.startDate ? `${formatYmdDot(e.startDate)}부터` : `${e.startIndex}회차부터`}</div>
-                    <div style={{ color: "#374151" }}>{formatSchedule(e.newRules)}</div>
-                  </div>
-                  {canEdit ? (
-                    <button
-                      onClick={async () => {
-                        const ok = confirm("이 시간 변경 기록을 삭제하시겠습니까?");
-                        if (!ok) return;
-                        const nextEvents = (student?.scheduleChangeEvents ?? []).filter((x) => x.id !== e.id);
-                        const saved = await persistScheduleState({ ...student, scheduleChangeEvents: nextEvents });
-                        if (!saved) {
-                          alert("시간 변경 삭제를 서버에 저장하지 못했어요. 잠시 뒤 다시 시도해주세요.");
-                        }
-                      }}
-                      className="btn btn-bold"
-                    >
-                      삭제
-                    </button>
-                  ) : null}
-                </div>
-              ))}
-          </div>
-        </section>
-      ) : null}
-
-      <StudentConsultPanel
-        consultHooks={consultHooks}
-        consultRecords={consultRecords}
-        accessRole={accessRole}
-        canEdit={canEdit}
-      />
 
       {isAdmin || accessRole === "t" ? (
         <StudentPaymentPanel
@@ -1550,6 +2023,175 @@ export default function StudentHubCore({
           student={student}
           baseCount={baseCount}
         />
+      ) : null}
+
+      {sessionAddOpen ? (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.35)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 16,
+            zIndex: 80,
+          }}
+        >
+          <div
+            style={{
+              width: "100%",
+              maxWidth: 560,
+              maxHeight: "90vh",
+              overflowY: "auto",
+              background: "var(--surface-bg)",
+              border: "1px solid var(--surface-border)",
+              color: "var(--foreground)",
+              borderRadius: 12,
+              padding: 12,
+            }}
+          >
+            <div style={{ fontWeight: 900 }}>회차 추가</div>
+            <div style={{ marginTop: 6, color: "var(--text-muted)" }}>
+              시작일 기준으로 시간표 패턴을 적용해 입력한 회차 수만큼 생성합니다.
+            </div>
+
+            <div style={{ display: "grid", gap: 10, marginTop: 10 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "120px 1fr", gap: 10, alignItems: "center" }}>
+                <div style={{ fontWeight: 800 }}>시작일</div>
+                <input
+                  type="date"
+                  value={sessionAddStartDate}
+                  onChange={(e) => setSessionAddStartDate(e.target.value)}
+                  style={inputStyle}
+                />
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "120px 1fr", gap: 10, alignItems: "center" }}>
+                <div style={{ fontWeight: 800 }}>회차수</div>
+                <input
+                  type="number"
+                  min={1}
+                  value={sessionAddCount}
+                  onChange={(e) => setSessionAddCount(normalizeSessionAddCount(Number(e.target.value)))}
+                  style={inputStyle}
+                />
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "120px 1fr", gap: 10, alignItems: "center" }}>
+                <div style={{ fontWeight: 800 }}>주당 횟수</div>
+                <input
+                  type="number"
+                  min={1}
+                  max={7}
+                  value={sessionAddWeeklyCount}
+                  onChange={(e) => updateSessionAddWeeklyCount(Number(e.target.value))}
+                  style={inputStyle}
+                />
+              </div>
+
+              <div
+                style={{
+                  display: "grid",
+                  gridAutoFlow: "column",
+                  gridAutoColumns: "minmax(240px, 1fr)",
+                  gap: 8,
+                  overflowX: "auto",
+                  paddingBottom: 2,
+                }}
+              >
+                {sessionAddRules.slice(0, normalizeWeeklyCount(sessionAddWeeklyCount)).map((rule, i) => (
+                  <div
+                    key={`session-add-rule-${i}`}
+                    style={{
+                      border: "1px solid var(--surface-border)",
+                      borderRadius: 8,
+                      background: "var(--surface-bg)",
+                      padding: 10,
+                      display: "grid",
+                      gap: 10,
+                    }}
+                  >
+                    <div style={{ fontWeight: 800 }}>{i + 1}번째 수업 박스</div>
+                    <div style={{ display: "grid", gap: 6 }}>
+                      <span style={{ fontWeight: 700 }}>요일</span>
+                      <select
+                        value={rule.weekday}
+                        onChange={(e) => updateSessionAddRule(i, { weekday: Number(e.target.value) as Weekday })}
+                        style={{ ...selectStyle, width: "100%" }}
+                      >
+                        {[1, 2, 3, 4, 5, 6, 0].map((d) => (
+                          <option key={`weekday-${d}`} value={d}>
+                            {weekdayFullLabel(d)}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div style={{ display: "grid", gap: 6 }}>
+                      <span style={{ fontWeight: 700 }}>시작시간</span>
+                      <select
+                        value={rule.hour}
+                        onChange={(e) => updateSessionAddRule(i, { hour: Number(e.target.value) })}
+                        style={{ ...selectStyle, width: "100%" }}
+                        aria-label={`${i + 1}번째 수업 시작 시`}
+                      >
+                        {Array.from({ length: 24 }, (_, h) => (
+                          <option key={`hour-${h}`} value={h}>
+                            {formatHourLabel(h)}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div style={{ display: "grid", gap: 6 }}>
+                      <span style={{ fontWeight: 700 }}>수업시간</span>
+                      <select
+                        value={rule.durationHour}
+                        onChange={(e) => updateSessionAddRule(i, { durationHour: Number(e.target.value) as 1 | 2 })}
+                        style={{ ...selectStyle, width: "100%" }}
+                        aria-label={`${i + 1}번째 수업 시간`}
+                      >
+                        {[1, 2].map((duration) => (
+                          <option key={`duration-${duration}`} value={duration}>
+                            {duration}시간
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div style={{ color: "var(--text-muted)" }}>
+                      {weekdayFullLabel(rule.weekday)} · {formatHourLabel(rule.hour)} 시작 ·{" "}
+                      {normalizeSessionAddDurationHour(rule.durationHour)}시간
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div style={{ color: "var(--text-muted)" }}>총 {normalizeSessionAddCount(sessionAddCount)}회차가 추가됩니다.</div>
+
+              {sessionAddError ? <div style={{ color: "#dc2626" }}>{sessionAddError}</div> : null}
+
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+                <button
+                  onMouseEnter={(e) => (e.currentTarget.style.background = "var(--surface-hover)")}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = "var(--surface-bg)")}
+                  onClick={closeSessionAddModal}
+                  style={{ ...boxButton, padding: "8px 12px" }}
+                  disabled={sessionAddSaving}
+                >
+                  취소
+                </button>
+                <button
+                  onMouseEnter={(e) => (e.currentTarget.style.background = "var(--surface-hover)")}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = "var(--surface-bg)")}
+                  onClick={saveSessionAdd}
+                  style={{ ...boxButton, padding: "8px 12px", fontWeight: 600 }}
+                  disabled={sessionAddSaving}
+                >
+                  {sessionAddSaving ? "적용 중..." : "적용"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       ) : null}
 
       {scheduleEditOpen ? (
@@ -1568,7 +2210,9 @@ export default function StudentHubCore({
           <div
             style={{
               width: "100%",
-              maxWidth: 420,
+              maxWidth: 560,
+              maxHeight: "90vh",
+              overflowY: "auto",
               background: "var(--surface-bg)",
               border: "1px solid var(--surface-border)",
               color: "var(--foreground)",
@@ -1605,74 +2249,93 @@ export default function StudentHubCore({
                 />
               </div>
 
-              <div style={{ display: "grid", gap: 6 }}>
-                <div style={{ fontWeight: 800 }}>새 시간표</div>
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                  {[0, 1, 2, 3, 4, 5, 6].map((d) => {
-                    const on = scheduleDays[d]?.on;
-                    return (
-                      <button
-                        key={d}
-                        type="button"
-                        onClick={() => toggleScheduleDay(d)}
-                        style={{
-                          padding: "6px 10px",
-                          borderRadius: 999,
-                          border: on ? "1px solid #2563eb" : "1px solid var(--control-border)",
-                          background: on ? "#2563eb" : "var(--surface-bg)",
-                          color: on ? "#fff" : "var(--foreground)",
-                        }}
-                        aria-pressed={on}
+              <div style={{ display: "grid", gridTemplateColumns: "120px 1fr", gap: 10, alignItems: "center" }}>
+                <div style={{ fontWeight: 800 }}>주당 횟수</div>
+                <input
+                  type="number"
+                  min={1}
+                  max={7}
+                  value={scheduleEditWeeklyCount}
+                  onChange={(e) => updateScheduleEditWeeklyCount(Number(e.target.value))}
+                  style={inputStyle}
+                />
+              </div>
+
+              <div
+                style={{
+                  display: "grid",
+                  gridAutoFlow: "column",
+                  gridAutoColumns: "minmax(240px, 1fr)",
+                  gap: 8,
+                  overflowX: "auto",
+                  paddingBottom: 2,
+                }}
+              >
+                {scheduleEditRules.slice(0, normalizeWeeklyCount(scheduleEditWeeklyCount)).map((rule, i) => (
+                  <div
+                    key={`schedule-edit-rule-${i}`}
+                    style={{
+                      border: "1px solid var(--surface-border)",
+                      borderRadius: 8,
+                      background: "var(--surface-bg)",
+                      padding: 10,
+                      display: "grid",
+                      gap: 10,
+                    }}
+                  >
+                    <div style={{ fontWeight: 800 }}>{i + 1}번째 수업 박스</div>
+                    <div style={{ display: "grid", gap: 6 }}>
+                      <span style={{ fontWeight: 700 }}>요일</span>
+                      <select
+                        value={rule.weekday}
+                        onChange={(e) => updateScheduleEditRule(i, { weekday: Number(e.target.value) as Weekday })}
+                        style={{ ...selectStyle, width: "100%" }}
                       >
-                        {weekdayLabel(d)}
-                      </button>
-                    );
-                  })}
-                </div>
-
-                <div style={{ marginTop: 8, display: "grid", gap: 8 }}>
-                  {[0, 1, 2, 3, 4, 5, 6]
-                    .filter((d) => scheduleDays[d]?.on)
-                    .map((d) => (
-                      <div key={d} style={{ padding: 8, border: "1px solid var(--surface-border)", borderRadius: 8, background: "var(--surface-bg)" }}>
-                        <div
-                          style={{
-                            display: "grid",
-                            gridTemplateColumns: "minmax(180px, 50%) 1fr 1fr",
-                            gap: 10,
-                            alignItems: "center",
-                          }}
-                        >
-                          <div style={{ fontWeight: 800 }}>{weekdayLabel(d)}요일</div>
-                          <input
-                            type="number"
-                            min={0}
-                            max={23}
-                            step={1}
-                            value={scheduleDays[d].hour}
-                            onChange={(e) => setScheduleHour(d, Number(e.target.value))}
-                            style={selectStyle}
-                          />
-
-                          <input
-                            type="number"
-                            min={0}
-                            max={30}
-                            step={30}
-                            value={scheduleDays[d].minute}
-                            onChange={(e) => {
-                              setScheduleMinute(d, normalizeMinute(Number(e.target.value)));
-                            }}
-                            style={selectStyle}
-                          />
-                        </div>
-                      </div>
-                    ))}
-
-                  {[0, 1, 2, 3, 4, 5, 6].every((d) => !scheduleDays[d]?.on) ? (
-                    <div style={{ color: "var(--text-muted)" }}>선택된 요일이 없습니다.</div>
-                  ) : null}
-                </div>
+                        {[1, 2, 3, 4, 5, 6, 0].map((d) => (
+                          <option key={`schedule-edit-weekday-${d}`} value={d}>
+                            {weekdayFullLabel(d)}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div style={{ display: "grid", gap: 6 }}>
+                      <span style={{ fontWeight: 700 }}>시작시간</span>
+                      <select
+                        value={rule.hour}
+                        onChange={(e) => updateScheduleEditRule(i, { hour: Number(e.target.value) })}
+                        style={{ ...selectStyle, width: "100%" }}
+                        aria-label={`${i + 1}번째 변경 시작 시`}
+                      >
+                        {Array.from({ length: 24 }, (_, h) => (
+                          <option key={`schedule-edit-hour-${h}`} value={h}>
+                            {formatHourLabel(h)}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div style={{ display: "grid", gap: 6 }}>
+                      <span style={{ fontWeight: 700 }}>수업시간</span>
+                      <select
+                        value={rule.durationHour}
+                        onChange={(e) =>
+                          updateScheduleEditRule(i, { durationHour: Number(e.target.value) as 1 | 2 })
+                        }
+                        style={{ ...selectStyle, width: "100%" }}
+                        aria-label={`${i + 1}번째 변경 수업 시간`}
+                      >
+                        {[1, 2].map((duration) => (
+                          <option key={`schedule-edit-duration-${duration}`} value={duration}>
+                            {duration}시간
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div style={{ color: "var(--text-muted)" }}>
+                      {weekdayFullLabel(rule.weekday)} · {formatHourLabel(rule.hour)} 시작 ·{" "}
+                      {normalizeSessionAddDurationHour(rule.durationHour)}시간
+                    </div>
+                  </div>
+                ))}
               </div>
 
               <div style={{ color: "var(--text-muted)" }}>

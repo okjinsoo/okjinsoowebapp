@@ -24,8 +24,16 @@ type CacheEntry = {
 const responseCache = new Map<string, CacheEntry>();
 const inFlightRequests = new Map<string, Promise<FetchResult<unknown>>>();
 
+function isLocalOnlyMode(): boolean {
+  return process.env.NEXT_PUBLIC_TUTORWEB_LOCAL_ONLY === "1";
+}
+
 export async function fetchServerJson<T>(url: string, dataKey: string): Promise<FetchResult<T>> {
   if (typeof window === "undefined") {
+    return { ok: false, data: null };
+  }
+
+  if (isLocalOnlyMode()) {
     return { ok: false, data: null };
   }
 

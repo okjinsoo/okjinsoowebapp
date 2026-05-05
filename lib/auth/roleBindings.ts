@@ -6,6 +6,10 @@ type RoleBindingRow = {
   role?: string;
 };
 
+function isLocalOnlyRoleBindingMode(): boolean {
+  return process.env.NEXT_PUBLIC_TUTORWEB_LOCAL_ONLY === "1";
+}
+
 function normalizeEmail(email: string | null | undefined): string {
   return (email ?? "").trim().toLowerCase();
 }
@@ -60,6 +64,8 @@ export async function fetchRoleBinding(args: {
   email: string;
   accessToken: string | null | undefined;
 }): Promise<RoleBindingRole | null> {
+  if (isLocalOnlyRoleBindingMode()) return null;
+
   const normalizedEmail = normalizeEmail(args.email);
   if (!normalizedEmail) return null;
 
@@ -117,6 +123,8 @@ export async function upsertRoleBinding(args: {
   role: RoleBindingRole;
   accessToken?: string | null;
 }): Promise<void> {
+  if (isLocalOnlyRoleBindingMode()) return;
+
   const normalizedEmail = normalizeEmail(args.email);
   if (!normalizedEmail) return;
 
@@ -190,6 +198,8 @@ export async function deleteRoleBinding(args: {
   email: string;
   accessToken?: string | null;
 }): Promise<void> {
+  if (isLocalOnlyRoleBindingMode()) return;
+
   const normalizedEmail = normalizeEmail(args.email);
   if (!normalizedEmail) return;
 
@@ -249,6 +259,8 @@ export async function syncRoleBindingEmails(args: {
   role: RoleBindingRole;
   accessToken?: string | null;
 }): Promise<void> {
+  if (isLocalOnlyRoleBindingMode()) return;
+
   const previous = new Set(args.previousEmails.map(normalizeEmail).filter(Boolean));
   const next = new Set(args.nextEmails.map(normalizeEmail).filter(Boolean));
 

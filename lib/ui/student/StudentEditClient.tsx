@@ -197,6 +197,11 @@ export default function StudentEditClient(props: {
     const all = baseSessions;
     const others = all.filter((s) => s.studentId !== student.id);
     const own = all.filter((s) => s.studentId === student.id);
+    const maxExistingIndex = own.reduce((m, s) => Math.max(m, s.index), 0);
+    if (nextPlanCount < maxExistingIndex) {
+      setError(`기존 ${maxExistingIndex}회차가 이미 생성되어 있어 회차 수를 줄일 수 없습니다.`);
+      return;
+    }
     const ownByIndex = new Map(own.map((s) => [s.index, s]));
     const baseDatesISO = buildBaseDatesISO(updated, 120); // carry 딜레이를 고려해 여유롭게 생성
     const metaMap = readMetaMap(updated.token ?? "");

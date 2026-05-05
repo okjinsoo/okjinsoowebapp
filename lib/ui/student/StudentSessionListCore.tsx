@@ -24,7 +24,7 @@ import AchievementBadge from "@/lib/ui/common/AchievementBadge";
 import { getSessionStatusBadge } from "@/lib/ui/common/sessionStatusBadge";
 import { buildSessionContextBadges, getSessionExtraBadgeStyle } from "@/lib/ui/common/sessionExtraBadge";
 import type { ConsultTag } from "@/lib/ui/session/consultationMap";
-import { ConsultationRecord, PaymentRecord, Student } from "@/lib/types/index";
+import { ConsultationRecord, PaymentRecord, ScheduleRule, Student } from "@/lib/types/index";
 import { useConsultationSubmit } from "./hooks/useConsultationSubmit";
 import { ConsultBadge, ConsultButton } from "@/lib/ui/common/ConsultParts";
 import ConsultModal, { ConsultFormState } from "@/lib/ui/common/ConsultModal";
@@ -43,6 +43,64 @@ type Props = {
   prefix: string;
   hideTokenInRoute?: boolean;
 };
+
+function normalizeDurationMin(value: number): number {
+  if (!Number.isFinite(value)) return 60;
+  return Math.max(30, Math.round(value));
+}
+
+function resolveRulesForIndex(student: Student, index: number): ScheduleRule[] {
+  const events = [...(student.scheduleChangeEvents ?? [])].sort((a, b) => a.startIndex - b.startIndex);
+  let rules = [...(student.scheduleRules ?? [])];
+  for (const event of events) {
+    if (event.startIndex <= index && Array.isArray(event.newRules) && event.newRules.length > 0) {
+      rules = [...event.newRules];
+    }
+  }
+  return rules;
+}
+
+function kstWeekdayHourMinuteFromISO(iso: string): { weekday: number; hour: number; minute: number } | null {
+  try {
+    const dt = new Date(iso);
+    if (!Number.isFinite(dt.getTime())) return null;
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone: "Asia/Seoul",
+      weekday: "short",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    }).formatToParts(dt);
+    const wk = parts.find((p) => p.type === "weekday")?.value ?? "";
+    const hh = Number(parts.find((p) => p.type === "hour")?.value ?? "0");
+    const mm = Number(parts.find((p) => p.type === "minute")?.value ?? "0");
+    const map: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+    const weekday = map[wk];
+    if (!Number.isFinite(weekday) || !Number.isFinite(hh) || !Number.isFinite(mm)) return null;
+    return { weekday, hour: hh, minute: mm };
+  } catch {
+    return null;
+  }
+}
+
+function resolveDurationMinForSession(iso: string | null | undefined, rules: ScheduleRule[]): number {
+  const normalizedRules = rules
+    .map((rule) => ({
+      weekday: Number(rule.weekday),
+      hour: Math.max(0, Math.min(23, Math.floor(Number(rule.hour) || 0))),
+      minute: Math.max(0, Math.min(59, Math.floor(Number(rule.minute) || 0))),
+      durationMin: normalizeDurationMin(Number(rule.durationMin)),
+    }))
+    .sort((a, b) => a.weekday - b.weekday || a.hour - b.hour || a.minute - b.minute);
+  if (normalizedRules.length === 0) return 60;
+  if (!iso) return normalizedRules[0].durationMin;
+  const key = kstWeekdayHourMinuteFromISO(iso);
+  if (!key) return normalizedRules[0].durationMin;
+  const matched = normalizedRules.find(
+    (rule) => rule.weekday === key.weekday && rule.hour === key.hour && rule.minute === key.minute
+  );
+  return (matched ?? normalizedRules[0]).durationMin;
+}
 
 function applyPauseStateFromConsultations(student: Student, records: ConsultationRecord[]): Student {
   const latestPause = [...records]
@@ -78,8 +136,9 @@ function applyPauseStateFromConsultations(student: Student, records: Consultatio
 }
 
 export default function StudentSessionListCore({ role, token, prefix, hideTokenInRoute = false }: Props) {
-  void role;
   const isAdmin = role === "a";
+  const canUseConsult = canUseConsultFeatures(role);
+  const canUseQuickActions = role !== "s";
   const [mounted, setMounted] = useState(false);
   const [progressTick, setProgressTick] = useState(0);
 
@@ -206,7 +265,9 @@ export default function StudentSessionListCore({ role, token, prefix, hideTokenI
           metaMap,
         });
 
-        const { dateText, timeText } = parseDateTime(effectiveISO);
+        const rules = resolveRulesForIndex(student, s.index);
+        const durationMin = resolveDurationMinForSession(effectiveISO, rules);
+        const { dateText, timeText } = parseDateTime(effectiveISO, durationMin);
         const badges = buildSessionContextBadges({
           baseBadges: buildBadges(meta),
           lastClass: Boolean(lastClassIndex && s.index === lastClassIndex),
@@ -292,6 +353,7 @@ export default function StudentSessionListCore({ role, token, prefix, hideTokenI
   };
 
   const openConsultForSession = (iso: string, tag: ConsultTag | null) => {
+    if (!canUseConsult) return;
     if (tag?.recordId) {
       const record = consultRecords.find((r) => r.id === tag.recordId);
       if (record) {
@@ -340,6 +402,7 @@ export default function StudentSessionListCore({ role, token, prefix, hideTokenI
 
   const { submit: submitConsult } = useConsultationSubmit({
     isAdmin,
+    actorRole: role,
     student,
     history: student?.paymentHistory ?? [],
     consultRecords: consultRecords ?? [],
@@ -508,7 +571,7 @@ export default function StudentSessionListCore({ role, token, prefix, hideTokenI
                         ))}
                       </div>
                     ) : null}
-                    {!(
+                    {canUseConsult && !(
                       consultTag &&
                       consultTag.label === "휴회 예정" &&
                       r.badges.includes("마지막 수업")
@@ -520,7 +583,7 @@ export default function StudentSessionListCore({ role, token, prefix, hideTokenI
                     ) : null}
                   </div>
                 </Link>
-                {canUseConsultFeatures(role) ? (
+                {canUseQuickActions ? (
                   <div
                     onClick={(e) => {
                       e.stopPropagation();
@@ -535,7 +598,9 @@ export default function StudentSessionListCore({ role, token, prefix, hideTokenI
                     }}
                   >
                     <SessionQuickActions role={role} token={token} index={r.index} />
-                    <ConsultButton tag={consultTag} onClick={() => openConsultForSession(r.effectiveISO, consultTag)} />
+                    {canUseConsult ? (
+                      <ConsultButton tag={consultTag} onClick={() => openConsultForSession(r.effectiveISO, consultTag)} />
+                    ) : null}
                   </div>
                 ) : null}
               </div>
@@ -610,7 +675,7 @@ export default function StudentSessionListCore({ role, token, prefix, hideTokenI
                     </div>
                     <AchievementBadge percent={r.progress.percent} />
                     <Badge style={statusBadge.style}>{statusBadge.label}</Badge>
-                    {!(
+                    {canUseConsult && !(
                       consultTag &&
                       consultTag.label === "휴회 예정" &&
                       r.badges.includes("마지막 수업")
@@ -628,7 +693,7 @@ export default function StudentSessionListCore({ role, token, prefix, hideTokenI
                     ) : null}
                   </div>
                 </Link>
-                {canUseConsultFeatures(role) ? (
+                {canUseQuickActions ? (
                   <div
                     onClick={(e) => {
                       e.stopPropagation();
@@ -643,7 +708,9 @@ export default function StudentSessionListCore({ role, token, prefix, hideTokenI
                     }}
                   >
                     <SessionQuickActions role={role} token={token} index={r.index} />
-                    <ConsultButton tag={consultTag} onClick={() => openConsultForSession(r.effectiveISO, consultTag)} />
+                    {canUseConsult ? (
+                      <ConsultButton tag={consultTag} onClick={() => openConsultForSession(r.effectiveISO, consultTag)} />
+                    ) : null}
                   </div>
                 ) : null}
               </div>
@@ -671,16 +738,18 @@ export default function StudentSessionListCore({ role, token, prefix, hideTokenI
         ) : null}
       </div>
 
-      <ConsultModal
-        open={consultOpen}
-        role={role}
-        state={consultForm}
-        error={consultError}
-        onClose={() => setConsultOpen(false)}
-        onSave={saveConsultRecord}
-        onDelete={consultEditingId ? deleteConsultRecord : undefined}
-        computeRefundRatioValue={getLiveRefundRatio}
-      />
+      {canUseConsult ? (
+        <ConsultModal
+          open={consultOpen}
+          role={role}
+          state={consultForm}
+          error={consultError}
+          onClose={() => setConsultOpen(false)}
+          onSave={saveConsultRecord}
+          onDelete={consultEditingId ? deleteConsultRecord : undefined}
+          computeRefundRatioValue={getLiveRefundRatio}
+        />
+      ) : null}
     </div>
   );
 }

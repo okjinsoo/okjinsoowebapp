@@ -4,6 +4,9 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "dev:isolated": "node scripts/dev-isolated.mjs",
+    "sync:snapshot": "node scripts/sync-snapshot.mjs",
+    "sync:snapshot:dry": "node scripts/sync-snapshot.mjs --dry-run",
     "build": "next build --webpack",
     "start": "next start",
     "lint": "eslint",

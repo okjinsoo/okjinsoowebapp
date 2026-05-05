@@ -8,9 +8,11 @@ import { nowIso } from "@/lib/utils/date";
 import { makeId } from "@/lib/utils/id";
 import { SERVER_SAVE_RETRY_MESSAGE } from "@/lib/messages/serverMessages";
 import { applyPauseStateFromConsultations } from "./useStudentConsult";
+import { canUseConsultFeatures, type SessionRole } from "@/lib/policies/sessionRolePolicy";
 
 export interface ConsultationSubmitContext {
     isAdmin: boolean;
+    actorRole?: SessionRole;
     student: Student | null;
     history: PaymentRecord[];
     consultRecords: ConsultationRecord[];
@@ -32,6 +34,7 @@ export interface ConsultationSubmitContext {
 export async function submitConsultation(ctx: ConsultationSubmitContext, form: ConsultFormState, editingId: string | null): Promise<{ ok: boolean; error?: string }> {
     const {
         isAdmin,
+        actorRole,
         student,
         history,
         consultRecords,
@@ -40,6 +43,10 @@ export async function submitConsultation(ctx: ConsultationSubmitContext, form: C
     } = ctx;
 
     if (!student) return { ok: false, error: "학생 정보를 찾을 수 없습니다." };
+    const resolvedRole: SessionRole = actorRole ?? (isAdmin ? "a" : "t");
+    if (!canUseConsultFeatures(resolvedRole)) {
+        return { ok: false, error: "상담 기능은 현재 숨김 처리되어 저장할 수 없습니다." };
+    }
 
     console.log("DEBUG: submitConsultation START", { isAdmin, purpose: form.purpose, extensionResult: form.extensionResult, confirmed: form.extensionPaymentConfirmed });
     const err = validateConsultForm(form, isAdmin);

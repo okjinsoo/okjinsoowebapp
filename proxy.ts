@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
 import { canAccessRole, requiredRoleByPathname } from "@/lib/auth/accessPolicy";
+import { hasLocalDevAdminSession } from "@/lib/auth/localDevAuth";
 import { logSecurityEvent } from "@/lib/security/securityLog";
 import {
   AUTH_BRIDGE_COOKIE_KEY,
@@ -85,6 +86,11 @@ export async function proxy(request: NextRequest) {
   const requestId = requestIdOf(request);
   const requiredRole = requiredRoleByPathname(pathname);
   if (!requiredRole) {
+    return NextResponse.next();
+  }
+
+  // 분리 테스트 서버에서는 로컬 관리자 세션 쿠키로 즉시 통과를 허용합니다.
+  if (hasLocalDevAdminSession(request)) {
     return NextResponse.next();
   }
 

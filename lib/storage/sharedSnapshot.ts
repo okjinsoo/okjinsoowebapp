@@ -70,6 +70,10 @@ let pullSnapshotInFlight: Promise<{
   sessions: Session[];
 } | null> | null = null;
 
+export function isLocalOnlySnapshotMode(): boolean {
+  return process.env.NEXT_PUBLIC_TUTORWEB_LOCAL_ONLY === "1";
+}
+
 function shouldPersistKey(key: string): boolean {
   if (!key) return false;
   if (key === AUTH_STORAGE_KEY) return false;
@@ -328,6 +332,10 @@ function isJwtAuthError(detail: string): boolean {
   return lower.includes("jwt expired") || lower.includes("invalid jwt") || lower.includes("jwt");
 }
 
+function isNetworkFetchFailure(args: { status: number; text: string }): boolean {
+  return args.status === 0 || args.text.startsWith("fetch_failed:");
+}
+
 function hasLocalSnapshot(): boolean {
   if (typeof window === "undefined") return false;
   return (
@@ -341,36 +349,54 @@ async function fetchSnapshotRows(args: {
   headers: Record<string, string>;
   select: string;
 }): Promise<FetchRowsResult> {
-  const requestUrl = new URL(args.url.toString());
-  requestUrl.searchParams.set("select", args.select);
-  requestUrl.searchParams.set("id", `eq.${SNAPSHOT_KEY}`);
-  requestUrl.searchParams.set("limit", "1");
+  try {
+    const requestUrl = new URL(args.url.toString());
+    requestUrl.searchParams.set("select", args.select);
+    requestUrl.searchParams.set("id", `eq.${SNAPSHOT_KEY}`);
+    requestUrl.searchParams.set("limit", "1");
 
-  const execute = async (headers: Record<string, string>): Promise<FetchRowsResult> => {
-    const res = await fetch(requestUrl.toString(), {
-      method: "GET",
-      headers,
-    });
+    const execute = async (headers: Record<string, string>): Promise<FetchRowsResult> => {
+      try {
+        const res = await fetch(requestUrl.toString(), {
+          method: "GET",
+          headers,
+        });
 
-    if (res.ok) {
-      return { ok: true, rows: (await res.json()) as SnapshotRow[] };
+        if (res.ok) {
+          return { ok: true, rows: (await res.json()) as SnapshotRow[] };
+        }
+
+        return {
+          ok: false,
+          status: res.status,
+          text: await res.text(),
+        };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "unknown_error";
+        return {
+          ok: false,
+          status: 0,
+          text: `fetch_failed:${message}`,
+        };
+      }
+    };
+
+    let result = await execute(args.headers);
+    if (!result.ok && result.status === 401 && isJwtAuthError(result.text)) {
+      const retryHeaders = await getHeaders({ forceRefresh: true });
+      if (retryHeaders) {
+        result = await execute(retryHeaders);
+      }
     }
-
+    return result;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "unknown_error";
     return {
       ok: false,
-      status: res.status,
-      text: await res.text(),
+      status: 0,
+      text: `fetch_failed:${message}`,
     };
-  };
-
-  let result = await execute(args.headers);
-  if (!result.ok && result.status === 401 && isJwtAuthError(result.text)) {
-    const retryHeaders = await getHeaders({ forceRefresh: true });
-    if (retryHeaders) {
-      result = await execute(retryHeaders);
-    }
   }
-  return result;
 }
 
 async function postSnapshotUpsertWithRetry(args: {
@@ -381,26 +407,35 @@ async function postSnapshotUpsertWithRetry(args: {
   const body = JSON.stringify(args.payload);
 
   const execute = async (headers: Record<string, string>) => {
-    const res = await fetch(args.url.toString(), {
-      method: "POST",
-      headers: {
-        ...headers,
-        Prefer: "resolution=merge-duplicates",
-      },
-      body,
-    });
-    if (res.ok) {
+    try {
+      const res = await fetch(args.url.toString(), {
+        method: "POST",
+        headers: {
+          ...headers,
+          Prefer: "resolution=merge-duplicates",
+        },
+        body,
+      });
+      if (res.ok) {
+        return {
+          ok: true,
+          status: res.status,
+          text: "",
+        };
+      }
       return {
-        ok: true,
+        ok: false,
         status: res.status,
-        text: "",
+        text: await res.text(),
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "unknown_error";
+      return {
+        ok: false,
+        status: 0,
+        text: `fetch_failed:${message}`,
       };
     }
-    return {
-      ok: false,
-      status: res.status,
-      text: await res.text(),
-    };
   };
 
   let result = await execute(args.headers);
@@ -426,6 +461,9 @@ async function fetchRemoteStateKv(args: {
     if (isMissingColumnError(result.text, "state_kv")) {
       return {};
     }
+    if (isNetworkFetchFailure(result)) {
+      return {};
+    }
     throw new Error(`snapshot fetch failed(state_kv): ${result.status} ${result.text}`);
   }
   const row = result.rows[0];
@@ -433,6 +471,11 @@ async function fetchRemoteStateKv(args: {
 }
 
 export async function readRemoteSharedStateKvValue(key: string): Promise<string | null> {
+  if (isLocalOnlySnapshotMode()) {
+    if (typeof window === "undefined") return null;
+    return browserStorage.getItem(key);
+  }
+
   const internal = await fetchInternalSnapshot({ stateKey: key });
   if (internal && Object.prototype.hasOwnProperty.call(internal, "value")) {
     return typeof internal.value === "string" ? internal.value : null;
@@ -444,12 +487,16 @@ export async function readRemoteSharedStateKvValue(key: string): Promise<string 
   const headers = await getHeaders();
   if (!headers) return null;
 
-  const snapshotUrl = new URL("/rest/v1/app_state_snapshots", cfg.url);
-  const stateKv = await fetchRemoteStateKv({
-    url: snapshotUrl,
-    headers,
-  });
-  return stateKv[key] ?? null;
+  try {
+    const snapshotUrl = new URL("/rest/v1/app_state_snapshots", cfg.url);
+    const stateKv = await fetchRemoteStateKv({
+      url: snapshotUrl,
+      headers,
+    });
+    return stateKv[key] ?? null;
+  } catch {
+    return null;
+  }
 }
 
 type PushSharedSnapshotArgs = {
@@ -490,6 +537,51 @@ export async function pushSharedSnapshot(args?: PushSharedSnapshotArgs): Promise
   const students = hasStudentsArg ? (args?.students ?? []) : undefined;
   const sessions = hasSessionsArg ? (args?.sessions ?? []) : undefined;
   const stateKvPatch = hasStateKvArg ? toStateKv(args?.stateKv ?? {}) : undefined;
+
+  if (isLocalOnlySnapshotMode()) {
+    const localTeachers = hasTeachersArg ? teachers ?? [] : readLocalTeachers();
+    const localStudents = hasStudentsArg ? students ?? [] : readLocalStudents();
+    const localSessions = hasSessionsArg ? sessions ?? [] : undefined;
+    const localStateKv = readLocalStateKv();
+    const droppedStateKeys = Array.from(
+      new Set((args?.dropStateKeys ?? []).map((key) => key.trim()).filter((key) => shouldPersistKey(key)))
+    );
+
+    if (typeof window !== "undefined") {
+      for (const key of droppedStateKeys) {
+        localStorage.removeItem(key);
+        if (key === SHARED_CONSULTATIONS_KEY) {
+          window.dispatchEvent(new CustomEvent(TUTORWEB_EVENTS.consultationsUpdated));
+        }
+        if (key === SHARED_LECTURE_TREE_KEY) {
+          window.dispatchEvent(new CustomEvent(TUTORWEB_EVENTS.lectureTreeUpdated));
+        }
+        if (key.startsWith(SHARED_META_MAP_PREFIX)) {
+          window.dispatchEvent(new CustomEvent(TUTORWEB_EVENTS.metaMapUpdated));
+        }
+      }
+    }
+
+    const mergedStateKv = {
+      ...localStateKv,
+      ...(stateKvPatch ?? {}),
+    };
+    for (const key of droppedStateKeys) {
+      delete mergedStateKv[key];
+    }
+
+    applyLocalSnapshot({
+      teachers: localTeachers,
+      students: localStudents,
+      sessions: localSessions,
+      stateKv: touchesStateKv ? mergedStateKv : undefined,
+    });
+
+    return {
+      sessionsSynced: true,
+      stateKvSynced: true,
+    };
+  }
 
   const body: InternalSnapshotBody = {};
   if (hasTeachersArg) body.teachers = teachers;
@@ -639,6 +731,12 @@ export async function pushSharedSnapshot(args?: PushSharedSnapshotArgs): Promise
   const stateKvMissing = touchesStateKv && isMissingColumnError(text, "state_kv");
 
   if (!sessionsMissing && !stateKvMissing) {
+    if (isNetworkFetchFailure(fullResult)) {
+      return {
+        sessionsSynced: false,
+        stateKvSynced: false,
+      };
+    }
     throw new Error(`snapshot upsert failed: ${fullResult.status} ${text}`);
   }
 
@@ -661,6 +759,12 @@ export async function pushSharedSnapshot(args?: PushSharedSnapshotArgs): Promise
   });
 
   if (!fallbackResult.ok) {
+    if (isNetworkFetchFailure(fallbackResult)) {
+      return {
+        sessionsSynced: false,
+        stateKvSynced: false,
+      };
+    }
     const fallbackText = fallbackResult.text;
     throw new Error(
       `snapshot upsert failed (fallback): ${fallbackResult.status} ${fallbackText}`
@@ -689,6 +793,15 @@ export async function pullSharedSnapshotAndHydrateWithOptions(args?: {
   sessions: Session[];
 } | null> {
   const forceRemote = Boolean(args?.forceRemote);
+
+  if (isLocalOnlySnapshotMode()) {
+    lastPullSnapshotAt = Date.now();
+    return {
+      teachers: readLocalTeachers(),
+      students: readLocalStudents(),
+      sessions: readLocalSessions(),
+    };
+  }
 
   if (!forceRemote && Date.now() - lastPullSnapshotAt < PULL_COOLDOWN_MS && hasLocalSnapshot()) {
     return {
@@ -770,8 +883,24 @@ export async function pullSharedSnapshotAndHydrateWithOptions(args?: {
         changed = true;
       }
       if (changed) continue;
-
-      throw new Error(`snapshot fetch failed: ${result.status} ${result.text}`);
+      if (isNetworkFetchFailure(result)) {
+        if (hasLocalSnapshot()) {
+          return {
+            teachers: readLocalTeachers(),
+            students: readLocalStudents(),
+            sessions: readLocalSessions(),
+          };
+        }
+        return null;
+      }
+      if (hasLocalSnapshot()) {
+        return {
+          teachers: readLocalTeachers(),
+          students: readLocalStudents(),
+          sessions: readLocalSessions(),
+        };
+      }
+      return null;
     }
 
     if (!rows) return null;
