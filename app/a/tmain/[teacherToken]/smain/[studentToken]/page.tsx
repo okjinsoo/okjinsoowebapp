@@ -1,7 +1,5 @@
-import { redirect } from "next/navigation";
 import StudentHubCore from "@/lib/ui/student/StudentHubCore";
 import AdminTeacherStudentRouteGateCard from "@/lib/ui/common/AdminTeacherStudentRouteGateCard";
-import { resolveTeacherTokenByStudentToken } from "@/lib/server/adminTmainRoutes";
 
 export default async function AdminTeacherStudentHubTokenPage({
   params,
@@ -9,12 +7,6 @@ export default async function AdminTeacherStudentHubTokenPage({
   params: Promise<{ teacherToken: string; studentToken: string }>;
 }) {
   const { teacherToken, studentToken } = await params;
-  const canonicalTeacherToken = await resolveTeacherTokenByStudentToken(studentToken);
-  if (canonicalTeacherToken && canonicalTeacherToken !== teacherToken) {
-    redirect(
-      `/a/tmain/${encodeURIComponent(canonicalTeacherToken)}/smain/${encodeURIComponent(studentToken)}`
-    );
-  }
   const encodedTeacherToken = encodeURIComponent(teacherToken);
 
   return (

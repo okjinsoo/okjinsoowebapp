@@ -42,20 +42,35 @@ export default function AdminTeacherStudentRouteGateCard({
   const router = useRouter();
   const { students, teachers } = useStudentRegistry();
 
-  const currentTeacher = useMemo(
-    () => teachers.find((teacher) => teacher.token === teacherToken) ?? null,
-    [teachers, teacherToken]
-  );
   const currentStudent = useMemo(
     () => students.find((student) => student.token === studentToken) ?? null,
     [students, studentToken]
   );
-  const teacherId = currentTeacher?.id ?? currentStudent?.teacherId ?? null;
+  const teacherId = currentStudent?.teacherId ?? teachers.find((teacher) => teacher.token === teacherToken)?.id ?? null;
+  const canonicalTeacherToken = useMemo(() => {
+    if (!currentStudent?.teacherId) return null;
+    const teacher = teachers.find((row) => row.id === currentStudent.teacherId);
+    const token = (teacher?.token ?? "").trim();
+    return token || null;
+  }, [currentStudent, teachers]);
 
   useEffect(() => {
     if (teacherId) saveCurrentTeacherId(teacherId);
     saveCurrentStudentToken(studentToken);
   }, [teacherId, studentToken]);
+
+  useEffect(() => {
+    if (!canonicalTeacherToken) return;
+    if (canonicalTeacherToken === teacherToken) return;
+    router.replace(
+      buildStudentScopedPath({
+        teacherToken: canonicalTeacherToken,
+        studentToken,
+        routeKind,
+        sessionIndex,
+      })
+    );
+  }, [canonicalTeacherToken, routeKind, router, sessionIndex, studentToken, teacherToken]);
 
   return (
     <RoleGateCard

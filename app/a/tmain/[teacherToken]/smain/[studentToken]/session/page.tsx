@@ -1,8 +1,6 @@
 import Link from "next/link";
-import { redirect } from "next/navigation";
 import StudentSessionListCore from "@/lib/ui/student/StudentSessionListCore";
 import AdminTeacherStudentRouteGateCard from "@/lib/ui/common/AdminTeacherStudentRouteGateCard";
-import { resolveTeacherTokenByStudentToken } from "@/lib/server/adminTmainRoutes";
 
 export default async function AdminTeacherStudentSessionListTokenPage({
   params,
@@ -10,12 +8,6 @@ export default async function AdminTeacherStudentSessionListTokenPage({
   params: Promise<{ teacherToken: string; studentToken: string }>;
 }) {
   const { teacherToken, studentToken } = await params;
-  const canonicalTeacherToken = await resolveTeacherTokenByStudentToken(studentToken);
-  if (canonicalTeacherToken && canonicalTeacherToken !== teacherToken) {
-    redirect(
-      `/a/tmain/${encodeURIComponent(canonicalTeacherToken)}/smain/${encodeURIComponent(studentToken)}/session`
-    );
-  }
   const encodedTeacherToken = encodeURIComponent(teacherToken);
   const hubHref = `/a/tmain/${encodedTeacherToken}/smain/${encodeURIComponent(studentToken)}`;
 
