@@ -14,8 +14,8 @@ import {
   hasLocalDevAdminSession,
 } from "@/lib/auth/localDevAuth";
 import { logSecurityEvent } from "@/lib/security/securityLog";
-import { SHARED_CONSULTATIONS_KEY, isSharedStateKvKey } from "@/lib/storage/sharedStateKeys";
-import type { ConsultationRecord, Session, Student, Teacher } from "@/lib/types/index";
+import { isSharedStateKvKey } from "@/lib/storage/sharedStateKeys";
+import type { Session, Student, Teacher } from "@/lib/types/index";
 
 const SNAPSHOT_KEY = "main";
 const FIXED_ADMIN_EMAILS = new Set(["rapah0310@gmail.com"]);
@@ -403,19 +403,6 @@ export function filterStudentsForViewer(viewer: ViewerContext): Student[] {
 export function filterSessionsForStudent(viewer: ViewerContext, studentId: string): Session[] {
   if (!canReadStudent(viewer, studentId)) return [];
   return viewer.snapshot.sessions.filter((session) => session.studentId === studentId);
-}
-
-export function readConsultationsForStudent(viewer: ViewerContext, studentId: string): ConsultationRecord[] {
-  if (!canReadStudent(viewer, studentId)) return [];
-  const raw = viewer.snapshot.stateKv[SHARED_CONSULTATIONS_KEY];
-  if (!raw) return [];
-  try {
-    const parsed = JSON.parse(raw) as Record<string, ConsultationRecord[]>;
-    const list = parsed?.[studentId];
-    return Array.isArray(list) ? list : [];
-  } catch {
-    return [];
-  }
 }
 
 export async function readSnapshotStateValue(request: NextRequest, key: string): Promise<string | null> {

@@ -6,37 +6,12 @@ import type { Session, Student, Teacher } from "@/lib/types/index";
 import {
   buildBaseDatesISO,
   readMetaMap,
-  getSessionVisibility,
   computeEffectiveISO,
 } from "@/lib/factories/sessionFactories";
-import { findLastClassIndex } from "@/lib/ui/session/pauseHelpers";
 
 function filterVisibleSessions(student: Student, sessions: Session[]): Session[] {
-  if (
-    (student.pauseStatus !== "confirmed" && student.pauseStatus !== "paused") ||
-    !student.pauseEffectiveDate ||
-    !student.token
-  ) {
-    return sessions;
-  }
-
-  const baseDatesISO = buildBaseDatesISO(student, 60);
-  const metaMap = readMetaMap(student.token);
-
-  const lastClassIndex = findLastClassIndex({
-    token: student.token,
-    sessions,
-    baseDatesISO,
-    metaMap,
-    pauseEffectiveDate: student.pauseEffectiveDate,
-  });
-
-  if (lastClassIndex === null) return sessions;
-
-  return sessions.filter(s => {
-    const visibility = getSessionVisibility({ index: s.index, lastVisibleIndex: lastClassIndex });
-    return visibility !== "hidden";
-  });
+  void student;
+  return sessions;
 }
 
 type SessionPatch = {

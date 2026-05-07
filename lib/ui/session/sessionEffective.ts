@@ -39,6 +39,7 @@ export type SessionMeta = {
   overrideDate?: string;
   overrideHour?: number | null;
   overrideMinute?: number | null;
+  overrideDurationMin?: number | null;
   overrideSource?: "manual" | "extension" | "";
 
   reason?: string;
@@ -81,6 +82,14 @@ function safeMinute(n: unknown): number | null {
   const m = Math.floor(x);
   if (m < 0 || m > 59) return null;
   return m;
+}
+
+function safeDurationMin(n: unknown): number | null {
+  const x = typeof n === "number" ? n : Number(n);
+  if (!Number.isFinite(x)) return null;
+  const mins = Math.floor(x);
+  if (mins <= 0) return null;
+  return mins;
 }
 
 function normalizeOverrideSource(v: unknown): "manual" | "extension" | "" {
@@ -133,6 +142,10 @@ export function readMetaMap(token: string): Record<number, SessionMeta> {
         meta?.overrideHour === null || meta?.overrideHour === undefined ? null : safeHour(meta.overrideHour);
       merged.overrideMinute =
         meta?.overrideMinute === null || meta?.overrideMinute === undefined ? null : safeMinute(meta.overrideMinute);
+      merged.overrideDurationMin =
+        meta?.overrideDurationMin === null || meta?.overrideDurationMin === undefined
+          ? null
+          : safeDurationMin(meta.overrideDurationMin);
       merged.overrideSource = normalizeOverrideSource(meta?.overrideSource);
       merged.reason = typeof meta?.reason === "string" ? meta.reason : "";
       merged.record = typeof meta?.record === "string" ? meta.record : "";
@@ -155,6 +168,10 @@ export async function upsertMeta(token: string, index: number, patch: Partial<Se
   next.overrideHour = next.overrideHour === null || next.overrideHour === undefined ? null : safeHour(next.overrideHour);
   next.overrideMinute =
     next.overrideMinute === null || next.overrideMinute === undefined ? null : safeMinute(next.overrideMinute);
+  next.overrideDurationMin =
+    next.overrideDurationMin === null || next.overrideDurationMin === undefined
+      ? null
+      : safeDurationMin(next.overrideDurationMin);
   next.overrideSource = normalizeOverrideSource(next.overrideSource);
   next.reason = typeof next.reason === "string" ? next.reason : "";
   next.record = typeof next.record === "string" ? next.record : "";

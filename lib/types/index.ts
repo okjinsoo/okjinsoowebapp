@@ -72,34 +72,8 @@ export type Student = {
   baseRefundProcessedDate?: string; // "YYYY-MM-DD"
   baseRefundConsultNote?: string;
 
-  // 상담 기록
-  consultationHistory?: ConsultationRecord[];
-  pauseEffectiveDate?: string;
-  pauseStatus?: "confirmed" | "paused" | "none";
-
   // 구글 드라이브 본진 사물함 ID (원장님이 생성 및 부여)
   driveFolderId?: string;
-};
-
-export type ConsultationRecord = {
-  id: Id;
-  date: string; // "YYYY-MM-DD"
-  purpose: "general" | "pause_request" | "extension";
-  target: "student" | "parent";
-  content: string;
-  adminConsultDate?: string; // "YYYY-MM-DD"
-  extensionResult?: "extended" | "not_extended";
-  extensionPaymentDate?: string; // "YYYY-MM-DD"
-  extensionAddedCount?: number;
-  extensionPaymentConfirmed?: boolean;
-  extensionAppliedAt?: string; // ISO string
-  extensionPaymentRecordId?: string;
-  finalNote?: string;
-  finalResult?: "pause_cancel" | "pause_confirm";
-  pauseEffectiveDate?: string;
-  pauseRefundRatio?: "full" | "two_thirds" | "half" | "none";
-  pauseRefundCompleted?: boolean;
-  createdAt?: string; // ISO string
 };
 
 export type ScheduleChangeEvent = {
@@ -116,6 +90,14 @@ export type PaymentRecord = {
   addedCount: number;
   startIndex: number;
   endIndex: number;
+  // 회차 추가 시 입력한 원본 값(로컬 UI 표시용)
+  sessionAddStartDate?: string; // "YYYY-MM-DD"
+  sessionAddWeeklyCount?: number; // 주당 횟수
+  sessionAddRules?: Array<{
+    weekday: number; // 0..6
+    hour: number; // 0..23
+    durationHour: 1 | 2;
+  }>;
   // UI 표시용 합성 레코드(기본 카드) 구분값
   isBase?: boolean;
   memo?: string;

@@ -11,7 +11,7 @@ describe("studentStatusFactory", () => {
     expect(computePauseLifecycle("2026-02-06", "2026-02-05")).toBe("paused");
   });
 
-  test("status 우선순위: paused > confirmed > pause_requested > overdue > need_extension > new > active", () => {
+  test("상태 분류: 연장필요 > 신규생 > 재학생", () => {
     expect(
       computeStudentStatusFromMetrics({
         pauseLifecycle: "paused",
@@ -20,37 +20,7 @@ describe("studentStatusFactory", () => {
         remainingCount: 1,
         passedCount: 1,
       })
-    ).toBe("paused");
-
-    expect(
-      computeStudentStatusFromMetrics({
-        pauseLifecycle: "confirmed",
-        hasPendingPauseRequest: true,
-        overdueDays: 99,
-        remainingCount: 1,
-        passedCount: 1,
-      })
-    ).toBe("pause_scheduled");
-
-    expect(
-      computeStudentStatusFromMetrics({
-        pauseLifecycle: "none",
-        hasPendingPauseRequest: true,
-        overdueDays: 99,
-        remainingCount: 1,
-        passedCount: 1,
-      })
-    ).toBe("pause_requested");
-
-    expect(
-      computeStudentStatusFromMetrics({
-        pauseLifecycle: "none",
-        hasPendingPauseRequest: false,
-        overdueDays: 8,
-        remainingCount: 1,
-        passedCount: 100,
-      })
-    ).toBe("overdue_extension");
+    ).toBe("need_extension");
 
     expect(
       computeStudentStatusFromMetrics({
@@ -85,7 +55,7 @@ describe("studentStatusFactory", () => {
 
   test("상태 배지 메타가 정의되어 있다", () => {
     expect(getStudentStatusMeta("new").label).toBe("신규생");
-    expect(getStudentStatusMeta("pause_requested").label).toBe("휴회요청");
-    expect(getStudentStatusMeta("paused").label).toBe("휴회생");
+    expect(getStudentStatusMeta("need_extension").label).toBe("연장필요");
+    expect(getStudentStatusMeta("active").label).toBe("재학생");
   });
 });

@@ -13,7 +13,21 @@ function formatYmdDot(ymd?: string): string {
 export function computeBaseCount(student: Student | null, history: PaymentRecord[]): number {
   const total = student?.planCount ?? 0;
   const addedSum = history.reduce((sum, h) => sum + Math.max(0, Math.floor(Number(h.addedCount) || 0)), 0);
-  return Math.max(0, total - addedSum);
+  const planBasedBaseCount = Math.max(0, total - addedSum);
+
+  // 과거 버그/수동 수정으로 planCount가 꼬인 경우,
+  // 실제 기록의 시작 회차(startIndex)가 더 신뢰할 수 있다.
+  const startIndices = history
+    .filter((record) => !record.isBase)
+    .map((record) => Math.floor(Number(record.startIndex) || 0))
+    .filter((startIndex) => Number.isFinite(startIndex) && startIndex > 0);
+
+  if (startIndices.length === 0) {
+    return planBasedBaseCount;
+  }
+
+  const inferredBaseCount = Math.max(0, Math.min(...startIndices) - 1);
+  return inferredBaseCount;
 }
 
 export function getBasePaymentDate(student: Student | null): string {

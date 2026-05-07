@@ -10,16 +10,12 @@ import { pushSharedSnapshot } from "@/lib/storage/sharedSnapshot";
 import { loadLatestCoreSnapshotBaselineServerRequired } from "@/lib/storage/safeSnapshotMerge";
 import { saveStudents } from "@/lib/storage/students";
 import { saveSessions } from "@/lib/storage/sessions";
-import {
-  saveAllConsultationsStore,
-} from "@/lib/storage/consultations";
 import { clearCurrentStudentToken } from "@/lib/ui/common/roleGateStorage";
 import { buildBaseDatesISO, metaMapKey, readMetaMap, computeEffectiveISO } from "@/lib/ui/session/sessionEffective";
-import { SHARED_CONSULTATIONS_KEY } from "@/lib/storage/sharedStateKeys";
 import { makeId } from "@/lib/utils/id";
 import { nowIso } from "@/lib/utils/date";
 import { normalizePhoneDigits } from "@/lib/utils/phone";
-import { readSnapshotServerRequired, readStudentContextServerFirst } from "@/lib/storage/serverRead";
+import { readStudentContextServerFirst } from "@/lib/storage/serverRead";
 import { TUTORWEB_EVENTS } from "@/lib/events/tutorwebEvents";
 import { SERVER_SAVE_RETRY_MESSAGE } from "@/lib/messages/serverMessages";
 
@@ -263,22 +259,15 @@ export default function StudentEditClient(props: {
 
       const nextStudents = baseStudents.filter((row) => row.id !== student.id);
       const nextSessions = baseSessions.filter((row) => row.studentId !== student.id);
-      const serverSnapshot = await readSnapshotServerRequired();
-      const nextConsultations = { ...serverSnapshot.consultations };
-      delete nextConsultations[student.id];
       const droppedKeys = collectStudentScopedStorageKeys(student.token);
 
       await pushSharedSnapshot({
         students: nextStudents,
         sessions: nextSessions,
-        stateKv: {
-          [SHARED_CONSULTATIONS_KEY]: JSON.stringify(nextConsultations),
-        },
         dropStateKeys: droppedKeys,
       });
       saveStudents(nextStudents, { skipSharedSnapshot: true });
       saveSessions(nextSessions, { skipSharedSnapshot: true, suppressCalendarSync: true });
-      saveAllConsultationsStore(nextConsultations, { skipSharedSnapshot: true });
       removeStorageKeys(droppedKeys);
       clearCurrentStudentToken();
       succeeded = true;
@@ -659,7 +648,7 @@ export default function StudentEditClient(props: {
           >
             <div className="card-title">정말 삭제하시겠습니까?</div>
             <div className="text-muted" style={{ marginTop: 8 }}>
-              학생 정보, 회차, 상담 기록이 모두 삭제됩니다.
+              학생 정보와 회차 데이터가 모두 삭제됩니다.
             </div>
             <div style={{ marginTop: 12, display: "flex", justifyContent: "flex-end", gap: 8 }}>
               <button className="btn btn-bold" onClick={() => setDeleteOpen(false)} disabled={deleting}>

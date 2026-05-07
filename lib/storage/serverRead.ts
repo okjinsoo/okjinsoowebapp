@@ -1,11 +1,9 @@
 "use client";
 
-import { loadAllConsultationsStore } from "@/lib/storage/consultations";
 import { loadSessions } from "@/lib/storage/sessions";
 import { loadStudents } from "@/lib/storage/students";
 import { loadTeachers } from "@/lib/storage/teachers";
-import { SHARED_CONSULTATIONS_KEY } from "@/lib/storage/sharedStateKeys";
-import type { ConsultationRecord, Session, Student, Teacher } from "@/lib/types/index";
+import type { Session, Student, Teacher } from "@/lib/types/index";
 
 type FetchResult<T> = {
   ok: boolean;
@@ -23,6 +21,22 @@ type CacheEntry = {
 
 const responseCache = new Map<string, CacheEntry>();
 const inFlightRequests = new Map<string, Promise<FetchResult<unknown>>>();
+
+function stripLegacyStudentFields(student: Student): Student {
+  const next = { ...student } as Student & {
+    consultationHistory?: unknown;
+    pauseEffectiveDate?: unknown;
+    pauseStatus?: unknown;
+  };
+  delete next.consultationHistory;
+  delete next.pauseEffectiveDate;
+  delete next.pauseStatus;
+  return next as Student;
+}
+
+function normalizeStudents(rows: Student[]): Student[] {
+  return rows.map(stripLegacyStudentFields);
+}
 
 function isLocalOnlyMode(): boolean {
   return process.env.NEXT_PUBLIC_TUTORWEB_LOCAL_ONLY === "1";
@@ -98,13 +112,13 @@ export async function readStudentsServerFirst(): Promise<{
   const serverRows = ensureArray(server.data);
   if (server.ok && serverRows) {
     return {
-      students: serverRows,
+      students: normalizeStudents(serverRows),
       source: "server",
     };
   }
 
   return {
-    students: loadStudents(),
+    students: normalizeStudents(loadStudents()),
     source: "local",
   };
 }
@@ -171,38 +185,11 @@ type SnapshotPayload = {
   teachers?: Teacher[];
   students?: Student[];
   sessions?: Session[];
-  stateKv?: Record<string, string> | null;
 };
-
-type ConsultStore = Record<string, ConsultationRecord[]>;
 
 function ensureObject(value: unknown): Record<string, unknown> | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   return value as Record<string, unknown>;
-}
-
-function parseConsultStore(raw: unknown): ConsultStore {
-  if (typeof raw !== "string" || !raw.trim()) return {};
-  try {
-    const parsed = JSON.parse(raw) as unknown;
-    const obj = ensureObject(parsed);
-    if (!obj) return {};
-
-    const out: ConsultStore = {};
-    for (const [studentId, list] of Object.entries(obj)) {
-      if (!Array.isArray(list)) continue;
-      out[studentId] = list as ConsultationRecord[];
-    }
-    return out;
-  } catch {
-    return {};
-  }
-}
-
-function readConsultStoreFromSnapshot(snapshot: SnapshotPayload): ConsultStore {
-  const stateKv = ensureObject(snapshot.stateKv ?? null);
-  if (!stateKv) return {};
-  return parseConsultStore(stateKv[SHARED_CONSULTATIONS_KEY]);
 }
 
 export function buildStudentSessionsFromRows(args: {
@@ -244,7 +231,6 @@ export async function readSnapshotServerFirst(): Promise<{
   teachers: Teacher[];
   students: Student[];
   sessions: Session[];
-  consultations: ConsultStore;
   source: ServerFirstSource;
 }> {
   const server = await fetchServerJson<SnapshotPayload>("/api/snapshot", "snapshot");
@@ -254,7 +240,7 @@ export async function readSnapshotServerFirst(): Promise<{
       ? (snapshot.teachers as Teacher[])
       : [];
     const students = Array.isArray(snapshot.students)
-      ? (snapshot.students as Student[])
+      ? normalizeStudents(snapshot.students as Student[])
       : [];
     const sessions = Array.isArray(snapshot.sessions)
       ? (snapshot.sessions as Session[])
@@ -263,16 +249,14 @@ export async function readSnapshotServerFirst(): Promise<{
       teachers,
       students,
       sessions,
-      consultations: readConsultStoreFromSnapshot(snapshot as SnapshotPayload),
       source: "server",
     };
   }
 
   return {
     teachers: loadTeachers(),
-    students: loadStudents(),
+    students: normalizeStudents(loadStudents()),
     sessions: loadSessions(),
-    consultations: loadAllConsultationsStore() as ConsultStore,
     source: "local",
   };
 }
@@ -281,7 +265,6 @@ export async function readSnapshotServerRequired(): Promise<{
   teachers: Teacher[];
   students: Student[];
   sessions: Session[];
-  consultations: ConsultStore;
   source: "server";
 }> {
   const result = await readSnapshotServerFirst();
@@ -297,7 +280,6 @@ export async function readSnapshotServerRequired(): Promise<{
 export async function readStudentContextServerFirst(token: string): Promise<{
   student: Student | null;
   sessions: Session[];
-  consultations: ConsultationRecord[];
   source: ServerFirstSource;
 }> {
   const snapshot = await readSnapshotServerFirst();
@@ -307,7 +289,6 @@ export async function readStudentContextServerFirst(token: string): Promise<{
     return {
       student: null,
       sessions: [],
-      consultations: [],
       source: snapshot.source,
     };
   }
@@ -318,7 +299,6 @@ export async function readStudentContextServerFirst(token: string): Promise<{
       student,
       allSessions: snapshot.sessions,
     }),
-    consultations: snapshot.consultations[student.id] ?? [],
     source: snapshot.source,
   };
 }
@@ -326,7 +306,6 @@ export async function readStudentContextServerFirst(token: string): Promise<{
 export async function readStudentContextServerRequired(token: string): Promise<{
   student: Student | null;
   sessions: Session[];
-  consultations: ConsultationRecord[];
   source: "server";
 }> {
   const result = await readStudentContextServerFirst(token);

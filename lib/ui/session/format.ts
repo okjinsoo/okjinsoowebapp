@@ -42,8 +42,7 @@ export function fmtKST_yyyyMMdd_HHmm_noSeconds(iso: string) {
 }
 
 function formatTimeLabelKST(hour: string, minute: string): string {
-  if (minute === "00") return `${hour}시`;
-  return `${hour}시 ${minute}분`;
+  return `${hour}:${minute}`;
 }
 
 export function fmtKST_yyyyMMdd_TimeRange(iso: string, durationMin?: number) {
@@ -68,7 +67,7 @@ export function fmtKST_yyyyMMdd_TimeRange(iso: string, durationMin?: number) {
     const dateText = `${y}. ${m}. ${d}.`;
     const normalizedDuration = Math.max(0, Math.floor(Number(durationMin)));
     if (!Number.isFinite(normalizedDuration) || normalizedDuration <= 0) {
-      return `${dateText} ${hh}시 ${mm}분`;
+      return `${dateText} ${formatTimeLabelKST(hh, mm)}`;
     }
 
     const end = new Date(dt.getTime() + normalizedDuration * 60 * 1000);
@@ -107,7 +106,7 @@ export function parseDateTime(iso: string | null | undefined, durationMin?: numb
   const mm = parts.find((p) => p.type === "minute")?.value ?? "00";
   const normalizedDuration = Math.max(0, Math.floor(Number(durationMin)));
   if (!Number.isFinite(normalizedDuration) || normalizedDuration <= 0) {
-    return { dateText: `${y}. ${m}. ${d}.`, timeText: `${hh}시 ${mm}분` };
+    return { dateText: `${y}. ${m}. ${d}.`, timeText: formatTimeLabelKST(hh, mm) };
   }
   const end = new Date(dt.getTime() + normalizedDuration * 60 * 1000);
   const endParts = new Intl.DateTimeFormat("en-CA", {

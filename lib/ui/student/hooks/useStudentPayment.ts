@@ -73,9 +73,11 @@ export function useStudentPayment({
         setPaymentError("");
 
         const cnt = Math.floor(Number(addedCount));
-        if (!paymentConfirmed) return setPaymentError("결제 확인을 먼저 체크해주세요.");
-        if (!paymentDate) return setPaymentError("결제일을 입력해주세요.");
+        if (!paymentConfirmed) return setPaymentError("적용 확인을 먼저 체크해주세요.");
+        if (!paymentDate) return setPaymentError("시작일을 입력해주세요.");
         if (!Number.isFinite(cnt) || cnt <= 0) return setPaymentError("추가 회차는 1 이상 숫자여야 합니다.");
+
+        const previous = editingRecordId ? history.find((h) => h.id === editingRecordId) : null;
 
         const record: PaymentRecord = {
             id: editingRecordId ?? makeId(),
@@ -83,9 +85,12 @@ export function useStudentPayment({
             addedCount: cnt,
             startIndex: 0,
             endIndex: 0,
+            sessionAddStartDate: previous?.sessionAddStartDate,
+            sessionAddWeeklyCount: previous?.sessionAddWeeklyCount,
+            sessionAddRules: previous?.sessionAddRules,
             memo: paymentMemo.trim() ? paymentMemo.trim() : undefined,
             createdAt: editingRecordId
-                ? history.find((h) => h.id === editingRecordId)?.createdAt ?? nowIso()
+                ? previous?.createdAt ?? nowIso()
                 : nowIso(),
         };
 

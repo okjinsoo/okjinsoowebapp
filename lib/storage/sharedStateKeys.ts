@@ -1,4 +1,3 @@
-export const SHARED_CONSULTATIONS_KEY = "tutorweb_consultations_v1";
 export const SHARED_LECTURE_TREE_KEY = "mk3:lectureTree";
 export const SHARED_DRIVE_ROOT_ID_KEY = "mk3:driveRootId";
 export const SHARED_META_MAP_PREFIX = "tutorweb_metaMap_v1:";
@@ -24,7 +23,6 @@ export function isSessionProgressStateKey(key: string): boolean {
 
 export function isSharedStateKvKey(key: string): boolean {
   if (!key) return false;
-  if (key === SHARED_CONSULTATIONS_KEY) return true;
   if (key === SHARED_LECTURE_TREE_KEY) return true;
   if (key === SHARED_DRIVE_ROOT_ID_KEY) return true; // 추가
   if (key.startsWith(SHARED_META_MAP_PREFIX)) return true;

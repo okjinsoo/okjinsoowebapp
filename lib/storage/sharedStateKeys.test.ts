@@ -5,7 +5,6 @@ import {
   isSharedStateKvKey,
   sessionLeafIdsKey,
   sessionProgressByLeafIdKey,
-  SHARED_CONSULTATIONS_KEY,
   SHARED_LECTURE_TREE_KEY,
   SHARED_META_MAP_PREFIX,
 } from "@/lib/storage/sharedStateKeys";
@@ -23,7 +22,6 @@ describe("sharedStateKeys", () => {
     expect(isSessionProgressStateKey("mk3:abc:session:12:lastAddedLeafId")).toBe(true);
     expect(isSessionProgressStateKey("mk3:abc:session:12:items")).toBe(true);
 
-    expect(isSharedStateKvKey(SHARED_CONSULTATIONS_KEY)).toBe(true);
     expect(isSharedStateKvKey(SHARED_LECTURE_TREE_KEY)).toBe(true);
     expect(isSharedStateKvKey(`${SHARED_META_MAP_PREFIX}abc`)).toBe(true);
     expect(isSharedStateKvKey("mk3:abc:session:12:leafIds")).toBe(true);

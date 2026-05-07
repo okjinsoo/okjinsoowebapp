@@ -1,7 +1,7 @@
 import "server-only";
 
-import type { Session, Student, Teacher, ConsultationRecord } from "@/lib/types/index";
-import { SHARED_CONSULTATIONS_KEY, isSharedStateKvKey } from "@/lib/storage/sharedStateKeys";
+import type { Session, Student, Teacher } from "@/lib/types/index";
+import { isSharedStateKvKey } from "@/lib/storage/sharedStateKeys";
 
 const SNAPSHOT_KEY = "main";
 
@@ -21,7 +21,6 @@ export type ParentViewData = {
   student: Student;
   teacherName: string | null;
   sessions: Session[];
-  consultations: ConsultationRecord[];
 };
 
 export function getSupabaseAdminConfig(): SupabaseConfigAdmin | null {
@@ -130,23 +129,9 @@ export async function fetchParentViewData(token: string): Promise<ParentViewData
   // 해당 학생의 수업 정보 가져오기
   const sessions = snapshot.sessions.filter(s => s.studentId === student.id);
 
-  // 해당 학생의 상담 기록 파싱하기
-  let consultations: ConsultationRecord[] = [];
-  const consultRaw = snapshot.stateKv[SHARED_CONSULTATIONS_KEY];
-  if (consultRaw) {
-    try {
-      const parsed = JSON.parse(consultRaw) as Record<string, ConsultationRecord[]>;
-      const list = parsed[student.id];
-      if (Array.isArray(list)) consultations = list;
-    } catch {
-      // ignore JSON parse error
-    }
-  }
-
   return {
     student,
     teacherName,
     sessions,
-    consultations,
   };
 }

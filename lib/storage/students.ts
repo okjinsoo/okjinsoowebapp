@@ -26,6 +26,22 @@ type LoadStudentsOptions = {
   forceFresh?: boolean;
 };
 
+function stripLegacyStudentFields(student: Student): Student {
+  const next = { ...student } as Student & {
+    consultationHistory?: unknown;
+    pauseEffectiveDate?: unknown;
+    pauseStatus?: unknown;
+  };
+  delete next.consultationHistory;
+  delete next.pauseEffectiveDate;
+  delete next.pauseStatus;
+  return next as Student;
+}
+
+function normalizeStudents(list: Student[]): Student[] {
+  return list.map(stripLegacyStudentFields);
+}
+
 function extractStudentEmails(list: Student[]): string[] {
   return list
     .map((student) => (student.googleEmail ?? "").trim())
@@ -76,7 +92,8 @@ export function loadStudents(options?: LoadStudentsOptions): Student[] {
   }
 
   const raw = browserStorage.getItem(KEY);
-  const value = safeParseJson<Student[]>(raw, []);
+  const parsed = safeParseJson<Student[]>(raw, []);
+  const value = normalizeStudents(parsed);
   
   studentsCache = { value, expiry: now + STUDENTS_CACHE_TTL };
   return value;
@@ -90,13 +107,14 @@ function dispatchStudentsUpdated() {
 export function saveStudents(list: Student[], options?: SaveStudentsOptions): void {
   if (typeof window === "undefined") return;
   studentsCache = null; // 저장 시 캐시 무효화
+  const normalizedList = normalizeStudents(list);
   const previous = loadStudents();
-  const changedEmailIds = changedStudentEmailIds(previous, list);
-  browserStorage.setItem(KEY, JSON.stringify(list));
+  const changedEmailIds = changedStudentEmailIds(previous, normalizedList);
+  browserStorage.setItem(KEY, JSON.stringify(normalizedList));
   dispatchStudentsUpdated();
-  syncStudentRoleBindings(previous, list);
+  syncStudentRoleBindings(previous, normalizedList);
   if (!options?.skipSharedSnapshot) {
-    syncSharedSnapshot(list, options?.snapshotMode ?? "merge", options?.serverRequired ?? false);
+    syncSharedSnapshot(normalizedList, options?.snapshotMode ?? "merge", options?.serverRequired ?? false);
   }
   if (changedEmailIds.length > 0) {
     requestCalendarResyncForStudentIds(changedEmailIds);
@@ -105,20 +123,22 @@ export function saveStudents(list: Student[], options?: SaveStudentsOptions): vo
 
 export async function saveStudentsServerFirst(list: Student[]): Promise<void> {
   studentsCache = null; // 저장 시 캐시 무효화
+  const normalizedList = normalizeStudents(list);
   const baseline = await loadLatestCoreSnapshotBaselineServerRequired();
   await pushSharedSnapshot({
     teachers: baseline.teachers,
-    students: list,
+    students: normalizedList,
   });
-  saveStudents(list, { skipSharedSnapshot: true });
+  saveStudents(normalizedList, { skipSharedSnapshot: true });
 }
 
 export function upsertStudent(student: Student): Student[] {
   studentsCache = null; // 저장 시 캐시 무효화
   const list = loadStudents();
   const idx = list.findIndex((s) => s.id === student.id);
-  if (idx >= 0) list[idx] = student;
-  else list.push(student);
+  const normalized = stripLegacyStudentFields(student);
+  if (idx >= 0) list[idx] = normalized;
+  else list.push(normalized);
   saveStudents(list, { serverRequired: true });
   return list;
 }

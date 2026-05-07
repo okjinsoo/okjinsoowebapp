@@ -14,9 +14,8 @@ import {
 } from "@/lib/factories/studentStatusFactory";
 import { TUTORWEB_EVENTS } from "@/lib/events/tutorwebEvents";
 import { todayYmdKST, kstDateMs, ymdFromISO_KST } from "@/lib/utils/date";
-import type { Student, Teacher, Session, ConsultationRecord } from "@/lib/types/index";
+import type { Student, Teacher, Session } from "@/lib/types/index";
 import type { StudentStatusKind } from "@/lib/factories/studentStatusFactory";
-import { findLastClassIndex } from "@/lib/ui/session/pauseHelpers";
 import { SessionMeta } from "@/lib/ui/session/sessionEffective";
 
 export type EnhancedSession = Session & {
@@ -34,9 +33,6 @@ export type StudentMetrics = {
   lastSessionISO: string | null;
   overdueDays: number;
   pauseLifecycle: ReturnType<typeof computePauseLifecycle>;
-  latestPauseRequest: ConsultationRecord | null;
-  latestExtensionRequest: ConsultationRecord | null;
-  consultIndex: number | null;
   lastClassIndex: number | null;
   sessions: EnhancedSession[];
 };
@@ -46,9 +42,6 @@ export function useStudentRegistry() {
   const [students, setStudents] = useState<Student[]>([]);
   const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [allSessions, setAllSessions] = useState<Session[]>([]);
-  const [consultationsByStudent, setConsultationsByStudent] = useState<
-    Record<string, ConsultationRecord[]>
-  >({});
 
   useEffect(() => {
     let cancelled = false;
@@ -59,7 +52,6 @@ export function useStudentRegistry() {
       setStudents(next.students);
       setTeachers(next.teachers);
       setAllSessions(next.sessions);
-      setConsultationsByStudent(next.consultations);
     };
 
     const requestSnapshotRefresh = () => {
@@ -73,7 +65,6 @@ export function useStudentRegistry() {
     window.addEventListener(TUTORWEB_EVENTS.studentsUpdated, requestSnapshotRefresh);
     window.addEventListener(TEACHERS_EVENT, requestSnapshotRefresh);
     window.addEventListener(TUTORWEB_EVENTS.sessionsUpdated, requestSnapshotRefresh);
-    window.addEventListener(TUTORWEB_EVENTS.consultationsUpdated, requestSnapshotRefresh);
     window.addEventListener(TUTORWEB_EVENTS.metaMapUpdated, bumpTick);
 
     return () => {
@@ -81,7 +72,6 @@ export function useStudentRegistry() {
       window.removeEventListener(TUTORWEB_EVENTS.studentsUpdated, requestSnapshotRefresh);
       window.removeEventListener(TEACHERS_EVENT, requestSnapshotRefresh);
       window.removeEventListener(TUTORWEB_EVENTS.sessionsUpdated, requestSnapshotRefresh);
-      window.removeEventListener(TUTORWEB_EVENTS.consultationsUpdated, requestSnapshotRefresh);
       window.removeEventListener(TUTORWEB_EVENTS.metaMapUpdated, bumpTick);
     };
   }, []);
@@ -127,7 +117,6 @@ export function useStudentRegistry() {
       }
       const baseDatesISO = buildBaseDatesISO(st, 60);
       const metaMap = readMetaMap(st.token);
-      const consultations = consultationsByStudent[st.id] ?? [];
 
       let passedCount = 0;
       let lastSessionISO: string | null = null;
@@ -158,66 +147,17 @@ export function useStudentRegistry() {
         ? Math.floor((todayMs - lastMs) / 86400000)
         : 0;
 
-      const latestPauseRequest = [...consultations]
-        .filter((r) => r.purpose === "pause_request")
-        .sort((a, b) => {
-          const ad = `${a.date ?? ""}|${a.createdAt ?? ""}`;
-          const bd = `${b.date ?? ""}|${b.createdAt ?? ""}`;
-          return ad.localeCompare(bd);
-        })
-        .at(-1) ?? null;
-
-      const latestExtensionRequest = [...consultations]
-        .filter((r) => r.purpose === "extension")
-        .sort((a, b) => {
-          const ad = `${a.date ?? ""}|${a.createdAt ?? ""}`;
-          const bd = `${b.date ?? ""}|${b.createdAt ?? ""}`;
-          return ad.localeCompare(bd);
-        })
-        .at(-1) ?? null;
-
-      // consultIndex 계산 로직 (기존 AdminMainPage 로직 이관)
-      let consultIndex: number | null = null;
-      const targetRequest = latestPauseRequest || latestExtensionRequest;
-      if (targetRequest?.date) {
-        const entries = enhancedSessions
-          .filter(e => e.effectiveISO)
-          .map(e => ({ index: e.index, ms: new Date(e.effectiveISO!).getTime(), ymd: ymdFromISO_KST(e.effectiveISO!) ?? "" }));
-        
-        if (entries.length > 0) {
-          const same = entries.filter(e => e.ymd === targetRequest.date).sort((a, b) => a.index - b.index);
-          if (same.length > 0) consultIndex = same[0].index;
-          else {
-            const targetMs = new Date(`${targetRequest.date}T00:00:00+09:00`).getTime();
-            const future = entries.filter(e => e.ms >= targetMs).sort((a, b) => a.ms - b.ms);
-            if (future.length > 0) consultIndex = future[0].index;
-            else {
-              const past = entries.filter(e => e.ms < targetMs).sort((a, b) => b.ms - a.ms);
-              if (past.length > 0) consultIndex = past[0].index;
-            }
-          }
-        }
-      }
-
-      const pauseLifecycle = computePauseLifecycle(today, st.pauseEffectiveDate);
+      // 휴회 정책 제거: 상태 계산에서 휴회 입력값은 더 이상 사용하지 않는다.
+      const pauseLifecycle = computePauseLifecycle(today, undefined);
       const status = computeStudentStatusFromMetrics({
         pauseLifecycle,
-        hasPendingPauseRequest: Boolean(latestPauseRequest && !latestPauseRequest.finalResult),
+        hasPendingPauseRequest: false,
         overdueDays,
         remainingCount,
         passedCount,
       });
 
-      const lastClassIndex =
-        (st.pauseStatus === "confirmed" || st.pauseStatus === "paused") && st.pauseEffectiveDate
-          ? findLastClassIndex({
-            token: st.token,
-            sessions: enhancedSessions,
-            baseDatesISO,
-            metaMap,
-            pauseEffectiveDate: st.pauseEffectiveDate,
-          })
-          : null;
+      const lastClassIndex = null;
 
       metricsMap.set(st.id, {
         student: st,
@@ -229,9 +169,6 @@ export function useStudentRegistry() {
         lastSessionISO,
         overdueDays,
         pauseLifecycle,
-        latestPauseRequest,
-        latestExtensionRequest,
-        consultIndex,
         lastClassIndex,
         sessions: enhancedSessions,
       });
@@ -243,7 +180,7 @@ export function useStudentRegistry() {
       metricsMap,
       tick,
     };
-  }, [students, teachers, allSessions, consultationsByStudent, tick]);
+  }, [students, teachers, allSessions, tick]);
 
   return registry;
 }

@@ -2,43 +2,38 @@
 
 import { BROWSER_STORAGE_EVENT } from "@/lib/storage/browserStorage";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   buildBaseDatesISO,
   computeEffectiveISO,
   upsertMeta,
   buildBadges,
+  readMetaMap,
   useMetaMap,
   getDdayMeta,
 } from "@/lib/factories/sessionFactories";
 import {
-  normalizeConsultPurpose,
-} from "@/lib/factories/consultationFactory";
-import {
   buildGoogleAuthUrl,
 } from "@/lib/auth/supabaseAuth";
-import { fmtKST_yyyyMMdd_HHmm_noSeconds } from "@/lib/ui/session/format";
+import { fmtKST_yyyyMMdd_TimeRange } from "@/lib/ui/session/format";
 import Badge from "@/lib/ui/common/Badge";
-import AchievementBadge from "@/lib/ui/common/AchievementBadge";
-import { getSessionStatusBadge } from "@/lib/ui/common/sessionStatusBadge";
-import { upsertStudent } from "@/lib/storage/students";
-import { saveConsultationsByStudent } from "@/lib/storage/consultations";
-import { buildConsultationMap, pickPrimaryConsultTag } from "@/lib/ui/session/consultationMap";
-import { findClassIndexByDatePreferFuture, findLastClassIndex } from "@/lib/ui/session/pauseHelpers";
-import { buildDisplayRecords, computeRefundRatio } from "@/lib/factories/lessonStatusFactory";
-import { ConsultBadge, ConsultButton } from "@/lib/ui/common/ConsultParts";
-import ConsultModal, { ConsultFormState } from "@/lib/ui/common/ConsultModal";
 import { TUTORWEB_EVENTS } from "@/lib/events/tutorwebEvents";
 import {
   calculateSessionAchievementPercent,
   isSessionProgressEventKeyForToken,
 } from "@/lib/factories/sessionProgressFactory";
-import { useConsultationSubmit } from "../student/hooks/useConsultationSubmit";
 import { todayYmdKST } from "@/lib/utils/date";
 import { syncSessionDisplayAtByToken } from "@/lib/ui/session/syncSessionDisplayAt";
-import { canEditSessionMeta, canUseConsultFeatures, type SessionRole } from "@/lib/policies/sessionRolePolicy";
-import { ConsultationRecord, PaymentRecord, Student } from "@/lib/types/index";
+import { canEditSessionMeta, type SessionRole } from "@/lib/policies/sessionRolePolicy";
+import { Session, Student } from "@/lib/types/index";
 import { useStudentSessionContext } from "@/lib/hooks/useStudentSessionContext";
+import SessionCardRow from "@/lib/ui/session/SessionCardRow";
+import {
+  buildSessionCardViewModel,
+  resolveDurationMinForSessionWithMeta,
+  resolveRulesForIndex,
+} from "@/lib/ui/session/sessionCardFactory";
+import { buildStudentSessionsFromRows, readSnapshotServerFirst } from "@/lib/storage/serverRead";
 
 type Props = {
   role: SessionRole;
@@ -51,10 +46,66 @@ function isNonNegInt(n: unknown): boolean {
   return Number.isFinite(x) && Math.floor(x) === x && x >= 0;
 }
 
+function kstYmdFromISO(iso: string): string | null {
+  try {
+    const dt = new Date(iso);
+    if (!Number.isFinite(dt.getTime())) return null;
+    const parts = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Seoul",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).formatToParts(dt);
+    const y = parts.find((p) => p.type === "year")?.value ?? "1970";
+    const m = parts.find((p) => p.type === "month")?.value ?? "01";
+    const d = parts.find((p) => p.type === "day")?.value ?? "01";
+    return `${y}-${m}-${d}`;
+  } catch {
+    return null;
+  }
+}
+
+function formatTimeLabel(hour: string, minute: string): string {
+  if (minute === "00") return `${hour}시`;
+  return `${hour}시 ${minute}분`;
+}
+
+function kstTimeRangeFromISO(iso: string, durationMin: number): string | null {
+  try {
+    const dt = new Date(iso);
+    if (!Number.isFinite(dt.getTime())) return null;
+    const parts = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Seoul",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    }).formatToParts(dt);
+    const hh = parts.find((p) => p.type === "hour")?.value ?? "00";
+    const mm = parts.find((p) => p.type === "minute")?.value ?? "00";
+    const end = new Date(dt.getTime() + Math.max(1, Math.floor(durationMin)) * 60 * 1000);
+    const endParts = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Seoul",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    }).formatToParts(end);
+    const ehh = endParts.find((p) => p.type === "hour")?.value ?? "00";
+    const emm = endParts.find((p) => p.type === "minute")?.value ?? "00";
+    return `${formatTimeLabel(hh, mm)} ~ ${formatTimeLabel(ehh, emm)}`;
+  } catch {
+    return null;
+  }
+}
+
+function formatYmdKor(ymd: string) {
+  const [, month, day] = ymd.split("-");
+  const mm = String(Number(month ?? "0"));
+  const dd = String(Number(day ?? "0"));
+  return `${mm}월 ${dd}일`;
+}
+
 export default function SessionTopBarCore({ role, token, index }: Props) {
   const canEdit = canEditSessionMeta(role);
-  const canUseConsult = canUseConsultFeatures(role);
-  const isAdmin = role === "a";
 
   // hydration mismatch 방지(오늘 날짜 기반 요소는 mounted 이후)
   const [mounted, setMounted] = useState(false);
@@ -75,34 +126,13 @@ export default function SessionTopBarCore({ role, token, index }: Props) {
   const [checkOverride, setCheckOverride] = useState(false);
   const [checkCarry, setCheckCarry] = useState(false);
 
-  const [consultOpen, setConsultOpen] = useState(false);
-  const [consultEditingId, setConsultEditingId] = useState<string | null>(null);
   const {
     student,
     sessions,
-    consultRecords,
-    refresh: refreshStudentContext,
-    setStudent,
-    setConsultRecords,
   } = useStudentSessionContext(token);
+  const [snapshotStudents, setSnapshotStudents] = useState<Student[]>([]);
+  const [snapshotSessions, setSnapshotSessions] = useState<Session[]>([]);
   const [progressTick, setProgressTick] = useState(0);
-  const [consultForm, setConsultForm] = useState<ConsultFormState>({
-    date: todayYmdKST(),
-    purpose: "general",
-    target: "student",
-    content: "",
-    adminConsultDate: "",
-    extensionResult: "",
-    extensionPaymentDate: todayYmdKST(),
-    extensionAddedCount: 12,
-    extensionPaymentConfirmed: false,
-    finalNote: "",
-    finalResult: "",
-    pauseEffectiveDate: "",
-    pauseRefundRatio: "",
-    pauseRefundCompleted: false,
-  });
-  const [consultError, setConsultError] = useState("");
 
   // 이월
   const [draftCarry, setDraftCarry] = useState<number>(0);
@@ -110,11 +140,27 @@ export default function SessionTopBarCore({ role, token, index }: Props) {
   // 변경(날짜 + 시간(시/분) - 시간은 “선택 전” 상태가 필요해서 null 허용)
   const [draftOverrideDate, setDraftOverrideDate] = useState<string>("");
   const [draftOverrideHour, setDraftOverrideHour] = useState<number | null>(null);
-  const [draftOverrideMinute, setDraftOverrideMinute] = useState<0 | 30 | null>(null);
+  const [draftOverrideDurationHour, setDraftOverrideDurationHour] = useState<number | null>(null);
+  const overrideDateInputRef = useRef<HTMLInputElement | null>(null);
 
   // 사유/기록
   const [draftReason, setDraftReason] = useState<string>("");
   const [draftRecord, setDraftRecord] = useState<string>("");
+
+  const openOverrideDatePicker = () => {
+    const input = overrideDateInputRef.current;
+    if (!input) return;
+    const pickerInput = input as HTMLInputElement & { showPicker?: () => void };
+    if (typeof pickerInput.showPicker === "function") {
+      try {
+        pickerInput.showPicker();
+        return;
+      } catch {
+        // 일부 브라우저는 showPicker 미지원
+      }
+    }
+    input.focus();
+  };
 
   // 구글 인증 에러 상태
   const [authError, setAuthError] = useState<string | null>(null);
@@ -168,46 +214,6 @@ export default function SessionTopBarCore({ role, token, index }: Props) {
   }, [mounted, effectiveISO]);
 
 
-  const consultMap = useMemo(() => {
-    if (!student) return {};
-    return buildConsultationMap({
-      token,
-      sessions,
-      records: consultRecords,
-      baseDatesISO,
-      metaMap: hydratedMetaMap,
-    });
-  }, [student, token, sessions, consultRecords, baseDatesISO, hydratedMetaMap]);
-  const studentHistory = useMemo(() => {
-    if (!student) return [];
-    const h = student.paymentHistory ?? [];
-    return h;
-  }, [student]);
-
-  const displayRecords = useMemo(() => {
-    if (!student) return [];
-    return buildDisplayRecords(student, studentHistory).displayRecords;
-  }, [student, studentHistory]);
-
-  const computeRefundRatioValue = (pauseEffectiveDate: string) => {
-    if (!student || consultForm.purpose !== "pause_request" || consultForm.finalResult !== "pause_confirm") return "";
-    const lastIdx = findClassIndexByDatePreferFuture({
-      token,
-      sessions,
-      baseDatesISO,
-      metaMap: hydratedMetaMap,
-      targetDate: pauseEffectiveDate,
-    });
-    if (!lastIdx) return "";
-    const requestIndex = lastIdx + 1;
-    const refundTarget = displayRecords.find((r) => requestIndex >= r.startIndex && requestIndex <= r.endIndex);
-    return refundTarget
-      ? computeRefundRatio(refundTarget, requestIndex, Boolean(refundTarget.isBase))
-      : "";
-  };
-
-  const consultTag = pickPrimaryConsultTag(consultMap[index]);
-
   const achievementPercent = useMemo((): number | null => {
     if (!mounted) return null;
     void progressTick;
@@ -217,20 +223,33 @@ export default function SessionTopBarCore({ role, token, index }: Props) {
     });
   }, [mounted, token, index, progressTick]);
 
-  const lastClassIndex = useMemo(() => {
-    if (!student || (student.pauseStatus !== "confirmed" && student.pauseStatus !== "paused") || !student.pauseEffectiveDate) return null;
-    return findLastClassIndex({
-      token,
-      sessions,
-      baseDatesISO,
-      metaMap: hydratedMetaMap,
-      pauseEffectiveDate: student.pauseEffectiveDate,
-    });
-  }, [student, token, sessions, baseDatesISO, hydratedMetaMap]);
+  const lastClassIndex = null;
 
   const currentSession = useMemo(() => {
     return sessions.find((s) => s.index === index) ?? null;
   }, [sessions, index]);
+
+  const durationMin = useMemo(() => {
+    if (!student) return 60;
+    const rules = resolveRulesForIndex(student, index);
+    return resolveDurationMinForSessionWithMeta(effectiveISO, rules, meta);
+  }, [student, index, effectiveISO, meta]);
+
+  const cardModel = useMemo(() => {
+    const dateTimeText = mounted
+      ? effectiveISO
+        ? fmtKST_yyyyMMdd_TimeRange(effectiveISO, durationMin)
+        : "예정일 없음"
+      : "-";
+    return buildSessionCardViewModel({
+      index,
+      dateTimeText,
+      dday: dday && dday.diff !== null ? dday : null,
+      status: meta.status ?? "planned",
+      achievementPercent,
+      extraBadges: mounted ? badges : [],
+    });
+  }, [index, mounted, effectiveISO, durationMin, dday, meta.status, achievementPercent, badges]);
 
   const meetUrl = typeof currentSession?.googleMeetUrl === "string" ? currentSession.googleMeetUrl.trim() : "";
   const calendarStatus = currentSession?.googleCalendarStatus ?? "pending";
@@ -239,7 +258,6 @@ export default function SessionTopBarCore({ role, token, index }: Props) {
   // ===== 상단 버튼(토글) =====
   const isPresent = meta.status === "present";
   const isAbsent = meta.status === "absent";
-  const statusBadge = getSessionStatusBadge(meta.status);
 
   const togglePresent = async () => {
     if (!canEdit || isSaving) return;
@@ -274,123 +292,54 @@ export default function SessionTopBarCore({ role, token, index }: Props) {
     setOpen(true);
   };
 
-  const ymdFromISO = (iso: string | null | undefined) => {
-    if (!iso) return todayYmdKST();
-    const parts = new Intl.DateTimeFormat("en-CA", {
-      timeZone: "Asia/Seoul",
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-    }).formatToParts(new Date(iso));
-    const y = parts.find((p) => p.type === "year")?.value ?? "1970";
-    const m = parts.find((p) => p.type === "month")?.value ?? "01";
-    const d = parts.find((p) => p.type === "day")?.value ?? "01";
-    return `${y}-${m}-${d}`;
-  };
+  useEffect(() => {
+    if (!open || !checkOverride || !draftOverrideDate || !student?.teacherId) return;
+    let cancelled = false;
+    void (async () => {
+      const snapshot = await readSnapshotServerFirst();
+      if (cancelled) return;
+      setSnapshotStudents(snapshot.students);
+      setSnapshotSessions(snapshot.sessions);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [open, checkOverride, draftOverrideDate, student?.teacherId]);
 
-  const openConsultModal = () => {
-    if (!canUseConsult) return;
-    if (consultTag?.recordId) {
-      const record = consultRecords.find((r) => r.id === consultTag.recordId);
-      if (record) {
-        setConsultEditingId(record.id);
-        setConsultForm({
-          date: record.date || ymdFromISO(effectiveISO),
-          purpose: normalizeConsultPurpose((record as { purpose?: unknown }).purpose),
-          target: record.target ?? "student",
-          content: record.content ?? "",
-          adminConsultDate: record.adminConsultDate ?? "",
-          extensionResult: record.extensionResult ?? "",
-          extensionPaymentDate: record.extensionPaymentDate ?? todayYmdKST(),
-          extensionAddedCount: Math.max(1, Math.floor(Number(record.extensionAddedCount) || 12)),
-          extensionPaymentConfirmed: Boolean(record.extensionPaymentConfirmed),
-          finalNote: record.finalNote ?? "",
-          finalResult: record.finalResult ?? "",
-          pauseEffectiveDate: record.pauseEffectiveDate ?? "",
-          pauseRefundRatio: record.pauseRefundRatio ?? "",
-          pauseRefundCompleted: Boolean(record.pauseRefundCompleted),
+  const teacherDateTimes = useMemo(() => {
+    if (!open || !checkOverride || !draftOverrideDate || !student?.teacherId) return [] as string[];
+    const owned = snapshotStudents.filter((s) => (s.teacherId ?? null) === (student.teacherId ?? null) && s.token);
+    const rows: Array<{ label: string; sortKey: number; name: string }> = [];
+    for (const st of owned) {
+      const isSelf = st.token === token;
+      const bDates = buildBaseDatesISO(st, 60);
+      const map = readMetaMap(st.token);
+      const sessionRows = buildStudentSessionsFromRows({ student: st, allSessions: snapshotSessions });
+      for (const row of sessionRows) {
+        if (isSelf && row.index === index) continue;
+        const { effectiveISO } = computeEffectiveISO({
+          token: st.token,
+          index: row.index,
+          baseDatesISO: bDates,
+          metaMap: map,
         });
-        setConsultError("");
-        setConsultOpen(true);
-        return;
+        if (!effectiveISO) continue;
+        const ymd = kstYmdFromISO(effectiveISO);
+        if (ymd !== draftOverrideDate) continue;
+        const itemMeta = map[row.index] ?? {};
+        const rules = resolveRulesForIndex(st, row.index);
+        const durationMin = resolveDurationMinForSessionWithMeta(effectiveISO, rules, itemMeta);
+        const range = kstTimeRangeFromISO(effectiveISO, durationMin);
+        if (!range) continue;
+        const ms = new Date(effectiveISO).getTime();
+        if (!Number.isFinite(ms)) continue;
+        rows.push({ label: `${st.name} | ${range}`, sortKey: ms, name: st.name });
       }
     }
-    setConsultEditingId(null);
-    setConsultForm({
-      date: ymdFromISO(effectiveISO),
-      purpose: consultTag?.purpose ?? "general",
-      target: consultTag?.target ?? "student",
-      content: "",
-      adminConsultDate: "",
-      extensionResult: "",
-      extensionPaymentDate: todayYmdKST(),
-      extensionAddedCount: 12,
-      extensionPaymentConfirmed: false,
-      finalNote: "",
-      finalResult: "",
-      pauseEffectiveDate: "",
-      pauseRefundRatio: "",
-      pauseRefundCompleted: false,
-    });
-    setConsultError("");
-    setConsultOpen(true);
-  };
-
-  const { submit: submitConsult } = useConsultationSubmit({
-    isAdmin,
-    actorRole: role,
-    student,
-    history: studentHistory,
-    consultRecords: consultRecords ?? [],
-    sessions,
-    token,
-    applyHistory: async (recs: PaymentRecord[], patch?: Partial<Student>, skip?: boolean, opts?: { consultationRecords?: ConsultationRecord[] }) => {
-      if (!student) return false;
-      const nextConsultRecords = opts?.consultationRecords ?? consultRecords;
-      const updatedStudent = { ...student, ...patch, paymentHistory: recs };
-      upsertStudent(updatedStudent);
-      saveConsultationsByStudent(student.id, nextConsultRecords);
-      setStudent(updatedStudent);
-      setConsultRecords(nextConsultRecords);
-      return true;
-    },
-    persistConsultationState: async (recs: ConsultationRecord[], patch?: Student) => {
-      if (!student) return false;
-      if (patch) {
-        upsertStudent(patch);
-        setStudent(patch);
-      }
-      saveConsultationsByStudent(student.id, recs);
-      setConsultRecords(recs);
-      return true;
-    },
-  });
-
-  const saveConsultRecord = async (finalForm: ConsultFormState) => {
-    if (isSaving) return;
-    setIsSaving(true);
-    try {
-      const res = await submitConsult(finalForm, consultEditingId);
-      if (res.error) {
-        setConsultError(res.error);
-        return;
-      }
-      if (res.ok) {
-        setConsultOpen(false);
-        void refreshStudentContext();
-      }
-    } finally {
-      setIsSaving(false);
-    }
-  };
-  const deleteConsultRecord = () => {
-    if (!student || !consultEditingId) return;
-    const updated = consultRecords.filter((r) => r.id !== consultEditingId);
-    saveConsultationsByStudent(student.id, updated);
-    setConsultRecords(updated);
-    setConsultOpen(false);
-    void refreshStudentContext();
-  };
+    return rows
+      .sort((a, b) => a.sortKey - b.sortKey || a.name.localeCompare(b.name, "ko"))
+      .map((row) => row.label);
+  }, [open, checkOverride, draftOverrideDate, student?.teacherId, snapshotStudents, snapshotSessions, token, index]);
 
   // ===== 모달 열릴 때 meta -> draft 복사 =====
   useEffect(() => {
@@ -404,10 +353,13 @@ export default function SessionTopBarCore({ role, token, index }: Props) {
     setDraftOverrideDate(meta.overrideDate ?? "");
 
     const hh = meta.overrideHour ?? null;
-    const mm = meta.overrideMinute ?? null;
+    const durationHour =
+      typeof meta.overrideDurationMin === "number" && Number.isFinite(meta.overrideDurationMin)
+        ? Math.max(1, Math.floor(meta.overrideDurationMin / 60))
+        : null;
 
     setDraftOverrideHour(typeof hh === "number" ? hh : null);
-    setDraftOverrideMinute(mm === 0 || mm === 30 ? (mm as 0 | 30) : null);
+    setDraftOverrideDurationHour(durationHour);
 
     const carryVal = meta.carry ?? 0;
     const hasCarry = Number(carryVal) > 0;
@@ -449,14 +401,14 @@ export default function SessionTopBarCore({ role, token, index }: Props) {
     if (!next) {
       setDraftOverrideDate("");
       setDraftOverrideHour(null);
-      setDraftOverrideMinute(null);
+      setDraftOverrideDurationHour(null);
       return;
     }
 
     // ✅ 켜는 순간: 날짜만 오늘로 세팅(없을 때만), 시간은 일부러 비워둠
     setDraftOverrideDate((prev) => (prev ? prev : todayYmdKST()));
     setDraftOverrideHour(null);
-    setDraftOverrideMinute(null);
+    setDraftOverrideDurationHour((prev) => (prev && prev >= 1 ? prev : 1));
   };
 
   const toggleCarry = (next: boolean) => {
@@ -469,7 +421,7 @@ export default function SessionTopBarCore({ role, token, index }: Props) {
     setCheckOverride(false);
     setDraftOverrideDate("");
     setDraftOverrideHour(null);
-    setDraftOverrideMinute(null);
+    setDraftOverrideDurationHour(null);
   };
 
   const resetCarryOnly = () => {
@@ -486,11 +438,14 @@ export default function SessionTopBarCore({ role, token, index }: Props) {
       if (!draftOverrideDate) {
         return { ok: false, msg: "변경을 체크했다면 ‘수업 변경일’을 입력해야 합니다." };
       }
-      if (draftOverrideHour === null || draftOverrideMinute === null) {
+      if (draftOverrideHour === null) {
         return {
           ok: false,
-          msg: "변경을 체크했다면 ‘수업 변경 시간’을 선택해야 합니다. (00/30분만 가능)",
+          msg: "변경을 체크했다면 ‘수업 변경 시간’을 선택해야 합니다.",
         };
+      }
+      if (draftOverrideDurationHour === null || draftOverrideDurationHour < 1) {
+        return { ok: false, msg: "수업 시간을 1시간 이상 입력해주세요." };
       }
     }
 
@@ -521,7 +476,7 @@ export default function SessionTopBarCore({ role, token, index }: Props) {
     const status = checkAbsent ? "absent" : checkPresent ? "present" : "planned";
 
     const h = checkOverride ? (draftOverrideHour ?? 0) : 0;
-    const m = checkOverride ? (draftOverrideMinute ?? 0) : 0;
+    const durationMin = checkOverride ? Math.max(1, Math.floor(draftOverrideDurationHour ?? 1)) * 60 : null;
 
     setIsSaving(true);
     try {
@@ -530,7 +485,8 @@ export default function SessionTopBarCore({ role, token, index }: Props) {
         carry: checkCarry ? Number(draftCarry) : 0,
         overrideDate: checkOverride ? draftOverrideDate : "",
         overrideHour: checkOverride ? h : null,
-        overrideMinute: checkOverride ? m : null,
+        overrideMinute: checkOverride ? 0 : null,
+        overrideDurationMin: durationMin,
         overrideSource: checkOverride ? "manual" : "",
         reason: needReasonUI ? draftReason : "",
         record: needReasonUI ? draftRecord : "",
@@ -564,12 +520,8 @@ export default function SessionTopBarCore({ role, token, index }: Props) {
   return (
     <div
       style={{
-        border: "1px solid var(--surface-border)",
-        borderRadius: 10,
-        padding: "8px 10px",
-        background: "var(--surface-bg)",
+        position: "relative",
       }}
-      className="flex items-center justify-between gap-3"
     >
       {/* 구글 인증 에러 긴급 복구 배너 */}
       {authError && (
@@ -644,78 +596,49 @@ export default function SessionTopBarCore({ role, token, index }: Props) {
         </div>
       )}
 
-      {/* 좌측: 회차 목록 카드 레이아웃과 1:1 */}
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "110px 1fr",
-          gap: 30,
-          alignItems: "center",
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 700, whiteSpace: "nowrap" }}>
-          {dday && dday.diff !== null ? <Badge className={`text-white ${dday.className}`}>{dday.label}</Badge> : null}
-          <span>{index}회차</span>
-        </div>
-        <div className="flex items-center gap-2 flex-wrap text-dim">
-          <div>{mounted ? (effectiveISO ? fmtKST_yyyyMMdd_HHmm_noSeconds(effectiveISO) : "예정일 없음") : "-"}</div>
-          <Badge style={statusBadge.style}>{statusBadge.label}</Badge>
-          <AchievementBadge percent={achievementPercent} />
-          {canUseConsult && !(
-            lastClassIndex &&
-            index === lastClassIndex &&
-            consultTag &&
-            consultTag.label === "휴회 예정"
-          ) ? (
-            <ConsultBadge tag={consultTag} />
-          ) : null}
-          {lastClassIndex && index === lastClassIndex ? (
-            <Badge className="bg-red-500 text-white">마지막 수업</Badge>
-          ) : null}
-          {mounted && badges.length > 0
-            ? badges.map((b) => (
-              <Badge key={`${index}:${b}`} className="bg-slate-100 text-slate-700">
-                {b}
-              </Badge>
-            ))
-            : null}
-        </div>
-      </div>
-
-      {/* 우측 버튼 */}
-      <div className="flex items-center gap-2">
-        <button className={meetUrl ? "btn btn-green" : "btn"} onClick={openMeet} title="Google Meet 바로가기">
-          미트
-        </button>
-
-        {canEdit ? (
+      <SessionCardRow
+        model={cardModel}
+        inlineBadgeSlot={
           <>
-            <button
-              className={`rounded border ${isPresent ? "btn btn-blue" : "btn"}`}
-              onClick={togglePresent}
-              disabled={isSaving}
-            >
-              {isSaving && isPresent ? "적용 중..." : "출석"}
-            </button>
-
-            <button
-              className={`rounded border ${isAbsent ? "btn btn-red" : "btn"}`}
-              onClick={toggleAbsent}
-              disabled={isSaving}
-            >
-              {isSaving && isAbsent ? "적용 중..." : "결석"}
-            </button>
-            <button
-              className="rounded border border-neutral-300 bg-transparent btn btn-bold"
-              onClick={openAdjustModal}
-            >
-              조정
-            </button>
-
-            {canUseConsult ? <ConsultButton tag={consultTag} onClick={openConsultModal} /> : null}
+            {lastClassIndex && index === lastClassIndex ? (
+              <Badge className="bg-red-500 text-white">마지막 수업</Badge>
+            ) : null}
           </>
-        ) : null}
-      </div>
+        }
+        rightSlot={
+          <>
+            <button className={meetUrl ? "btn btn-green" : "btn"} onClick={openMeet} title="Google Meet 바로가기">
+              미트
+            </button>
+
+            {canEdit ? (
+              <>
+                <button
+                  className={`rounded border ${isPresent ? "btn btn-blue" : "btn"}`}
+                  onClick={togglePresent}
+                  disabled={isSaving}
+                >
+                  {isSaving && isPresent ? "적용 중..." : "출석"}
+                </button>
+
+                <button
+                  className={`rounded border ${isAbsent ? "btn btn-red" : "btn"}`}
+                  onClick={toggleAbsent}
+                  disabled={isSaving}
+                >
+                  {isSaving && isAbsent ? "적용 중..." : "결석"}
+                </button>
+                <button
+                  className="rounded border border-neutral-300 bg-transparent btn btn-bold"
+                  onClick={openAdjustModal}
+                >
+                  조정
+                </button>
+              </>
+            ) : null}
+          </>
+        }
+      />
 
       {/* Modal */}
       {open && (
@@ -784,65 +707,65 @@ export default function SessionTopBarCore({ role, token, index }: Props) {
 
                 {checkOverride && (
                   <div className="grid gap-2">
-                    <div className="grid grid-cols-2 gap-2">
+                    <div className="grid grid-cols-3 gap-2">
                       <div className="text-sm font-semibold">수업 변경일</div>
                       <div className="text-sm font-semibold">수업 변경 시간</div>
+                      <div className="text-sm font-semibold">수업 시간</div>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-2">
-                      <input
+                    <div className="grid grid-cols-3 gap-2">
+                      <div>
+                        <input
+                          ref={overrideDateInputRef}
+                          className="w-full rounded border border-neutral-300 px-2 py-1"
+                          style={{ borderColor: "var(--control-border)" }}
+                          type="date"
+                          value={draftOverrideDate}
+                          onChange={(e) => setDraftOverrideDate(e.target.value)}
+                          onClick={openOverrideDatePicker}
+                        />
+                      </div>
+
+                      <select
                         className="rounded border border-neutral-300 px-2 py-1"
                         style={{ borderColor: "var(--control-border)" }}
-                        type="date"
-                        value={draftOverrideDate}
-                        onChange={(e) => setDraftOverrideDate(e.target.value)}
-                      />
+                        value={draftOverrideHour === null ? "" : draftOverrideHour}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          setDraftOverrideHour(v === "" ? null : Number(v));
+                        }}
+                      >
+                        <option value="">시 선택</option>
+                        {Array.from({ length: 24 }, (_, h) => (
+                          <option key={h} value={h}>
+                            {String(h).padStart(2, "0")}시
+                          </option>
+                        ))}
+                      </select>
 
-                      <div className="flex items-center gap-2">
-                        <select
-                          className="rounded border border-neutral-300 px-2 py-1"
-                          style={{ borderColor: "var(--control-border)" }}
-                          value={draftOverrideHour === null ? "" : draftOverrideHour}
-                          onChange={(e) => {
-                            const v = e.target.value;
-                            setDraftOverrideHour(v === "" ? null : Number(v));
-                          }}
-                        >
-                          <option value="">시 선택</option>
-                          {Array.from({ length: 24 }, (_, h) => (
-                            <option key={h} value={h}>
-                              {String(h).padStart(2, "0")}
-                            </option>
-                          ))}
-                        </select>
-
-                        <span className="text-sm" style={{ color: "var(--text-muted)" }}>
-                          :
-                        </span>
-
-                        <select
-                          className="rounded border border-neutral-300 px-2 py-1"
-                          style={{ borderColor: "var(--control-border)" }}
-                          value={draftOverrideMinute === null ? "" : draftOverrideMinute}
-                          onChange={(e) => {
-                            const v = e.target.value;
-                            if (v === "") {
-                              setDraftOverrideMinute(null);
-                              return;
-                            }
-                            setDraftOverrideMinute(Number(v) === 30 ? 30 : 0);
-                          }}
-                        >
-                          <option value="">분 선택</option>
-                          <option value={0}>00</option>
-                          <option value={30}>30</option>
-                        </select>
+                      <select
+                        className="rounded border border-neutral-300 px-2 py-1"
+                        style={{ borderColor: "var(--control-border)" }}
+                        value={draftOverrideDurationHour === null ? "" : draftOverrideDurationHour}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          setDraftOverrideDurationHour(v === "" ? null : Math.max(1, Number(v)));
+                        }}
+                      >
+                        <option value="">시간 선택</option>
+                        {[1, 2].map((hours) => (
+                          <option key={hours} value={hours}>
+                            {hours}시간
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    {draftOverrideDate ? (
+                      <div className="text-xs" style={{ color: "var(--text-muted)" }}>
+                        {formatYmdKor(draftOverrideDate)} 수업 현황 :{" "}
+                        {teacherDateTimes.length > 0 ? teacherDateTimes.join(", ") : "해당 없음"}
                       </div>
-                    </div>
-
-                    <div className="text-xs" style={{ color: "var(--text-muted)" }}>
-                      • 분은 00 또는 30만 선택할 수 있습니다.
-                    </div>
+                    ) : null}
                   </div>
                 )}
               </div>
@@ -943,19 +866,6 @@ export default function SessionTopBarCore({ role, token, index }: Props) {
         </div>
       )}
 
-      {canUseConsult ? (
-        <ConsultModal
-          open={consultOpen}
-          role={role}
-          state={consultForm}
-          error={consultError}
-          onClose={() => setConsultOpen(false)}
-          onSave={saveConsultRecord}
-          onDelete={isAdmin ? deleteConsultRecord : undefined}
-          loading={isSaving}
-          computeRefundRatioValue={computeRefundRatioValue}
-        />
-      ) : null}
     </div>
   );
 }

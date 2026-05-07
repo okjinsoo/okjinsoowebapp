@@ -25,14 +25,12 @@ function teacherNameOf(teachers: Teacher[], teacherId?: string | null) {
 }
 
 function fallbackStatusOfStudent(student: Student): StudentStatusKind {
-  if (student.status === "paused") return "paused";
   if (student.status === "active") return "active";
   return "new";
 }
 
 type UseAdminStudentsPageDataResult = {
-  activeCards: AdminStudentCard[];
-  pausedCards: AdminStudentCard[];
+  cards: AdminStudentCard[];
 };
 
 export function useAdminStudentsPageData(): UseAdminStudentsPageDataResult {
@@ -83,17 +81,7 @@ export function useAdminStudentsPageData(): UseAdminStudentsPageDataResult {
       .sort((a, b) => a.name.localeCompare(b.name, "ko"));
   }, [mounted, students, teachers, metricsMap]);
 
-  const activeCards = useMemo(
-    () => cards.filter((c) => c.status !== "paused" && c.status !== "overdue_extension"),
-    [cards]
-  );
-  const pausedCards = useMemo(
-    () => cards.filter((c) => c.status === "paused" || c.status === "overdue_extension"),
-    [cards]
-  );
-
   return {
-    activeCards,
-    pausedCards,
+    cards,
   };
 }

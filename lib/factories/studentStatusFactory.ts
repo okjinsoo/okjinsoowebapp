@@ -2,22 +2,17 @@ export type PauseLifecycle = "none" | "confirmed" | "paused";
 export type StudentStatusKind =
   | "new"
   | "active"
-  | "need_extension"
-  | "overdue_extension"
-  | "pause_requested"
-  | "pause_scheduled"
-  | "paused";
+  | "need_extension";
 
-import type { ConsultationRecord, Student } from "@/lib/types/index";
-import { loadConsultationsByStudent } from "@/lib/storage/consultations";
+import type { Student } from "@/lib/types/index";
 import { sessionsByStudent } from "@/lib/storage/sessions";
 import { buildBaseDatesISO, computeEffectiveISO, readMetaMap } from "@/lib/factories/sessionFactories";
 import { kstDateMs, todayYmdKST, ymdFromISO_KST } from "@/lib/utils/date";
 
 /**
- * 휴회 상태 공장:
- * - 마지막 수업일 이전/당일: confirmed(=휴회예정)
- * - 마지막 수업일 지난 이후: paused(=휴회생)
+ * 휴회 상태 계산:
+ * - 마지막 수업일 이전/당일: confirmed
+ * - 마지막 수업일 지난 이후: paused
  */
 export function computePauseLifecycle(todayYmd: string, lastClassYmd?: string | null): PauseLifecycle {
   if (!lastClassYmd) return "none";
@@ -39,11 +34,7 @@ export function computeStudentStatusFromMetrics(params: {
   remainingCount: number;
   passedCount: number;
 }): StudentStatusKind {
-  const { pauseLifecycle, hasPendingPauseRequest, overdueDays, remainingCount, passedCount } = params;
-  if (pauseLifecycle === "paused") return "paused";
-  if (pauseLifecycle === "confirmed") return "pause_scheduled";
-  if (hasPendingPauseRequest) return "pause_requested";
-  if (overdueDays > 7) return "overdue_extension";
+  const { remainingCount, passedCount } = params;
   if (remainingCount <= 3) return "need_extension";
   if (passedCount <= 3) return "new";
   return "active";
@@ -51,13 +42,9 @@ export function computeStudentStatusFromMetrics(params: {
 
 export function computeStudentStatus(student: Student): StudentStatusKind {
   const today = todayYmdKST();
-  const pauseLifecycle = computePauseLifecycle(today, student.pauseEffectiveDate);
-  const consultRecords: ConsultationRecord[] = loadConsultationsByStudent(student.id);
-  const latestPause = [...consultRecords]
-    .filter((r) => r.purpose === "pause_request")
-    .sort((a, b) => `${a.date ?? ""}|${a.createdAt ?? ""}`.localeCompare(`${b.date ?? ""}|${b.createdAt ?? ""}`))
-    .at(-1);
-  const hasPendingPauseRequest = Boolean(latestPause && !latestPause.finalResult);
+  // 휴회 정책 제거: 휴회일 입력값을 상태 계산에서 더 이상 사용하지 않는다.
+  const pauseLifecycle = computePauseLifecycle(today, undefined);
+  const hasPendingPauseRequest = false;
 
   if (!student.token) {
     return computeStudentStatusFromMetrics({
@@ -109,17 +96,13 @@ export function computeStudentStatus(student: Student): StudentStatusKind {
 
 export function getStudentStatusMeta(kind: StudentStatusKind): {
   label: string;
-  tone: "green" | "gray" | "blue" | "red" | "orange";
+  tone: "green" | "gray" | "blue";
   bg: string;
   color: string;
 } {
   if (kind === "new") return { label: "신규생", tone: "green", bg: "#16a34a", color: "#fff" };
   if (kind === "active") return { label: "재학생", tone: "gray", bg: "#6b7280", color: "#fff" };
-  if (kind === "need_extension") return { label: "연장필요", tone: "blue", bg: "#2563eb", color: "#fff" };
-  if (kind === "overdue_extension") return { label: "미연장생", tone: "red", bg: "#dc2626", color: "#fff" };
-  if (kind === "pause_requested") return { label: "휴회요청", tone: "orange", bg: "#f97316", color: "#fff" };
-  if (kind === "pause_scheduled") return { label: "휴회예정", tone: "red", bg: "#dc2626", color: "#fff" };
-  return { label: "휴회생", tone: "red", bg: "#dc2626", color: "#fff" };
+  return { label: "연장필요", tone: "blue", bg: "#2563eb", color: "#fff" };
 }
 
 export function getStudentStatusSectionLabel(kind: StudentStatusKind): string {

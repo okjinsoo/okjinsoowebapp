@@ -1,7 +1,8 @@
 // lib/ui/session/SessionQuickActions.tsx
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { TUTORWEB_EVENTS } from "@/lib/events/tutorwebEvents";
 import { loadCurrentTeacherId } from "@/lib/storage/teachers";
 import { buildStudentSessionsFromRows, readSnapshotServerFirst } from "@/lib/storage/serverRead";
@@ -16,6 +17,10 @@ import { syncSessionDisplayAtByToken } from "@/lib/ui/session/syncSessionDisplay
 import { canEditSessionMeta, type SessionRole } from "@/lib/policies/sessionRolePolicy";
 import type { SessionMeta } from "@/lib/factories/sessionFactories";
 import type { Session, Student } from "@/lib/types/index";
+import {
+  resolveDurationMinForSessionWithMeta,
+  resolveRulesForIndex,
+} from "@/lib/ui/session/sessionCardFactory";
 
 type Props = {
   role: SessionRole;
@@ -91,6 +96,11 @@ export default function SessionQuickActions({ role, token, index }: Props) {
 
   const [open, setOpen] = useState(false);
   const [openMode, setOpenMode] = useState<"edit" | "absent">("edit");
+  const [portalRoot, setPortalRoot] = useState<HTMLElement | null>(null);
+
+  useEffect(() => {
+    setPortalRoot(document.body);
+  }, []);
 
   const [isSaving, setIsSaving] = useState(false);
   const togglePresent = async () => {
@@ -204,20 +214,23 @@ export default function SessionQuickActions({ role, token, index }: Props) {
         ) : null}
       </div>
 
-      {canEdit && open && (
-        <AdjustmentModalContent
-          mode={openMode}
-          meta={meta}
-          token={token}
-          index={index}
-          teacherId={teacherId}
-          students={students}
-          allSessions={allSessions}
-          onCancel={onCancel}
-          onSave={onSave}
-          isSaving={isSaving}
-        />
-      )}
+      {canEdit && open && portalRoot
+        ? createPortal(
+            <AdjustmentModalContent
+              mode={openMode}
+              meta={meta}
+              token={token}
+              index={index}
+              teacherId={teacherId}
+              students={students}
+              allSessions={allSessions}
+              onCancel={onCancel}
+              onSave={onSave}
+              isSaving={isSaving}
+            />,
+            portalRoot
+          )
+        : null}
     </>
   );
 }
@@ -256,11 +269,29 @@ function AdjustmentModalContent({
   const [draftOverrideHour, setDraftOverrideHour] = useState<number | null>(
     typeof meta.overrideHour === "number" ? meta.overrideHour : null
   );
-  const [draftOverrideMinute, setDraftOverrideMinute] = useState<0 | 30 | null>(
-    meta.overrideMinute === 0 || meta.overrideMinute === 30 ? (meta.overrideMinute as 0 | 30) : null
+  const [draftOverrideDurationHour, setDraftOverrideDurationHour] = useState<number | null>(
+    typeof meta.overrideDurationMin === "number" && Number.isFinite(meta.overrideDurationMin)
+      ? Math.max(1, Math.floor(meta.overrideDurationMin / 60))
+      : null
   );
   const [draftReason, setDraftReason] = useState<string>(meta.reason ?? "");
   const [draftRecord, setDraftRecord] = useState<string>(meta.record ?? "");
+  const overrideDateInputRef = useRef<HTMLInputElement | null>(null);
+
+  const openOverrideDatePicker = () => {
+    const input = overrideDateInputRef.current;
+    if (!input) return;
+    const pickerInput = input as HTMLInputElement & { showPicker?: () => void };
+    if (typeof pickerInput.showPicker === "function") {
+      try {
+        pickerInput.showPicker();
+        return;
+      } catch {
+        // 일부 브라우저는 showPicker를 지원하지 않아 포커스 fallback 사용
+      }
+    }
+    input.focus();
+  };
 
   const clickPresent = () => {
     setCheckPresent((prev) => {
@@ -283,10 +314,11 @@ function AdjustmentModalContent({
     if (!next) {
       setDraftOverrideDate("");
       setDraftOverrideHour(null);
-      setDraftOverrideMinute(null);
+      setDraftOverrideDurationHour(null);
       return;
     }
     setDraftOverrideDate((prev) => (prev ? prev : ymdTodayLocal()));
+    setDraftOverrideDurationHour((prev) => (prev && prev >= 1 ? prev : 1));
   };
 
   const toggleCarry = (next: boolean) => {
@@ -297,7 +329,7 @@ function AdjustmentModalContent({
   const teacherDateTimes = useMemo(() => {
     if (!checkOverride || !draftOverrideDate || !teacherId) return [];
     const owned = students.filter((s) => (s.teacherId ?? null) === teacherId && s.token);
-    const times: Array<{ time: string; name: string }> = [];
+    const times: Array<{ label: string; sortKey: number; name: string }> = [];
 
     for (const st of owned) {
       const isSelf = st.token === token;
@@ -319,11 +351,23 @@ function AdjustmentModalContent({
         if (!effectiveISO) continue;
         const ymd = kstYmdFromISO(effectiveISO);
         if (ymd !== draftOverrideDate) continue;
-        const t = kstTimeFromISO(effectiveISO);
-        if (t) times.push({ time: t, name: st.name });
+        const itemMeta = mMap[s.index] ?? {};
+        const rules = resolveRulesForIndex(st, s.index);
+        const durationMin = resolveDurationMinForSessionWithMeta(effectiveISO, rules, itemMeta);
+        const timeRange = kstTimeRangeFromISO(effectiveISO, durationMin);
+        if (!timeRange) continue;
+        const startMs = new Date(effectiveISO).getTime();
+        if (!Number.isFinite(startMs)) continue;
+        times.push({
+          label: `${st.name} | ${timeRange}`,
+          sortKey: startMs,
+          name: st.name,
+        });
       }
     }
-    return times.sort((a, b) => a.time.localeCompare(b.time, "ko") || a.name.localeCompare(b.name, "ko"));
+    return times
+      .sort((a, b) => a.sortKey - b.sortKey || a.name.localeCompare(b.name, "ko"))
+      .map((row) => row.label);
   }, [checkOverride, draftOverrideDate, teacherId, students, allSessions, token, index]);
 
   const needReasonUI = checkAbsent || checkOverride || checkCarry;
@@ -331,7 +375,10 @@ function AdjustmentModalContent({
   const handleSave = () => {
     if (checkOverride) {
       if (!draftOverrideDate) return alert("수업 변경일을 입력해주세요.");
-      if (draftOverrideHour === null || draftOverrideMinute === null) return alert("수업 변경 시간을 선택해주세요.");
+      if (draftOverrideHour === null) return alert("수업 변경 시간을 선택해주세요.");
+      if (draftOverrideDurationHour === null || draftOverrideDurationHour < 1) {
+        return alert("수업 시간을 1시간 이상 입력해주세요.");
+      }
     }
     if (checkCarry && !isNonNegInt(draftCarry)) return alert("이월 횟수는 0 이상의 정수여야 합니다.");
     if (needReasonUI && !draftReason.trim()) return alert("사유를 입력해주세요.");
@@ -341,14 +388,15 @@ function AdjustmentModalContent({
       carry: checkCarry ? Number(draftCarry) : 0,
       overrideDate: checkOverride ? draftOverrideDate : "",
       overrideHour: checkOverride ? draftOverrideHour : null,
-      overrideMinute: checkOverride ? draftOverrideMinute : null,
+      overrideMinute: checkOverride ? 0 : null,
+      overrideDurationMin: checkOverride ? Math.max(1, Math.floor(draftOverrideDurationHour ?? 1)) * 60 : null,
       reason: needReasonUI ? draftReason : "",
       record: needReasonUI ? draftRecord : "",
     });
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+    <div className="fixed inset-0 flex items-center justify-center bg-black/40 p-4" style={{ zIndex: 3000 }}>
       <div
         className="w-full max-w-lg rounded p-4 shadow"
         style={{
@@ -410,60 +458,63 @@ function AdjustmentModalContent({
             </div>
             {checkOverride && (
               <div className="grid gap-2">
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-3 gap-2">
                   <div className="text-sm font-semibold">수업 변경일</div>
                   <div className="text-sm font-semibold">수업 변경 시간</div>
+                  <div className="text-sm font-semibold">수업 시간</div>
                 </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <input
+                <div className="grid grid-cols-3 gap-2">
+                  <div>
+                    <input
+                      ref={overrideDateInputRef}
+                      className="w-full rounded border border-neutral-300 px-2 py-1"
+                      style={{ borderColor: "var(--control-border)" }}
+                      type="date"
+                      value={draftOverrideDate}
+                      onChange={(e) => setDraftOverrideDate(e.target.value)}
+                      onClick={() => {
+                        if (isSaving) return;
+                        openOverrideDatePicker();
+                      }}
+                      disabled={isSaving}
+                    />
+                  </div>
+                  <select
                     className="rounded border border-neutral-300 px-2 py-1"
                     style={{ borderColor: "var(--control-border)" }}
-                    type="date"
-                    value={draftOverrideDate}
-                    onChange={(e) => setDraftOverrideDate(e.target.value)}
+                    value={draftOverrideHour === null ? "" : draftOverrideHour}
+                    onChange={(e) => setDraftOverrideHour(e.target.value === "" ? null : Number(e.target.value))}
                     disabled={isSaving}
-                  />
-                  <div className="flex items-center gap-2">
-                    <select
-                      className="rounded border border-neutral-300 px-2 py-1"
-                      style={{ borderColor: "var(--control-border)" }}
-                      value={draftOverrideHour === null ? "" : draftOverrideHour}
-                      onChange={(e) => setDraftOverrideHour(e.target.value === "" ? null : Number(e.target.value))}
-                      disabled={isSaving}
-                    >
-                      <option value="">시 선택</option>
-                      {Array.from({ length: 24 }, (_, h) => (
-                        <option key={h} value={h}>
-                          {String(h).padStart(2, "0")}
-                        </option>
-                      ))}
-                    </select>
-                    <span className="text-sm" style={{ color: "var(--text-muted)" }}>
-                      :
-                    </span>
-                    <select
-                      className="rounded border border-neutral-300 px-2 py-1"
-                      style={{ borderColor: "var(--control-border)" }}
-                      value={draftOverrideMinute === null ? "" : draftOverrideMinute}
-                      onChange={(e) =>
-                        setDraftOverrideMinute(e.target.value === "" ? null : (Number(e.target.value) as 0 | 30))
-                      }
-                      disabled={isSaving}
-                    >
-                      <option value="">분 선택</option>
-                      <option value={0}>00</option>
-                      <option value={30}>30</option>
-                    </select>
-                  </div>
-                </div>
-                <div className="text-xs" style={{ color: "var(--text-muted)" }}>
-                  • 분은 00 또는 30만 선택할 수 있습니다.
+                  >
+                    <option value="">시 선택</option>
+                    {Array.from({ length: 24 }, (_, h) => (
+                      <option key={h} value={h}>
+                        {String(h).padStart(2, "0")}시
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    className="rounded border border-neutral-300 px-2 py-1"
+                    style={{ borderColor: "var(--control-border)" }}
+                    value={draftOverrideDurationHour === null ? "" : draftOverrideDurationHour}
+                    onChange={(e) =>
+                      setDraftOverrideDurationHour(e.target.value === "" ? null : Math.max(1, Number(e.target.value)))
+                    }
+                    disabled={isSaving}
+                  >
+                    <option value="">시간 선택</option>
+                    {[1, 2].map((hours) => (
+                      <option key={hours} value={hours}>
+                        {hours}시간
+                      </option>
+                    ))}
+                  </select>
                 </div>
                 {draftOverrideDate ? (
                   <div className="text-xs" style={{ color: "var(--text-muted)" }}>
                     {formatYmdKor(draftOverrideDate)} 수업 현황 :{" "}
                     {teacherDateTimes.length > 0
-                      ? teacherDateTimes.map((t) => `${t.time} (${t.name})`).join(", ")
+                      ? teacherDateTimes.join(", ")
                       : "해당 없음"}
                   </div>
                 ) : null}
@@ -585,7 +636,12 @@ function kstYmdFromISO(iso: string): string | null {
   }
 }
 
-function kstTimeFromISO(iso: string): string | null {
+function formatTimeLabel(hour: string, minute: string): string {
+  if (minute === "00") return `${hour}시`;
+  return `${hour}시 ${minute}분`;
+}
+
+function kstTimeRangeFromISO(iso: string, durationMin: number): string | null {
   try {
     const dt = new Date(iso);
     if (!Number.isFinite(dt.getTime())) return null;
@@ -597,7 +653,17 @@ function kstTimeFromISO(iso: string): string | null {
     }).formatToParts(dt);
     const hh = parts.find((p) => p.type === "hour")?.value ?? "00";
     const mm = parts.find((p) => p.type === "minute")?.value ?? "00";
-    return `${hh}시 ${mm}분`;
+    const normalizedDuration = Math.max(1, Math.floor(Number(durationMin) || 60));
+    const end = new Date(dt.getTime() + normalizedDuration * 60 * 1000);
+    const endParts = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Seoul",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    }).formatToParts(end);
+    const ehh = endParts.find((p) => p.type === "hour")?.value ?? "00";
+    const emm = endParts.find((p) => p.type === "minute")?.value ?? "00";
+    return `${formatTimeLabel(hh, mm)} ~ ${formatTimeLabel(ehh, emm)}`;
   } catch {
     return null;
   }

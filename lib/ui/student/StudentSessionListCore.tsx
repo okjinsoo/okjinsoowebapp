@@ -2,40 +2,30 @@
 
 import { BROWSER_STORAGE_EVENT } from "@/lib/storage/browserStorage";
 
-import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
-import { upsertStudent } from "@/lib/storage/students";
-import { saveConsultationsByStudent } from "@/lib/storage/consultations";
 import {
   buildBaseDatesISO,
   computeEffectiveISO,
   buildBadges,
-  getSessionVisibility,
 } from "@/lib/factories/sessionFactories";
 import { useMetaMap, getDdayMeta } from "@/lib/factories/sessionFactories";
-import { buildDisplayRecords, computeRefundRatio } from "@/lib/factories/lessonStatusFactory";
-import { normalizeConsultPurpose } from "@/lib/factories/consultationFactory";
-import { computePauseLifecycle } from "@/lib/factories/studentStatusFactory";
+import { buildDisplayRecords } from "@/lib/factories/lessonStatusFactory";
 import Badge from "@/lib/ui/common/Badge";
+import SessionCardRow from "@/lib/ui/session/SessionCardRow";
 import SessionQuickActions from "@/lib/ui/session/SessionQuickActions";
-import { buildConsultationMap, pickPrimaryConsultTag } from "@/lib/ui/session/consultationMap";
-import { findLastClassIndex } from "@/lib/ui/session/pauseHelpers";
-import AchievementBadge from "@/lib/ui/common/AchievementBadge";
-import { getSessionStatusBadge } from "@/lib/ui/common/sessionStatusBadge";
-import { buildSessionContextBadges, getSessionExtraBadgeStyle } from "@/lib/ui/common/sessionExtraBadge";
-import type { ConsultTag } from "@/lib/ui/session/consultationMap";
-import { ConsultationRecord, PaymentRecord, ScheduleRule, Student } from "@/lib/types/index";
-import { useConsultationSubmit } from "./hooks/useConsultationSubmit";
-import { ConsultBadge, ConsultButton } from "@/lib/ui/common/ConsultParts";
-import ConsultModal, { ConsultFormState } from "@/lib/ui/common/ConsultModal";
+import { buildSessionContextBadges } from "@/lib/ui/common/sessionExtraBadge";
 import {
   calculateSessionProgressSummary,
   isSessionProgressEventKeyForToken,
 } from "@/lib/factories/sessionProgressFactory";
-import { canUseConsultFeatures } from "@/lib/policies/sessionRolePolicy";
-import { todayYmdKST, ymdFromISO_KST } from "@/lib/utils/date";
 import { parseDateTime } from "@/lib/ui/session/format";
 import { useStudentSessionContext } from "@/lib/hooks/useStudentSessionContext";
+import {
+  buildSessionCardViewModel,
+  resolveDurationMinForSessionWithMeta,
+  resolveRulesForIndex,
+} from "@/lib/ui/session/sessionCardFactory";
 
 type Props = {
   role: "a" | "t" | "s";
@@ -44,100 +34,8 @@ type Props = {
   hideTokenInRoute?: boolean;
 };
 
-function normalizeDurationMin(value: number): number {
-  if (!Number.isFinite(value)) return 60;
-  return Math.max(30, Math.round(value));
-}
-
-function resolveRulesForIndex(student: Student, index: number): ScheduleRule[] {
-  const events = [...(student.scheduleChangeEvents ?? [])].sort((a, b) => a.startIndex - b.startIndex);
-  let rules = [...(student.scheduleRules ?? [])];
-  for (const event of events) {
-    if (event.startIndex <= index && Array.isArray(event.newRules) && event.newRules.length > 0) {
-      rules = [...event.newRules];
-    }
-  }
-  return rules;
-}
-
-function kstWeekdayHourMinuteFromISO(iso: string): { weekday: number; hour: number; minute: number } | null {
-  try {
-    const dt = new Date(iso);
-    if (!Number.isFinite(dt.getTime())) return null;
-    const parts = new Intl.DateTimeFormat("en-US", {
-      timeZone: "Asia/Seoul",
-      weekday: "short",
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: false,
-    }).formatToParts(dt);
-    const wk = parts.find((p) => p.type === "weekday")?.value ?? "";
-    const hh = Number(parts.find((p) => p.type === "hour")?.value ?? "0");
-    const mm = Number(parts.find((p) => p.type === "minute")?.value ?? "0");
-    const map: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
-    const weekday = map[wk];
-    if (!Number.isFinite(weekday) || !Number.isFinite(hh) || !Number.isFinite(mm)) return null;
-    return { weekday, hour: hh, minute: mm };
-  } catch {
-    return null;
-  }
-}
-
-function resolveDurationMinForSession(iso: string | null | undefined, rules: ScheduleRule[]): number {
-  const normalizedRules = rules
-    .map((rule) => ({
-      weekday: Number(rule.weekday),
-      hour: Math.max(0, Math.min(23, Math.floor(Number(rule.hour) || 0))),
-      minute: Math.max(0, Math.min(59, Math.floor(Number(rule.minute) || 0))),
-      durationMin: normalizeDurationMin(Number(rule.durationMin)),
-    }))
-    .sort((a, b) => a.weekday - b.weekday || a.hour - b.hour || a.minute - b.minute);
-  if (normalizedRules.length === 0) return 60;
-  if (!iso) return normalizedRules[0].durationMin;
-  const key = kstWeekdayHourMinuteFromISO(iso);
-  if (!key) return normalizedRules[0].durationMin;
-  const matched = normalizedRules.find(
-    (rule) => rule.weekday === key.weekday && rule.hour === key.hour && rule.minute === key.minute
-  );
-  return (matched ?? normalizedRules[0]).durationMin;
-}
-
-function applyPauseStateFromConsultations(student: Student, records: ConsultationRecord[]): Student {
-  const latestPause = [...records]
-    .filter((r) => r.purpose === "pause_request" && (r.finalResult === "pause_confirm" || r.finalResult === "pause_cancel"))
-    .sort((a, b) => {
-      const ad = `${a.date ?? ""}|${a.createdAt ?? ""}`;
-      const bd = `${b.date ?? ""}|${b.createdAt ?? ""}`;
-      return ad.localeCompare(bd);
-    })
-    .at(-1);
-
-  if (latestPause?.finalResult === "pause_confirm" && latestPause.pauseEffectiveDate) {
-    const today = todayYmdKST();
-    const pauseStatus = computePauseLifecycle(today, latestPause.pauseEffectiveDate) === "paused" ? "paused" : "confirmed";
-    const nextStudent: Student = {
-      ...student,
-      status: "paused",
-      pauseEffectiveDate: latestPause.pauseEffectiveDate,
-      pauseStatus,
-    };
-    upsertStudent(nextStudent);
-    return nextStudent;
-  }
-
-  const nextStudent: Student = {
-    ...student,
-    status: "active",
-    pauseEffectiveDate: undefined,
-    pauseStatus: "none",
-  };
-  upsertStudent(nextStudent);
-  return nextStudent;
-}
-
 export default function StudentSessionListCore({ role, token, prefix, hideTokenInRoute = false }: Props) {
-  const isAdmin = role === "a";
-  const canUseConsult = canUseConsultFeatures(role);
+  const router = useRouter();
   const canUseQuickActions = role !== "s";
   const [mounted, setMounted] = useState(false);
   const [progressTick, setProgressTick] = useState(0);
@@ -147,32 +45,9 @@ export default function StudentSessionListCore({ role, token, prefix, hideTokenI
   const {
     student,
     sessions,
-    consultRecords,
-    refresh: refreshStudentContext,
-    setStudent,
-    setConsultRecords,
   } = useStudentSessionContext(token);
   const [showAllUpcoming, setShowAllUpcoming] = useState(false);
   const [showAllPast, setShowAllPast] = useState(false);
-  const [consultOpen, setConsultOpen] = useState(false);
-  const [consultEditingId, setConsultEditingId] = useState<string | null>(null);
-  const [consultForm, setConsultForm] = useState<ConsultFormState>({
-    date: "",
-    purpose: "general",
-    target: "student",
-    content: "",
-    adminConsultDate: "",
-    extensionResult: "",
-    extensionPaymentDate: todayYmdKST(),
-    extensionAddedCount: 12,
-    extensionPaymentConfirmed: false,
-    finalNote: "",
-    finalResult: "",
-    pauseEffectiveDate: "",
-    pauseRefundRatio: "",
-    pauseRefundCompleted: false,
-  });
-  const [consultError, setConsultError] = useState("");
 
   useEffect(() => {
     const id = setTimeout(() => setMounted(true), 0);
@@ -232,32 +107,12 @@ export default function StudentSessionListCore({ role, token, prefix, hideTokenI
     return Math.min(...indices);
   }, [student]);
 
-  const displayRecords = useMemo(() => {
-    if (!student) return [];
-    const history = student.paymentHistory ?? [];
-    return buildDisplayRecords(student, history).displayRecords;
-  }, [student]);
-
   const rows = useMemo(() => {
     if (!student) return [];
-    const lastClassIndex =
-      (student.pauseStatus === "confirmed" || student.pauseStatus === "paused") && student.pauseEffectiveDate
-        ? findLastClassIndex({
-          token,
-          sessions,
-          baseDatesISO,
-          metaMap,
-          pauseEffectiveDate: student.pauseEffectiveDate,
-        })
-        : null;
+    const lastClassIndex = null;
 
     return sessions
       .map((s) => {
-        const visibility = getSessionVisibility({
-          index: s.index,
-          lastVisibleIndex: lastClassIndex,
-        });
-        if (visibility === "hidden") return null;
         const { effectiveISO, meta } = computeEffectiveISO({
           token,
           index: s.index,
@@ -266,7 +121,7 @@ export default function StudentSessionListCore({ role, token, prefix, hideTokenI
         });
 
         const rules = resolveRulesForIndex(student, s.index);
-        const durationMin = resolveDurationMinForSession(effectiveISO, rules);
+        const durationMin = resolveDurationMinForSessionWithMeta(effectiveISO, rules, meta);
         const { dateText, timeText } = parseDateTime(effectiveISO, durationMin);
         const badges = buildSessionContextBadges({
           baseBadges: buildBadges(meta),
@@ -296,184 +151,6 @@ export default function StudentSessionListCore({ role, token, prefix, hideTokenI
       })
       .filter((row): row is NonNullable<typeof row> => row !== null);
   }, [student, token, baseDatesISO, metaMap, mounted, sessions, progressByIndex, refundCompletedIndex, refundRequestedIndex]);
-
-  const consultMap = useMemo(() => {
-    if (!student) return {};
-    return buildConsultationMap({
-      token,
-      sessions,
-      records: consultRecords,
-      baseDatesISO,
-      metaMap,
-    });
-  }, [student, token, sessions, consultRecords, baseDatesISO, metaMap]);
-
-  // 실시간 환불 비율 계산용 헬퍼 (모달 주입용)
-  const getLiveRefundRatio = (pauseDate: string) => {
-    if (!student || !pauseDate) return "";
-    const entries = sessions
-      .map((s) => {
-        const { effectiveISO } = computeEffectiveISO({
-          token,
-          index: s.index,
-          baseDatesISO,
-          metaMap,
-        });
-        const ymd = ymdFromISO_KST(effectiveISO) ?? "";
-        return { index: s.index, ymd };
-      })
-      .filter((e) => !!e.ymd);
-    if (entries.length === 0) return "";
-
-    const target = pauseDate;
-    const same = entries.filter((e) => e.ymd === target).sort((a, b) => a.index - b.index);
-    const future = entries.filter((e) => e.ymd > target).sort((a, b) => a.ymd.localeCompare(b.ymd));
-    const past = entries.filter((e) => e.ymd < target).sort((a, b) => b.ymd.localeCompare(a.ymd));
-    const lastIdx = same[0]?.index ?? future[0]?.index ?? past[0]?.index ?? null;
-    if (!lastIdx) return "";
-
-    const requestIndex = lastIdx + 1;
-    const refundTarget = displayRecords.find((r) => requestIndex >= r.startIndex && requestIndex <= r.endIndex);
-    return refundTarget ? computeRefundRatio(refundTarget, requestIndex, Boolean(refundTarget.isBase)) : "";
-  };
-
-
-  const ymdFromISO = (iso: string) => {
-    if (!iso) return todayYmdKST();
-    const parts = new Intl.DateTimeFormat("en-CA", {
-      timeZone: "Asia/Seoul",
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-    }).formatToParts(new Date(iso));
-    const y = parts.find((p) => p.type === "year")?.value ?? "1970";
-    const m = parts.find((p) => p.type === "month")?.value ?? "01";
-    const d = parts.find((p) => p.type === "day")?.value ?? "01";
-    return `${y}-${m}-${d}`;
-  };
-
-  const openConsultForSession = (iso: string, tag: ConsultTag | null) => {
-    if (!canUseConsult) return;
-    if (tag?.recordId) {
-      const record = consultRecords.find((r) => r.id === tag.recordId);
-      if (record) {
-        setConsultEditingId(record.id);
-        setConsultForm({
-          date: record.date || ymdFromISO(iso),
-          purpose: normalizeConsultPurpose((record as { purpose?: unknown }).purpose),
-          target: record.target ?? "student",
-          content: record.content ?? "",
-          adminConsultDate: record.adminConsultDate ?? "",
-          extensionResult: record.extensionResult ?? "",
-          extensionPaymentDate: record.extensionPaymentDate ?? todayYmdKST(),
-          extensionAddedCount: Math.max(1, Math.floor(Number(record.extensionAddedCount) || 12)),
-          extensionPaymentConfirmed: Boolean(record.extensionPaymentConfirmed),
-          finalNote: record.finalNote ?? "",
-          finalResult: record.finalResult ?? "",
-          pauseEffectiveDate: record.pauseEffectiveDate ?? "",
-          pauseRefundRatio: record.pauseRefundRatio ?? "",
-          pauseRefundCompleted: Boolean(record.pauseRefundCompleted),
-        });
-        setConsultError("");
-        setConsultOpen(true);
-        return;
-      }
-    }
-    setConsultEditingId(null);
-    setConsultForm({
-      date: ymdFromISO(iso),
-      purpose: tag?.purpose ?? "general",
-      target: tag?.target ?? "student",
-      content: "",
-      adminConsultDate: "",
-      extensionResult: "",
-      extensionPaymentDate: todayYmdKST(),
-      extensionAddedCount: 12,
-      extensionPaymentConfirmed: false,
-      finalNote: "",
-      finalResult: "",
-      pauseEffectiveDate: "",
-      pauseRefundRatio: "",
-      pauseRefundCompleted: false,
-    });
-    setConsultError("");
-    setConsultOpen(true);
-  };
-
-  const { submit: submitConsult } = useConsultationSubmit({
-    isAdmin,
-    actorRole: role,
-    student,
-    history: student?.paymentHistory ?? [],
-    consultRecords: consultRecords ?? [],
-    sessions,
-    token,
-    applyHistory: async (recs: PaymentRecord[], patch?: Partial<Student>, skip?: boolean, opts?: { consultationRecords?: ConsultationRecord[] }) => {
-      if (!student) return false;
-      const nextConsultRecords = opts?.consultationRecords ?? consultRecords;
-       
-      // [버그 수정] 중복 합산 방지 로직
-      const currentHistory = student.paymentHistory ?? [];
-      const previousTotalAdded = currentHistory.reduce((sum, r) => sum + (r.addedCount || 0), 0);
-      const originalBaseCount = (student.planCount ?? 0) - previousTotalAdded;
-      
-      const newTotalAdded = recs.reduce((sum, r) => sum + (r.addedCount || 0), 0);
-      const finalPlanCount = originalBaseCount + newTotalAdded;
-
-      // [최적화] 물리적 세션 생성 로직 제거 (가상 회차 엔진이 UI에서 처리)
-
-      const updatedStudent = { 
-        ...student, 
-        ...patch, 
-        paymentHistory: recs,
-        planCount: finalPlanCount
-      };
-
-      upsertStudent(updatedStudent);
-      saveConsultationsByStudent(student.id, nextConsultRecords);
-      setStudent(updatedStudent);
-      setConsultRecords(nextConsultRecords);
-      return true;
-    },
-    persistConsultationState: async (recs: ConsultationRecord[], patch?: Student) => {
-      if (!student) return false;
-      if (patch) {
-        upsertStudent(patch);
-        setStudent(patch);
-      }
-      saveConsultationsByStudent(student.id, recs);
-      setConsultRecords(recs);
-      return true;
-    },
-  });
-
-  const saveConsultRecord = async (finalForm: ConsultFormState) => {
-    if (!student) return;
-    const res = await submitConsult(finalForm, consultEditingId);
-    if (res.error) {
-      setConsultError(res.error);
-      return;
-    }
-    if (res.ok) {
-      setConsultOpen(false);
-      void refreshStudentContext();
-    }
-  };
-
-  const deleteConsultRecord = () => {
-    if (!student || !consultEditingId) return;
-    const deleting = consultRecords.find((r) => r.id === consultEditingId);
-    const updated = consultRecords.filter((r) => r.id !== consultEditingId);
-    saveConsultationsByStudent(student.id, updated);
-    setConsultRecords(updated);
-    if (isAdmin && deleting?.purpose === "pause_request") {
-      const patched = applyPauseStateFromConsultations(student, updated);
-      setStudent(patched);
-    }
-    setConsultOpen(false);
-    void refreshStudentContext();
-  };
-
 
   const { upcomingRows, pastRows } = useMemo(() => {
     const upcoming: typeof rows = [];
@@ -520,90 +197,33 @@ export default function StudentSessionListCore({ role, token, prefix, hideTokenI
           ) : null}
           {visibleUpcoming.map((r) => {
             const href = hideTokenInRoute ? `${prefix}/session/${r.index}` : `${prefix}/${token}/session/${r.index}`;
-            const consultTag = pickPrimaryConsultTag(consultMap[r.index]);
-
-            const cls = !r.dday || r.dday.diff === null ? "bg-slate-400" : r.dday.className;
-            const label = !r.dday ? "-" : r.dday.label;
-
-            const statusBadge = getSessionStatusBadge(r.status);
+            const model = buildSessionCardViewModel({
+              index: r.index,
+              dateTimeText: `${r.dateText} ${r.timeText}`.trim(),
+              dday: r.dday,
+              status: r.status as "present" | "absent" | "planned",
+              achievementPercent: r.progress.percent,
+              extraBadges: r.badges,
+              hiddenBadgeLabels: ["마지막 수업"],
+            });
             return (
-              <div
+              <SessionCardRow
                 key={`upcoming-${r.index}`}
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "1fr auto",
-                  gap: 12,
-                  alignItems: "center",
-                  padding: "8px 10px",
-                  border: "1px solid var(--surface-border)",
-                  borderRadius: 8,
-                  background: "var(--surface-bg)",
-                }}
-                onMouseEnter={(e) => (e.currentTarget.style.background = "var(--surface-hover)")}
-                onMouseLeave={(e) => (e.currentTarget.style.background = "var(--surface-bg)")}
-              >
-                <Link
-                  href={href}
-                  className="block"
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "110px 1fr",
-                    gap: 30,
-                    alignItems: "center",
-                  }}
-                >
-                  <div style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 700, whiteSpace: "nowrap" }}>
-                    <Badge className={`text-white ${cls}`}>{label}</Badge>
-                    <span>{r.index}회차</span>
-                  </div>
-                  <div className="flex items-center gap-2 flex-wrap text-dim">
-                    <div>
-                      {r.dateText} {r.timeText}
-                    </div>
-                    <AchievementBadge percent={r.progress.percent} />
-                    <Badge style={statusBadge.style}>{statusBadge.label}</Badge>
-                    {r.badges.filter(b => b !== "마지막 수업").length > 0 ? (
-                      <div className="flex items-center gap-2 flex-wrap">
-                        {r.badges.filter(b => b !== "마지막 수업").map((b) => (
-                          <Badge key={`${r.index}:${b}`} style={getSessionExtraBadgeStyle(b)}>
-                            {b}
-                          </Badge>
-                        ))}
-                      </div>
-                    ) : null}
-                    {canUseConsult && !(
-                      consultTag &&
-                      consultTag.label === "휴회 예정" &&
-                      r.badges.includes("마지막 수업")
-                    ) ? (
-                      <ConsultBadge tag={consultTag} />
-                    ) : null}
+                model={model}
+                onClick={() => router.push(href)}
+                inlineBadgeSlot={
+                  <>
                     {r.badges.includes("마지막 수업") ? (
                       <Badge style={{ background: "#ef4444", color: "#fff" }}>마지막 수업</Badge>
                     ) : null}
-                  </div>
-                </Link>
-                {canUseQuickActions ? (
-                  <div
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      e.preventDefault();
-                    }}
-                    style={{
-                      display: "flex",
-                      gap: 6,
-                      position: "relative",
-                      zIndex: 10,
-                      padding: "4px"
-                    }}
-                  >
+                  </>
+                }
+                rightSlot={
+                  canUseQuickActions ? (
                     <SessionQuickActions role={role} token={token} index={r.index} />
-                    {canUseConsult ? (
-                      <ConsultButton tag={consultTag} onClick={() => openConsultForSession(r.effectiveISO, consultTag)} />
-                    ) : null}
-                  </div>
-                ) : null}
-              </div>
+                  ) : null
+                }
+              />
             );
           })}
           {upcomingRows.length > 3 ? (
@@ -633,87 +253,26 @@ export default function StudentSessionListCore({ role, token, prefix, hideTokenI
           ) : null}
           {visiblePast.map((r) => {
             const href = hideTokenInRoute ? `${prefix}/session/${r.index}` : `${prefix}/${token}/session/${r.index}`;
-            const consultTag = pickPrimaryConsultTag(consultMap[r.index]);
-
-            const cls = !r.dday || r.dday.diff === null ? "bg-slate-400" : r.dday.className;
-            const label = !r.dday ? "-" : r.dday.label;
-
-            const statusBadge = getSessionStatusBadge(r.status);
+            const model = buildSessionCardViewModel({
+              index: r.index,
+              dateTimeText: `${r.dateText} ${r.timeText}`.trim(),
+              dday: r.dday,
+              status: r.status as "present" | "absent" | "planned",
+              achievementPercent: r.progress.percent,
+              extraBadges: r.badges,
+              hiddenBadgeLabels: ["마지막 수업"],
+            });
             return (
-              <div
+              <SessionCardRow
                 key={`past-${r.index}`}
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "1fr auto",
-                  gap: 12,
-                  alignItems: "center",
-                  padding: "8px 10px",
-                  border: "1px solid var(--surface-border)",
-                  borderRadius: 8,
-                  background: "var(--surface-bg)",
-                }}
-                onMouseEnter={(e) => (e.currentTarget.style.background = "var(--surface-hover)")}
-                onMouseLeave={(e) => (e.currentTarget.style.background = "var(--surface-bg)")}
-              >
-                <Link
-                  href={href}
-                  className="block"
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "110px 1fr",
-                    gap: 30,
-                    alignItems: "center",
-                  }}
-                >
-                  <div style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 700, whiteSpace: "nowrap" }}>
-                    <Badge className={`text-white ${cls}`}>{label}</Badge>
-                    <span>{r.index}회차</span>
-                  </div>
-                  <div className="flex items-center gap-2 flex-wrap text-dim">
-                    <div>
-                      {r.dateText} {r.timeText}
-                    </div>
-                    <AchievementBadge percent={r.progress.percent} />
-                    <Badge style={statusBadge.style}>{statusBadge.label}</Badge>
-                    {canUseConsult && !(
-                      consultTag &&
-                      consultTag.label === "휴회 예정" &&
-                      r.badges.includes("마지막 수업")
-                    ) ? (
-                      <ConsultBadge tag={consultTag} />
-                    ) : null}
-                    {r.badges.length > 0 ? (
-                      <div className="flex items-center gap-2 flex-wrap">
-                        {r.badges.map((b) => (
-                          <Badge key={`past-${r.index}:${b}`} style={getSessionExtraBadgeStyle(b)}>
-                            {b}
-                          </Badge>
-                        ))}
-                      </div>
-                    ) : null}
-                  </div>
-                </Link>
-                {canUseQuickActions ? (
-                  <div
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      e.preventDefault();
-                    }}
-                    style={{
-                      display: "flex",
-                      gap: 6,
-                      position: "relative",
-                      zIndex: 10,
-                      padding: "4px"
-                    }}
-                  >
+                model={model}
+                onClick={() => router.push(href)}
+                rightSlot={
+                  canUseQuickActions ? (
                     <SessionQuickActions role={role} token={token} index={r.index} />
-                    {canUseConsult ? (
-                      <ConsultButton tag={consultTag} onClick={() => openConsultForSession(r.effectiveISO, consultTag)} />
-                    ) : null}
-                  </div>
-                ) : null}
-              </div>
+                  ) : null
+                }
+              />
             );
           })}
           {pastDesc.length > 5 ? (
@@ -738,18 +297,6 @@ export default function StudentSessionListCore({ role, token, prefix, hideTokenI
         ) : null}
       </div>
 
-      {canUseConsult ? (
-        <ConsultModal
-          open={consultOpen}
-          role={role}
-          state={consultForm}
-          error={consultError}
-          onClose={() => setConsultOpen(false)}
-          onSave={saveConsultRecord}
-          onDelete={consultEditingId ? deleteConsultRecord : undefined}
-          computeRefundRatioValue={getLiveRefundRatio}
-        />
-      ) : null}
     </div>
   );
 }

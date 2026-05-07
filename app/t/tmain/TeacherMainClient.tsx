@@ -13,7 +13,7 @@ import {
   requestCalendarResyncForStudentIds,
   requestCalendarResyncForStudentIdsByAdmin,
 } from "@/lib/storage/sessions";
-import TodaySessionsCard, { type TodaySessionRow } from "@/lib/ui/teacher/TodaySessionsCard";
+import TodaySessionsCard from "@/lib/ui/teacher/TodaySessionsCard";
 import TeacherStudentListCard from "@/lib/ui/teacher/TeacherStudentListCard";
 import RoleGateCard from "@/lib/ui/common/RoleGateCard";
 import {
@@ -21,12 +21,13 @@ import {
   getDdayMeta,
 } from "@/lib/factories/sessionFactories";
 import { GATE_EVENT } from "@/lib/ui/common/roleGateStorage";
-import { buildConsultationMap, pickPrimaryConsultTag } from "@/lib/ui/session/consultationMap";
 import { calculateSessionAchievementPercent } from "@/lib/factories/sessionProgressFactory";
 import { useStudentRegistry } from "@/lib/hooks/useStudentRegistry";
 import { parseDateTime } from "@/lib/ui/session/format";
+import { resolveDurationMinForSessionWithMeta, resolveRulesForIndex } from "@/lib/ui/session/sessionCardFactory";
+import type { TeacherSessionRow } from "@/lib/ui/teacher/teacherSessionCardFactory";
 
-type TeacherMainRow = TodaySessionRow & { diff: number };
+type TeacherMainRow = TeacherSessionRow & { diff: number };
 
 export default function TeacherMainClient({ initialRole = "t" }: { initialRole?: "a" | "t" }) {
   const router = useRouter();
@@ -60,7 +61,7 @@ export default function TeacherMainClient({ initialRole = "t" }: { initialRole?:
   const visibleStudents = useMemo(() => {
     if (!teacherId) return [];
     return Array.from(metricsMap.values())
-      .filter(({ student, status }) => student.teacherId === teacherId && status !== "paused" && status !== "overdue_extension")
+      .filter(({ student }) => student.teacherId === teacherId)
       .map(({ student }) => student);
   }, [metricsMap, teacherId]);
 
@@ -73,28 +74,18 @@ export default function TeacherMainClient({ initialRole = "t" }: { initialRole?:
       if (!metrics || !st.token) continue;
 
       const { sessions } = metrics;
-      // [Refactor] registry에서 이미 계산된 기본 정보들 활용
-      const consultRecords = metrics.latestPauseRequest ? [metrics.latestPauseRequest] : []; // 간소화
-      const consultMap = buildConsultationMap({ 
-        token: st.token, 
-        sessions, 
-        baseDatesISO: [], // 간소화: buildConsultationMap 내부 로직 보완 필요할 수 있으나 현재는 registry 데이터 활용 우선
-        metaMap: {},
-        records: consultRecords 
-      });
 
       for (const s of sessions) {
         const dday = getDdayMeta(s.effectiveISO, now);
         if (dday.diff === null) continue;
 
-        // ✅ 학생 페이지와 동일한 날짜/시간 파서 사용
-        const { dateText, timeText } = parseDateTime(s.effectiveISO);
+        // ✅ 학생 페이지와 동일하게 회차별 수업시간(duration)을 반영해 시작~종료시간을 구성
+        const rules = resolveRulesForIndex(st, s.index);
+        const durationMin = resolveDurationMinForSessionWithMeta(s.effectiveISO, rules, s.meta);
+        const { dateText, timeText } = parseDateTime(s.effectiveISO, durationMin);
         
         // ✅ 성취도 퍼센트 계산
         const percent = calculateSessionAchievementPercent({ token: st.token, sessionIndex: s.index });
-        
-        // ✅ 상담 배지 추출
-        const consultTag = pickPrimaryConsultTag(consultMap[s.index]);
 
         // ✅ 세션 상태 배지 및 기타 특수 배지 (마지막 수업 등) 구성
         const badges = buildBadges(s.meta);
@@ -113,7 +104,6 @@ export default function TeacherMainClient({ initialRole = "t" }: { initialRole?:
           ddayLabel: dday.label,
           ddayClass: dday.className,
           percent,
-          consultTag,
           lastClass: isLastClass,
           diff: dday.diff,
         });

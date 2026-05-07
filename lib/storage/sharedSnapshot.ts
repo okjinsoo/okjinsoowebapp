@@ -11,7 +11,6 @@ import { browserStorage } from "@/lib/storage/browserStorage";
 import { safeParseJson } from "@/lib/storage/safeParse";
 import {
   isSharedStateKvKey,
-  SHARED_CONSULTATIONS_KEY,
   SHARED_LECTURE_TREE_KEY,
   SHARED_META_MAP_PREFIX,
 } from "@/lib/storage/sharedStateKeys";
@@ -222,21 +221,18 @@ export function dispatchLocalSnapshotUpdated(args?: { includeSessions?: boolean 
 
 function applyStateKv(stateKv: Record<string, string> | null | undefined): {
   changed: boolean;
-  hadConsultations: boolean;
   hadMetaMap: boolean;
   hadLectureTree: boolean;
 } {
   if (typeof window === "undefined" || !stateKv) {
     return {
       changed: false,
-      hadConsultations: false,
       hadMetaMap: false,
       hadLectureTree: false,
     };
   }
 
   let changed = false;
-  let hadConsultations = false;
   let hadMetaMap = false;
   let hadLectureTree = false;
 
@@ -264,12 +260,11 @@ function applyStateKv(stateKv: Record<string, string> | null | undefined): {
 
     localStorage.setItem(key, value);
     changed = true;
-    if (key === SHARED_CONSULTATIONS_KEY) hadConsultations = true;
     if (key === SHARED_LECTURE_TREE_KEY) hadLectureTree = true;
     if (key.startsWith(SHARED_META_MAP_PREFIX)) hadMetaMap = true;
   }
 
-  return { changed, hadConsultations, hadMetaMap, hadLectureTree };
+  return { changed, hadMetaMap, hadLectureTree };
 }
 
 function applyLocalSnapshot(args: {
@@ -307,9 +302,6 @@ function applyLocalSnapshot(args: {
 
   if (changed || sessionsChanged) {
     dispatchLocalSnapshotUpdated({ includeSessions: sessionsChanged });
-  }
-  if (stateResult.hadConsultations) {
-    window.dispatchEvent(new CustomEvent(TUTORWEB_EVENTS.consultationsUpdated));
   }
   if (stateResult.hadLectureTree) {
     window.dispatchEvent(new CustomEvent(TUTORWEB_EVENTS.lectureTreeUpdated));
@@ -550,9 +542,6 @@ export async function pushSharedSnapshot(args?: PushSharedSnapshotArgs): Promise
     if (typeof window !== "undefined") {
       for (const key of droppedStateKeys) {
         localStorage.removeItem(key);
-        if (key === SHARED_CONSULTATIONS_KEY) {
-          window.dispatchEvent(new CustomEvent(TUTORWEB_EVENTS.consultationsUpdated));
-        }
         if (key === SHARED_LECTURE_TREE_KEY) {
           window.dispatchEvent(new CustomEvent(TUTORWEB_EVENTS.lectureTreeUpdated));
         }

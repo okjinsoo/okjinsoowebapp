@@ -6,12 +6,7 @@ import { loadAuthSession } from "@/lib/auth/supabaseAuth";
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { useRouter } from "next/navigation";
 import { saveStudents, saveStudentsServerFirst } from "@/lib/storage/students";
-import {
-  saveAllConsultationsStore,
-} from "@/lib/storage/consultations";
-import { findLastClassIndex } from "@/lib/ui/session/pauseHelpers";
 import { formatGrade, formatPhone, formatSchedule } from "@/lib/ui/student/formatters";
-import AchievementBadge from "@/lib/ui/common/AchievementBadge";
 import {
   rebuildTeacherGoogleCalendarForStudentIds,
   requestCalendarResyncForStudentIdsByAdmin,
@@ -23,7 +18,6 @@ import {
   buildBaseDatesISO,
   computeEffectiveISO,
   getDdayMeta,
-  getSessionVisibility,
   metaMapKey,
   readMetaMap,
   useMetaMap,
@@ -34,12 +28,10 @@ import {
   normalizePaymentHistoryRanges,
 } from "@/lib/factories/lessonStatusFactory";
 import {
-  computePauseLifecycle,
   computeStudentStatusFromMetrics,
   getStudentStatusMeta,
 } from "@/lib/factories/studentStatusFactory";
 import type {
-  ConsultationRecord,
   PaymentRecord,
   ScheduleRule,
   Session,
@@ -49,10 +41,13 @@ import type {
 } from "@/lib/types/index";
 import { fmtKST_yyyyMMdd_TimeRange } from "@/lib/ui/session/format";
 import Badge from "@/lib/ui/common/Badge";
+import SessionCardRow from "@/lib/ui/session/SessionCardRow";
 import SessionQuickActions from "@/lib/ui/session/SessionQuickActions";
-// REMOVED: import { getAchievementBadgeStyle } from "@/lib/ui/common/achievementBadge";
-import { getSessionStatusBadge } from "@/lib/ui/common/sessionStatusBadge";
-import { buildSessionContextBadges, getSessionExtraBadgeStyle } from "@/lib/ui/common/sessionExtraBadge";
+import { buildSessionContextBadges } from "@/lib/ui/common/sessionExtraBadge";
+import {
+  buildSessionCardViewModel,
+  resolveDurationMinForSessionWithMeta,
+} from "@/lib/ui/session/sessionCardFactory";
 import { StudentPaymentPanel } from "./panels/StudentPaymentPanel";
 import {
   calculateSessionAchievementPercent,
@@ -72,7 +67,6 @@ import {
   readRemoteSharedStateKvValue,
 } from "@/lib/storage/sharedSnapshot";
 import {
-  SHARED_CONSULTATIONS_KEY,
   SHARED_DRIVE_ROOT_ID_KEY,
   SHARED_LECTURE_TREE_KEY,
 } from "@/lib/storage/sharedStateKeys";
@@ -139,7 +133,7 @@ function weekdayFullLabel(n: number): string {
 
 type StudentBackupFileV1 = {
   format: "tutorweb_student_backup";
-  version: 1;
+  version: 1 | 2;
   exportedAt: string;
   exportedByRole: Role;
   source: "server" | "local";
@@ -147,7 +141,6 @@ type StudentBackupFileV1 = {
     student: Student;
     teacher: Teacher | null;
     sessions: Session[];
-    consultations: ConsultationRecord[];
     stateKv: Record<string, string>;
   };
 };
@@ -166,22 +159,6 @@ function normalizeStateKvStrings(raw: unknown): Record<string, string> {
     out[key] = value;
   }
   return out;
-}
-
-function parseConsultStoreFromRaw(raw: string): Record<string, ConsultationRecord[]> {
-  if (!raw.trim()) return {};
-  try {
-    const parsed = asObject(JSON.parse(raw));
-    if (!parsed) return {};
-    const out: Record<string, ConsultationRecord[]> = {};
-    for (const [studentId, value] of Object.entries(parsed)) {
-      if (!Array.isArray(value)) continue;
-      out[studentId] = value as ConsultationRecord[];
-    }
-    return out;
-  } catch {
-    return {};
-  }
 }
 
 function sanitizeFilePart(raw: string): string {
@@ -217,21 +194,19 @@ function parseStudentBackupFile(raw: unknown): StudentBackupFileV1 | null {
   const root = asObject(raw);
   if (!root) return null;
   if (root.format !== "tutorweb_student_backup") return null;
-  if (Number(root.version) !== 1) return null;
+  const version = Number(root.version);
+  if (version !== 1 && version !== 2) return null;
   const payload = asObject(root.payload);
   if (!payload) return null;
   const student = asObject(payload.student);
   if (!student || typeof student.id !== "string" || typeof student.token !== "string") return null;
   const sessions = Array.isArray(payload.sessions) ? (payload.sessions as Session[]) : [];
-  const consultations = Array.isArray(payload.consultations)
-    ? (payload.consultations as ConsultationRecord[])
-    : [];
   const teacherObj = payload.teacher === null ? null : asObject(payload.teacher);
   const teacher = teacherObj ? (teacherObj as Teacher) : null;
   const stateKv = normalizeStateKvStrings(payload.stateKv);
   return {
     format: "tutorweb_student_backup",
-    version: 1,
+    version: version as 1 | 2,
     exportedAt: typeof root.exportedAt === "string" ? root.exportedAt : "",
     exportedByRole: root.exportedByRole === "a" || root.exportedByRole === "t" || root.exportedByRole === "s"
       ? (root.exportedByRole as Role)
@@ -241,7 +216,6 @@ function parseStudentBackupFile(raw: unknown): StudentBackupFileV1 | null {
       student: student as Student,
       teacher,
       sessions,
-      consultations,
       stateKv,
     },
   };
@@ -323,61 +297,6 @@ function nextIsoFromRules(args: {
   return null;
 }
 
-function kstWeekdayHourMinuteFromISO(iso: string): { weekday: number; hour: number; minute: number } | null {
-  try {
-    const dt = new Date(iso);
-    if (!Number.isFinite(dt.getTime())) return null;
-    const parts = new Intl.DateTimeFormat("en-US", {
-      timeZone: "Asia/Seoul",
-      weekday: "short",
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: false,
-    }).formatToParts(dt);
-    const wk = parts.find((p) => p.type === "weekday")?.value ?? "";
-    const hh = Number(parts.find((p) => p.type === "hour")?.value ?? "0");
-    const mm = Number(parts.find((p) => p.type === "minute")?.value ?? "0");
-    const weekdayMap: Record<string, number> = {
-      Sun: 0,
-      Mon: 1,
-      Tue: 2,
-      Wed: 3,
-      Thu: 4,
-      Fri: 5,
-      Sat: 6,
-    };
-    const weekday = weekdayMap[wk];
-    if (!Number.isFinite(weekday) || !Number.isFinite(hh) || !Number.isFinite(mm)) return null;
-    return { weekday, hour: hh, minute: mm };
-  } catch {
-    return null;
-  }
-}
-
-function resolveDurationMinForSession(iso: string, rules: ScheduleRule[]): number {
-  const normalizedRules = rules
-    .map((rule) => ({
-      weekday: Number(rule.weekday),
-      hour: normalizeHour(Number(rule.hour)),
-      minute: Math.max(0, Math.min(59, Math.floor(Number(rule.minute) || 0))),
-      durationMin:
-        Number.isFinite(Number(rule.durationMin)) && Number(rule.durationMin) > 0
-          ? Math.round(Number(rule.durationMin))
-          : 60,
-    }))
-    .sort((a, b) => a.weekday - b.weekday || a.hour - b.hour || a.minute - b.minute);
-  if (normalizedRules.length === 0) return 60;
-
-  const key = kstWeekdayHourMinuteFromISO(iso);
-  if (!key) return normalizedRules[0].durationMin;
-  const matched = normalizedRules.find(
-    (rule) => rule.weekday === key.weekday && rule.hour === key.hour && rule.minute === key.minute
-  );
-  return (matched ?? normalizedRules[0]).durationMin;
-}
-
-
-
 export default function StudentHubCore({
   role,
   token,
@@ -399,12 +318,10 @@ export default function StudentHubCore({
   const {
     student,
     sessions,
-    consultRecords,
     isInitialLoaded,
     refresh: refreshStudentContext,
     setStudent,
     setSessions,
-    setConsultRecords,
   } = useStudentSessionContext(token);
 
   const [scheduleEditOpen, setScheduleEditOpen] = useState(false);
@@ -431,6 +348,7 @@ export default function StudentHubCore({
   const [isBackupWorking, setIsBackupWorking] = useState(false);
   const [isRestoreWorking, setIsRestoreWorking] = useState(false);
   const restoreInputRef = useRef<HTMLInputElement | null>(null);
+  const autoSessionRepairKeyRef = useRef("");
   const localOnlyMode = isLocalOnlySnapshotMode();
 
   useEffect(() => {
@@ -444,8 +362,7 @@ export default function StudentHubCore({
       if (!se.key) return;
       if (
         se.key === "tutorweb_students_v1" ||
-        se.key === "tutorweb_sessions_v1" ||
-        se.key === "tutorweb_consultations_v1"
+        se.key === "tutorweb_sessions_v1"
       ) {
         void refreshStudentContext();
       }
@@ -523,17 +440,7 @@ export default function StudentHubCore({
     if (!student) return { label: "-", bg: "#6b7280", color: "#fff" };
 
     const today = todayYmdKST();
-    const pauseDate = student.pauseEffectiveDate;
-    const latestPause = [...consultRecords]
-      .filter((r) => r.purpose === "pause_request")
-      .sort((a, b) => {
-        const ad = `${a.date ?? ""}|${a.createdAt ?? ""}`;
-        const bd = `${b.date ?? ""}|${b.createdAt ?? ""}`;
-        return ad.localeCompare(bd);
-      })
-      .at(-1);
-
-    const pauseLifecycle = computePauseLifecycle(today, pauseDate);
+    const pauseLifecycle = "none" as const;
     let passedCount = 0;
     for (const s of sessions) {
       const { effectiveISO } = computeEffectiveISO({
@@ -571,14 +478,14 @@ export default function StudentHubCore({
 
     const kind = computeStudentStatusFromMetrics({
       pauseLifecycle,
-      hasPendingPauseRequest: Boolean(latestPause && !latestPause.finalResult),
+      hasPendingPauseRequest: false,
       overdueDays,
       remainingCount,
       passedCount,
     });
     const meta = getStudentStatusMeta(kind);
     return { label: meta.label, bg: meta.bg, color: meta.color };
-  }, [student, sessions, token, baseDatesISO, metaMap, currentCount, consultRecords]);
+  }, [student, sessions, token, baseDatesISO, metaMap, currentCount]);
 
   const showParentPhone = accessRole !== "s";
   const canEdit = canEditSessionMeta(accessRole); // 학생 편집 없음(정책 확정)
@@ -911,10 +818,61 @@ export default function StudentHubCore({
   const history = useMemo(() => student?.paymentHistory ?? [], [student]);
   const formatYmdDot = (ymd?: string) => (ymd ? ymd.replace(/-/g, ".") : "-");
   const baseCount = useMemo(() => computeBaseCount(student, history), [student, history]);
+  const normalizedHistory = useMemo(
+    () => normalizePaymentHistoryRanges(history, baseCount),
+    [history, baseCount]
+  );
+  const expectedTotalFromHistory = useMemo(
+    () => Math.max(0, baseCount + normalizedHistory.reduce((sum, record) => sum + record.addedCount, 0)),
+    [baseCount, normalizedHistory]
+  );
   const displayRecords = useMemo(
     () => buildDisplayRecords(student, history, baseCount).displayRecords,
     [student, history, baseCount]
   );
+
+  useEffect(() => {
+    if (!student || !isInitialLoaded || sessionAddSaving) return;
+
+    const currentPlanCount = Math.max(0, Math.floor(Number(student.planCount) || 0));
+    const currentMaxSessionIndex = sessions.reduce((max, row) => Math.max(max, row.index), 0);
+    const historyChanged = JSON.stringify(normalizedHistory) !== JSON.stringify(history);
+    const planMismatch = currentPlanCount !== expectedTotalFromHistory;
+    const sessionOverflow = currentMaxSessionIndex > expectedTotalFromHistory;
+
+    if (!historyChanged && !planMismatch && !sessionOverflow) {
+      autoSessionRepairKeyRef.current = "";
+      return;
+    }
+
+    const repairKey = [
+      student.id,
+      currentPlanCount,
+      expectedTotalFromHistory,
+      currentMaxSessionIndex,
+      history.length,
+    ].join("|");
+    if (autoSessionRepairKeyRef.current === repairKey) return;
+    autoSessionRepairKeyRef.current = repairKey;
+
+    void (async () => {
+      const ok = await applyHistory(normalizedHistory);
+      if (ok) {
+        autoSessionRepairKeyRef.current = "";
+      }
+    })();
+    // applyHistory는 함수 선언 특성상 렌더마다 identity가 바뀌므로 의존성에서 제외한다.
+    // 이 효과는 데이터 서명(repairKey) 기준으로만 동작한다.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    student,
+    sessions,
+    history,
+    normalizedHistory,
+    expectedTotalFromHistory,
+    isInitialLoaded,
+    sessionAddSaving,
+  ]);
 
   const refundCompletedIndex = useMemo(() => {
     const indices = displayRecords
@@ -943,16 +901,6 @@ export default function StudentHubCore({
   const upcomingSessions = useMemo(() => {
     if (!student) return [];
     const now = new Date();
-    const lastClassIndex =
-      (student.pauseStatus === "confirmed" || student.pauseStatus === "paused") && student.pauseEffectiveDate
-        ? findLastClassIndex({
-          token,
-          sessions,
-          baseDatesISO,
-          metaMap,
-          pauseEffectiveDate: student.pauseEffectiveDate,
-        })
-        : null;
     const candidates: {
       index: number;
       iso: string;
@@ -965,11 +913,6 @@ export default function StudentHubCore({
 
     for (const s of sessions) {
       if (refundCompletedIndex && s.index > refundCompletedIndex) continue;
-      const visibility = getSessionVisibility({
-        index: s.index,
-        lastVisibleIndex: lastClassIndex,
-      });
-      if (visibility === "hidden") continue;
       const { effectiveISO } = computeEffectiveISO({
         token,
         index: s.index,
@@ -983,8 +926,7 @@ export default function StudentHubCore({
       if (dday.diff === null) continue;
       if (dday.diff < 0) continue;
       const meta = metaMap[s.index] ?? {};
-      const durationMin = resolveDurationMinForSession(effectiveISO, rulesForIndex(student, s.index));
-      const isLastClass = Boolean(lastClassIndex ? s.index === lastClassIndex : false);
+      const durationMin = resolveDurationMinForSessionWithMeta(effectiveISO, rulesForIndex(student, s.index), meta);
       const refundStatus =
         refundCompletedIndex && s.index === refundCompletedIndex
           ? "completed"
@@ -998,11 +940,11 @@ export default function StudentHubCore({
         status: meta.status,
         badges: buildSessionContextBadges({
           baseBadges: buildBadges(meta),
-          lastClass: isLastClass,
+          lastClass: false,
           refundStatus,
         }),
         percent: progressPercent(s.index),
-        lastClass: isLastClass,
+        lastClass: false,
       });
     }
 
@@ -1166,6 +1108,7 @@ export default function StudentHubCore({
             overrideDate: "",
             overrideHour: null,
             overrideMinute: null,
+            overrideDurationMin: null,
             overrideSource: "",
           };
           metaChanged = true;
@@ -1301,7 +1244,8 @@ export default function StudentHubCore({
 
     const baseDates = buildBaseDatesISO(student, Math.max(120, currentCount + addedCount + 8));
     const localMetaMap = readMetaMap(token);
-    const maxExistingIndex = sessions.reduce((m, s) => Math.max(m, s.index), 0);
+    // 회차 추가 시작점 검증은 "기록 기준 최종 회차"를 단일 기준으로 사용한다.
+    const maxExistingIndex = Math.max(0, expectedTotalFromHistory);
     if (maxExistingIndex > 0) {
       const { effectiveISO } = computeEffectiveISO({
         token,
@@ -1322,6 +1266,13 @@ export default function StudentHubCore({
       addedCount,
       startIndex: 0,
       endIndex: 0,
+      sessionAddStartDate: startDate,
+      sessionAddWeeklyCount: rules.length,
+      sessionAddRules: rules.map((rule) => ({
+        weekday: rule.weekday,
+        hour: rule.hour,
+        durationHour: normalizeSessionAddDurationHour((rule.durationMin ?? 60) / 60),
+      })),
       memo: `회차 추가(${addedCount}회, 주 ${rules.length}회 패턴)`,
       createdAt: nowIso(),
     };
@@ -1369,7 +1320,7 @@ export default function StudentHubCore({
     basePatch?: Partial<Student>,
     skipSessions = false,
     options?: {
-      consultationRecords?: ConsultationRecord[];
+      baseCountOverride?: number;
     }
   ): Promise<boolean> {
     if (!student) return false;
@@ -1386,12 +1337,22 @@ export default function StudentHubCore({
       return false;
     }
 
-    const normalized = normalizePaymentHistoryRanges(records, baseCount);
-    const calculatedTotal = baseCount + normalized.reduce((sum, r) => sum + r.addedCount, 0);
+    const normalizedBaseCount = Math.max(
+      0,
+      Math.floor(
+        Number.isFinite(Number(options?.baseCountOverride))
+          ? Number(options?.baseCountOverride)
+          : baseCount
+      )
+    );
+    const normalized = normalizePaymentHistoryRanges(records, normalizedBaseCount);
+    const calculatedTotal = normalizedBaseCount + normalized.reduce((sum, r) => sum + r.addedCount, 0);
     const currentMaxIndex = serverSnapshot.sessions
       .filter((s) => s.studentId === student.id)
       .reduce((m, s) => Math.max(m, s.index), 0);
-    const nextTotal = Math.max(calculatedTotal, currentMaxIndex);
+    // 결제 기록 삭제/축소 시 실제 회차도 함께 줄어들어야 하므로
+    // "현재 최대 회차 유지"가 아니라 "결제기록 계산값"을 기준으로 맞춘다.
+    const nextTotal = Math.max(0, calculatedTotal);
     const updatedStudent = {
       ...student,
       ...basePatch,
@@ -1403,12 +1364,6 @@ export default function StudentHubCore({
 
     let nextAllSessions = serverSnapshot.sessions;
     let nextMetaMap = readMetaMap(token);
-    const nextConsultStore = options?.consultationRecords
-      ? {
-        ...serverSnapshot.consultations,
-        [student.id]: options.consultationRecords,
-      }
-      : null;
 
     const applyMetaPatch = (index: number, patch: Partial<NonNullable<typeof nextMetaMap[number]>>) => {
       const prev = nextMetaMap[index] ?? {};
@@ -1433,6 +1388,10 @@ export default function StudentHubCore({
             merged.overrideMinute === undefined || merged.overrideMinute === null
               ? null
               : Math.max(0, Math.min(59, Math.floor(Number(merged.overrideMinute) || 0))),
+          overrideDurationMin:
+            merged.overrideDurationMin === undefined || merged.overrideDurationMin === null
+              ? null
+              : Math.max(1, Math.floor(Number(merged.overrideDurationMin) || 0)),
           overrideSource:
             merged.overrideSource === "manual" || merged.overrideSource === "extension"
               ? merged.overrideSource
@@ -1501,7 +1460,13 @@ export default function StudentHubCore({
       // -----------------------------------------------------------------
 
       for (let idx = nextTotal + 1; idx <= prevMaxIndex; idx++) {
-        applyMetaPatch(idx, { overrideDate: "", overrideHour: null, overrideMinute: null, overrideSource: "" });
+        applyMetaPatch(idx, {
+          overrideDate: "",
+          overrideHour: null,
+          overrideMinute: null,
+          overrideDurationMin: null,
+          overrideSource: "",
+        });
       }
 
       const syncedBaseDates = buildBaseDatesISO(updatedStudent, 60);
@@ -1523,9 +1488,6 @@ export default function StudentHubCore({
       if (!skipSessions) {
         nextStateKv[metaMapKey(token)] = JSON.stringify(nextMetaMap);
       }
-      if (nextConsultStore) {
-        nextStateKv[SHARED_CONSULTATIONS_KEY] = JSON.stringify(nextConsultStore);
-      }
 
       await pushSharedSnapshot({
         students: nextStudents,
@@ -1538,10 +1500,6 @@ export default function StudentHubCore({
         browserStorage.setItem(metaMapKey(token), JSON.stringify(nextMetaMap));
         window.dispatchEvent(new CustomEvent(TUTORWEB_EVENTS.metaMapUpdated, { detail: { token } }));
         saveSessions(nextAllSessions, { skipSharedSnapshot: true });
-      }
-      if (nextConsultStore && options?.consultationRecords) {
-        saveAllConsultationsStore(nextConsultStore, { skipSharedSnapshot: true });
-        setConsultRecords(options.consultationRecords);
       }
 
       setStudent(updatedStudent);
@@ -1577,7 +1535,6 @@ export default function StudentHubCore({
       const sourceSessions = snapshot.sessions
         .filter((row) => row.studentId === sourceStudent.id)
         .sort((a, b) => a.index - b.index);
-      const sourceConsultations = snapshot.consultations[sourceStudent.id] ?? [];
 
       let stateKvAll: Record<string, string> = {};
       if (snapshot.source === "server") {
@@ -1595,7 +1552,7 @@ export default function StudentHubCore({
       const backupStateKv = pickStudentBackupStateKv(stateKvAll, sourceStudent.token ?? token);
       const backup: StudentBackupFileV1 = {
         format: "tutorweb_student_backup",
-        version: 1,
+        version: 2,
         exportedAt: nowIso(),
         exportedByRole: accessRole,
         source: snapshot.source,
@@ -1603,7 +1560,6 @@ export default function StudentHubCore({
           student: sourceStudent,
           teacher: sourceTeacher,
           sessions: sourceSessions,
-          consultations: sourceConsultations,
           stateKv: backupStateKv,
         },
       };
@@ -1688,17 +1644,9 @@ export default function StudentHubCore({
         ? baseline.teachers.filter((row) => row.id !== importedTeacher.id).concat(importedTeacher)
         : baseline.teachers;
 
-      const consultRaw = localStateKv[SHARED_CONSULTATIONS_KEY] ?? "";
-      const consultStore = parseConsultStoreFromRaw(consultRaw);
-      for (const studentId of removeStudentIds) {
-        delete consultStore[studentId];
-      }
-      consultStore[importedStudent.id] = parsed.payload.consultations ?? [];
-
       const dropStateKeys = collectStudentScopedStateKeys(localStateKv, importedToken);
       const nextStateKvPatch: Record<string, string> = {
         ...parsed.payload.stateKv,
-        [SHARED_CONSULTATIONS_KEY]: JSON.stringify(consultStore),
       };
 
       await pushSharedSnapshot({
@@ -1957,58 +1905,22 @@ export default function StudentHubCore({
         ) : (
           <div style={{ marginTop: 8, display: "grid", gap: 8 }}>
             {upcomingSessions.map((item) => {
+              const dday = getDdayMeta(item.iso, new Date());
+              const model = buildSessionCardViewModel({
+                index: item.index,
+                dateTimeText: fmtKST_yyyyMMdd_TimeRange(item.iso, item.durationMin),
+                dday: dday && dday.diff !== null ? dday : null,
+                status: (item.status as "present" | "absent" | "planned" | undefined) ?? "planned",
+                achievementPercent: item.percent,
+                extraBadges: item.badges,
+              });
               return (
-                <div
+                <SessionCardRow
                   key={`${item.index}-${item.iso}`}
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "1fr auto",
-                    gap: 12,
-                    alignItems: "center",
-                    padding: "8px 10px",
-                    border: "1px solid var(--surface-border)",
-                    borderRadius: 8,
-                    background: "var(--surface-bg)",
-                  }}
-                  onMouseEnter={(e) => (e.currentTarget.style.background = "var(--surface-hover)")}
-                  onMouseLeave={(e) => (e.currentTarget.style.background = "var(--surface-bg)")}
-                >
-                  <div
-                    onClick={() => router.push(`${sessionListHref}/${item.index}`)}
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "110px 1fr",
-                      gap: 30,
-                      alignItems: "center",
-                      cursor: "pointer",
-                    }}
-                  >
-                    <div style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 700, whiteSpace: "nowrap" }}>
-                      {(() => {
-                        const dday = getDdayMeta(item.iso, new Date());
-                        if (!dday || dday.diff === null) return null;
-                        return <Badge className={`text-white ${dday.className}`}>{dday.label}</Badge>;
-                      })()}
-                      <span>{item.index}회차</span>
-                    </div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                      <div>{fmtKST_yyyyMMdd_TimeRange(item.iso, item.durationMin)}</div>
-                      <AchievementBadge percent={item.percent} />
-                      {(() => {
-                        const statusBadge = getSessionStatusBadge(item.status as "present" | "absent" | "planned");
-                        return <Badge style={statusBadge.style}>{statusBadge.label}</Badge>;
-                      })()}
-                      {item.badges.map((badge) => (
-                        <Badge key={`${item.index}:${badge}`} style={getSessionExtraBadgeStyle(badge)}>
-                          {badge}
-                        </Badge>
-                      ))}
-                    </div>
-                  </div>
-                  <div onClick={(e) => e.stopPropagation()} style={{ display: "flex", gap: 6 }}>
-                    <SessionQuickActions role={accessRole} token={token} index={item.index} />
-                  </div>
-                </div>
+                  model={model}
+                  onClick={() => router.push(`${sessionListHref}/${item.index}`)}
+                  rightSlot={<SessionQuickActions role={accessRole} token={token} index={item.index} />}
+                />
               );
             })}
           </div>

@@ -14,7 +14,6 @@ import {
 import { syncGoogleCalendarForExistingSessions } from "@/lib/storage/sessions";
 import {
   isSharedStateKvKey,
-  SHARED_CONSULTATIONS_KEY,
   SHARED_LECTURE_TREE_KEY,
   SHARED_META_MAP_PREFIX,
 } from "@/lib/storage/sharedStateKeys";
@@ -23,6 +22,7 @@ import { TUTORWEB_EVENTS } from "@/lib/events/tutorwebEvents";
 const PUSH_DEBOUNCE_MS = 700;
 const PUSH_RETRY_MS = 1500;
 const AUTH_KEY = "tutorweb_auth_session_v1";
+const LEGACY_CONSULT_STORE_KEY = "tutorweb_consultations_v1";
 
 const PENING_LOCK_TIMEOUT_MS = 5000; 
 
@@ -34,6 +34,13 @@ export default function SharedSnapshotAgent() {
   const calendarSyncKeyRef = useRef("");
 
   useEffect(() => {
+    // 상담 정책 제거: 로컬 레거시 상담 저장소를 정리한다.
+    try {
+      window.localStorage.removeItem(LEGACY_CONSULT_STORE_KEY);
+    } catch {
+      // no-op
+    }
+
     const trySyncCalendarForCurrentLogin = () => {
       const auth = loadAuthSession();
       if (!auth?.email || !auth?.providerAccessToken) {
@@ -146,7 +153,6 @@ export default function SharedSnapshotAgent() {
         dispatchLocalSnapshotUpdated({ includeSessions: key === SESSIONS_KEY });
       } else if (isSharedStateKvKey(key)) {
         // 기타 공유 상태 변경 시 관련 이벤트 발생
-        if (key === SHARED_CONSULTATIONS_KEY) window.dispatchEvent(new CustomEvent(TUTORWEB_EVENTS.consultationsUpdated));
         if (key === SHARED_LECTURE_TREE_KEY) window.dispatchEvent(new CustomEvent(TUTORWEB_EVENTS.lectureTreeUpdated));
         if (key.startsWith(SHARED_META_MAP_PREFIX)) window.dispatchEvent(new CustomEvent(TUTORWEB_EVENTS.metaMapUpdated));
       }
