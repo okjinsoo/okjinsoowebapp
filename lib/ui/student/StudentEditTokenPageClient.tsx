@@ -7,12 +7,13 @@ import StudentEditClient from "@/lib/ui/student/StudentEditClient";
 type StudentEditTokenPageClientProps = {
   mode: "admin" | "teacher";
   onDoneGoTo: string;
+  tokenParamName?: string;
 };
 
 export default function StudentEditTokenPageClient(props: StudentEditTokenPageClientProps) {
-  const { mode, onDoneGoTo } = props;
+  const { mode, onDoneGoTo, tokenParamName = "token" } = props;
   const params = useParams();
-  const tokenParam = params?.token;
+  const tokenParam = params?.[tokenParamName];
   const token = Array.isArray(tokenParam)
     ? String(tokenParam[0] ?? "")
     : String(tokenParam ?? "");

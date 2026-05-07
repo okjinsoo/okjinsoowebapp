@@ -303,12 +303,14 @@ export default function StudentHubCore({
   prefix,
   hideTokenInRoute = false,
   editPrefix,
+  backToTmainHref,
 }: {
   role: Role;
   token: string;
   prefix: string; // "/a/students" | "/t/students" | "/s"
   hideTokenInRoute?: boolean;
   editPrefix?: string;
+  backToTmainHref?: string | null;
 }) {
   const router = useRouter();
   const accessRole: Role = role;
@@ -813,7 +815,7 @@ export default function StudentHubCore({
   }
 
   const backToTmain =
-    accessRole === "a" ? "/a/tmain" : accessRole === "t" ? "/t/tmain" : null;
+    backToTmainHref ?? (accessRole === "a" ? "/a/tmain" : accessRole === "t" ? "/t/tmain" : null);
 
   const history = useMemo(() => student?.paymentHistory ?? [], [student]);
   const formatYmdDot = (ymd?: string) => (ymd ? ymd.replace(/-/g, ".") : "-");

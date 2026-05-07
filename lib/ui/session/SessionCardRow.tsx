@@ -1,6 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
+import Link from "next/link";
 import AchievementBadge from "@/lib/ui/common/AchievementBadge";
 import Badge from "@/lib/ui/common/Badge";
 import type { SessionCardViewModel } from "@/lib/ui/session/sessionCardFactory";
@@ -8,6 +9,7 @@ import type { SessionCardViewModel } from "@/lib/ui/session/sessionCardFactory";
 type Props = {
   model: SessionCardViewModel;
   onClick?: () => void;
+  href?: string;
   rightSlot?: ReactNode;
   inlineBadgeSlot?: ReactNode;
   titleSlot?: ReactNode;
@@ -17,6 +19,7 @@ type Props = {
 export default function SessionCardRow({
   model,
   onClick,
+  href,
   rightSlot,
   inlineBadgeSlot,
   titleSlot,
@@ -39,38 +42,76 @@ export default function SessionCardRow({
       onMouseEnter={(e) => (e.currentTarget.style.background = "var(--surface-hover)")}
       onMouseLeave={(e) => (e.currentTarget.style.background = "var(--surface-bg)")}
     >
-      <div
-        onClick={onClick}
-        style={{
-          display: "grid",
-          gridTemplateColumns: `${leadColumnWidth} 1fr`,
-          gap: 30,
-          alignItems: "center",
-          cursor: onClick ? "pointer" : "default",
-        }}
-      >
-        {titleSlot ? (
-          <>{titleSlot}</>
-        ) : (
-          <div style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 700, whiteSpace: "nowrap" }}>
-            {model.dday && model.dday.diff !== null ? (
-              <Badge className={`text-white ${model.dday.className}`}>{model.dday.label}</Badge>
-            ) : null}
-            <span>{model.title}</span>
+      {href ? (
+        <Link
+          href={href}
+          onClick={() => onClick?.()}
+          style={{
+            display: "grid",
+            gridTemplateColumns: `${leadColumnWidth} 1fr`,
+            gap: 30,
+            alignItems: "center",
+            cursor: "pointer",
+            color: "inherit",
+            textDecoration: "none",
+          }}
+        >
+          {titleSlot ? (
+            <>{titleSlot}</>
+          ) : (
+            <div style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 700, whiteSpace: "nowrap" }}>
+              {model.dday && model.dday.diff !== null ? (
+                <Badge className={`text-white ${model.dday.className}`}>{model.dday.label}</Badge>
+              ) : null}
+              <span>{model.title}</span>
+            </div>
+          )}
+          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+            <div>{model.dateTimeText}</div>
+            <AchievementBadge percent={model.achievementPercent} />
+            <Badge style={model.statusBadge.style}>{model.statusBadge.label}</Badge>
+            {model.extraBadges.map((badge) => (
+              <Badge key={`${model.index}:${badge.label}`} style={badge.style}>
+                {badge.label}
+              </Badge>
+            ))}
+            {inlineBadgeSlot}
           </div>
-        )}
-        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-          <div>{model.dateTimeText}</div>
-          <AchievementBadge percent={model.achievementPercent} />
-          <Badge style={model.statusBadge.style}>{model.statusBadge.label}</Badge>
-          {model.extraBadges.map((badge) => (
-            <Badge key={`${model.index}:${badge.label}`} style={badge.style}>
-              {badge.label}
-            </Badge>
-          ))}
-          {inlineBadgeSlot}
+        </Link>
+      ) : (
+        <div
+          onClick={() => onClick?.()}
+          style={{
+            display: "grid",
+            gridTemplateColumns: `${leadColumnWidth} 1fr`,
+            gap: 30,
+            alignItems: "center",
+            cursor: onClick ? "pointer" : "default",
+          }}
+        >
+          {titleSlot ? (
+            <>{titleSlot}</>
+          ) : (
+            <div style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 700, whiteSpace: "nowrap" }}>
+              {model.dday && model.dday.diff !== null ? (
+                <Badge className={`text-white ${model.dday.className}`}>{model.dday.label}</Badge>
+              ) : null}
+              <span>{model.title}</span>
+            </div>
+          )}
+          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+            <div>{model.dateTimeText}</div>
+            <AchievementBadge percent={model.achievementPercent} />
+            <Badge style={model.statusBadge.style}>{model.statusBadge.label}</Badge>
+            {model.extraBadges.map((badge) => (
+              <Badge key={`${model.index}:${badge.label}`} style={badge.style}>
+                {badge.label}
+              </Badge>
+            ))}
+            {inlineBadgeSlot}
+          </div>
         </div>
-      </div>
+      )}
       {rightSlot ? (
         <div
           onClick={(e) => {

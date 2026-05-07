@@ -4,7 +4,7 @@ import type { Teacher } from "@/lib/types/index";
 
 type TeacherListSectionProps = {
   teachers: Teacher[];
-  onOpenTeacherView: () => void;
+  onOpenTeacherView: (teacher: Teacher) => void;
   onEditTeacher: (teacher: Teacher) => void;
   onRemoveTeacher: (teacher: Teacher) => void;
 };
@@ -27,7 +27,7 @@ export default function TeacherListSection(props: TeacherListSectionProps) {
 
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
                 <button
-                  onClick={() => onOpenTeacherView()}
+                  onClick={() => onOpenTeacherView(teacher)}
                   style={{ padding: "6px 10px" }}
                   title="선생님 화면으로 이동"
                 >

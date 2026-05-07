@@ -29,14 +29,28 @@ import type { TeacherSessionRow } from "@/lib/ui/teacher/teacherSessionCardFacto
 
 type TeacherMainRow = TeacherSessionRow & { diff: number };
 
-export default function TeacherMainClient({ initialRole = "t" }: { initialRole?: "a" | "t" }) {
+type TeacherMainClientProps = {
+  initialRole?: "a" | "t";
+  adminTeacherToken?: string | null;
+  adminPathMode?: "legacy" | "teacherScoped";
+};
+
+export default function TeacherMainClient({
+  initialRole = "t",
+  adminTeacherToken = null,
+  adminPathMode = "legacy",
+}: TeacherMainClientProps) {
   const router = useRouter();
   const { students, teachers, metricsMap } = useStudentRegistry();
   const [selectedTeacherId, setSelectedTeacherId] = useState<string | null>(() => loadCurrentTeacherId());
+  const normalizedAdminTeacherToken = (adminTeacherToken ?? "").trim();
   const teacherId = useMemo(() => {
     if (initialRole === "t") return findTeacherByLoginEmail(teachers)?.id ?? null;
+    if (adminPathMode === "teacherScoped" && normalizedAdminTeacherToken) {
+      return teachers.find((teacher) => teacher.token === normalizedAdminTeacherToken)?.id ?? null;
+    }
     return selectedTeacherId;
-  }, [initialRole, teachers, selectedTeacherId]);
+  }, [initialRole, teachers, selectedTeacherId, adminPathMode, normalizedAdminTeacherToken]);
 
   useEffect(() => {
     if (initialRole !== "t") return;
@@ -56,6 +70,10 @@ export default function TeacherMainClient({ initialRole = "t" }: { initialRole?:
 
   const currentTeacherName = useMemo(() => {
     return teachers.find((t) => t.id === teacherId)?.name ?? (teacherId ? `알 수 없음` : "");
+  }, [teachers, teacherId]);
+  const currentTeacherToken = useMemo(() => {
+    const token = teachers.find((teacher) => teacher.id === teacherId)?.token ?? "";
+    return token.trim() || null;
   }, [teachers, teacherId]);
 
   const visibleStudents = useMemo(() => {
@@ -93,6 +111,7 @@ export default function TeacherMainClient({ initialRole = "t" }: { initialRole?:
 
         rows.push({
           studentId: st.id,
+          teacherToken: currentTeacherToken ?? undefined,
           token: st.token,
           studentName: st.name,
           index: s.index,
@@ -110,7 +129,7 @@ export default function TeacherMainClient({ initialRole = "t" }: { initialRole?:
       }
     }
     return rows;
-  }, [visibleStudents, metricsMap]);
+  }, [visibleStudents, metricsMap, currentTeacherToken]);
 
   const todayRows = useMemo(
     () => allRows.filter((r) => r.diff === 0).sort((a, b) => a.effectiveISO.localeCompare(b.effectiveISO)),
@@ -168,7 +187,13 @@ export default function TeacherMainClient({ initialRole = "t" }: { initialRole?:
           students={students}
           teacherId={teacherId}
           studentToken={null}
-          onTeacherChange={(next) => setSelectedTeacherId(next)}
+          onTeacherChange={(next) => {
+            setSelectedTeacherId(next);
+            if (initialRole !== "a" || adminPathMode !== "teacherScoped") return;
+            const nextToken = (teachers.find((teacher) => teacher.id === next)?.token ?? "").trim();
+            if (!nextToken) return;
+            router.push(`/a/tmain/${encodeURIComponent(nextToken)}`);
+          }}
         />
       </div>
 
@@ -200,6 +225,14 @@ export default function TeacherMainClient({ initialRole = "t" }: { initialRole?:
         <TeacherStudentListCard
           students={visibleStudents}
           role={initialRole}
+          studentHrefOf={
+            initialRole === "a" && currentTeacherToken
+              ? (student) =>
+                  `/a/tmain/${encodeURIComponent(currentTeacherToken)}/smain/${encodeURIComponent(
+                    student.token
+                  )}`
+              : undefined
+          }
           onSyncOwnStudents={onClickSyncOwnStudents}
           onAddStudent={() => router.push(`/${initialRole}/tmain/new`)}
         />

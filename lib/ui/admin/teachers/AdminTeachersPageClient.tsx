@@ -10,8 +10,13 @@ export default function AdminTeachersPageClient() {
   const router = useRouter();
   const { teachers, error, removeTeacher } = useTeachersPageData();
 
-  const handleOpenTeacherView = () => {
-    router.push("/a/tmain");
+  const handleOpenTeacherView = (teacher: Teacher) => {
+    const token = (teacher.token ?? "").trim();
+    if (!token) {
+      router.push("/a/tmain");
+      return;
+    }
+    router.push(`/a/tmain/${encodeURIComponent(token)}`);
   };
 
   const handleEditTeacher = (teacher: Teacher) => {

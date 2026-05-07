@@ -2,6 +2,7 @@ import { buildSessionCardViewModel, type SessionCardViewModel } from "@/lib/ui/s
 
 export type TeacherSessionRow = {
   studentId: string;
+  teacherToken?: string;
   token: string;
   studentName: string;
   index: number;
@@ -32,6 +33,14 @@ export function buildTeacherSessionCardViewModel(args: {
   role: "a" | "t" | "s";
 }): TeacherSessionCardViewModel {
   const { row, role } = args;
+  const detailHref =
+    role === "a"
+      ? row.teacherToken
+        ? `/a/tmain/${encodeURIComponent(row.teacherToken)}/smain/${encodeURIComponent(row.token)}/session/${row.index}`
+        : `/a/tmain`
+      : role === "t"
+        ? `/t/tmain/${encodeURIComponent(row.token)}/session/${row.index}`
+        : `/${role}/smain/session/${row.index}?token=${encodeURIComponent(row.token)}`;
   const badges = row.badges ?? [];
   const showLastClassBadge = Boolean(row.lastClass || badges.includes("마지막 수업"));
   const sessionCardModel = buildSessionCardViewModel({
@@ -45,7 +54,7 @@ export function buildTeacherSessionCardViewModel(args: {
   });
   return {
     key: `today-${row.token}-${row.index}`,
-    detailHref: `/${role}/smain/session/${row.index}?token=${encodeURIComponent(row.token)}`,
+    detailHref,
     token: row.token,
     index: row.index,
     studentName: row.studentName,

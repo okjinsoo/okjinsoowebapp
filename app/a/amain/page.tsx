@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { saveCurrentStudentToken } from "@/lib/ui/common/roleGateStorage";
 import {
   getStudentStatusMeta,
@@ -15,13 +15,13 @@ import { useStudentRegistry } from "@/lib/hooks/useStudentRegistry";
 import DriveControlPanel from "@/lib/ui/admin/DriveControlPanel";
 
 export default function AdminMainPage() {
-  const router = useRouter();
   const { metricsMap } = useStudentRegistry();
 
   const statusCards = useMemo(() => {
     return Array.from(metricsMap.values()).map(({ student, teacher, status, passedCount, remainingCount, lastSessionISO }) => ({
       studentId: student.id,
       token: student.token ?? "",
+      teacherToken: teacher?.token ?? "",
       studentName: student.name ?? "-",
       teacherId: student.teacherId ?? null,
       teacherName: teacher?.name ?? "-",
@@ -36,8 +36,12 @@ export default function AdminMainPage() {
     <main style={{ padding: 20, maxWidth: 860, margin: "0 auto" }}>
       <h1 className="page-title">관리자 메인</h1>
       <div style={{ marginTop: 12, display: "flex", gap: 10, flexWrap: "wrap" }}>
-        <button className="btn btn-blue" onClick={() => router.push("/a/students")} style={{ padding: "10px 14px", fontWeight: 800 }}>학생 관리</button>
-        <button className="btn btn-green" onClick={() => router.push("/a/teachers")} style={{ padding: "10px 14px", fontWeight: 800 }}>선생님 관리</button>
+        <Link className="btn btn-blue" href="/a/students" style={{ padding: "10px 14px", fontWeight: 800, textDecoration: "none" }}>
+          학생 관리
+        </Link>
+        <Link className="btn btn-green" href="/a/teachers" style={{ padding: "10px 14px", fontWeight: 800, textDecoration: "none" }}>
+          선생님 관리
+        </Link>
       </div>
 
       <DriveControlPanel />
@@ -54,15 +58,31 @@ export default function AdminMainPage() {
             </div>
             <div style={{ marginTop: 8, display: "grid", gap: 8 }}>
               {sectionCards.map((c) => (
-                <div
+                <Link
                   key={c.studentId}
-                  style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr 1fr 1.4fr", gap: 12, alignItems: "center", padding: "8px 10px", border: "1px solid var(--surface-border)", borderRadius: 8, cursor: "pointer", background: "var(--surface-bg)" }}
+                  href={
+                    c.teacherToken
+                      ? `/a/tmain/${encodeURIComponent(c.teacherToken)}/smain/${encodeURIComponent(c.token)}`
+                      : `/a/tmain/${encodeURIComponent(c.token)}`
+                  }
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "1.2fr 1fr 1fr 1.4fr",
+                    gap: 12,
+                    alignItems: "center",
+                    padding: "8px 10px",
+                    border: "1px solid var(--surface-border)",
+                    borderRadius: 8,
+                    cursor: "pointer",
+                    background: "var(--surface-bg)",
+                    color: "inherit",
+                    textDecoration: "none",
+                  }}
                   onMouseEnter={(e) => (e.currentTarget.style.background = "var(--surface-hover)")}
                   onMouseLeave={(e) => (e.currentTarget.style.background = "var(--surface-bg)")}
                   onClick={() => {
                     if (c.teacherId) saveCurrentTeacherId(c.teacherId);
                     saveCurrentStudentToken(c.token);
-                    router.push("/a/smain");
                   }}
                 >
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -71,7 +91,7 @@ export default function AdminMainPage() {
                   <div>{teacherNamePrefix(c.teacherName)}</div>
                   <div>남은 {c.remainingCount}회차</div>
                   <div>{c.lastSessionLabel}</div>
-                </div>
+                </Link>
               ))}
             </div>
           </section>

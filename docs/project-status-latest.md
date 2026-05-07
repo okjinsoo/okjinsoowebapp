@@ -1,12 +1,13 @@
 # Project Status (Latest)
 
-기준 시각: 2026-05-08 02:07 (KST)
+기준 시각: 2026-05-08 04:04 (KST)
 대상 프로젝트: `v1`
 
 ## 1분 요약
 
 - 최신 운영 반영본: 2026-05-07 17:26 (KST), `dpl_5AuCDsWmHoEVbeBBSCW8GALK2cF3`
 - 운영 주소: `https://okjinsoowebapp.vercel.app`
+- 관리자 `tmain`을 `teacherToken/studentToken` 기반 경로로 재정비하고, 구경로는 호환 리다이렉트로 유지
 - 인증/권한 보호 체계(브리지 쿠키 + 경로가드 + API 권한검증) 정비 완료
 - Google Calendar/Drive `401` 자동 복구 + `next` 복귀 + 중복 알림 억제(dedupe) 적용
 - 회차 운영은 담당 선생님 소유권 기준, 비소유자 변경 시 `pending` 재동기화 정책 유지
@@ -28,6 +29,7 @@
 
 ## 최근 변경(운영 영향 큰 항목)
 
+- 2026-05-08 04:04: 관리자 `tmain` 경로를 `/a/tmain/[teacherToken]/smain/[studentToken]` 구조로 전환, 구 `/a/tmain/teacher/...`는 리다이렉트 유지, 멀티탭/휠클릭 QA 통과
 - 2026-05-07 17:26: 프로덕션 배포 `dpl_5AuCDsWmHoEVbeBBSCW8GALK2cF3` (최신)
 - 2026-05-06 17:49: `tmain` 회차 카드 공통화, 시간 표기 `HH:mm` 통일
 - 2026-05-06 00:25: 기본회차 `분리보정` 기능 추가

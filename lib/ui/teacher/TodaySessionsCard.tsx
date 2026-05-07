@@ -1,7 +1,6 @@
 // lib/ui/teacher/TodaySessionsCard.tsx
 "use client";
 
-import { useRouter } from "next/navigation";
 import Badge from "@/lib/ui/common/Badge";
 import { saveCurrentStudentToken } from "@/lib/ui/common/roleGateStorage";
 import SessionQuickActions from "@/lib/ui/session/SessionQuickActions";
@@ -30,8 +29,6 @@ export default function TodaySessionsCard({
   leadBadgeLabel = "D-day",
   leadBadgeClassName = "bg-emerald-600 text-white",
 }: Props) {
-  const router = useRouter();
-
   return (
     <section
       style={{
@@ -53,16 +50,16 @@ export default function TodaySessionsCard({
         <div style={{ display: "grid", gap: 8 }}>
           {rows.map((r) => {
             const model = buildTeacherSessionCardViewModel({ row: r, role });
-            const handleOpenSession = () => {
+            const handleSelectSession = () => {
               saveCurrentStudentToken(model.token);
-              router.push(model.detailHref);
             };
 
             return (
               <SessionCardRow
                 key={model.key}
                 model={model.sessionCardModel}
-                onClick={handleOpenSession}
+                href={model.detailHref}
+                onClick={handleSelectSession}
                 titleColumnWidth={170}
                 titleSlot={
                   <div

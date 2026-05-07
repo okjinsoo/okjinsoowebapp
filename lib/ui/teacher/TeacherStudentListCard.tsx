@@ -2,7 +2,7 @@
 "use client";
 
 import React from "react";
-import { useRouter } from "next/navigation";
+import Link from "next/link";
 import type { Student } from "@/lib/types/index";
 import Badge from "@/lib/ui/common/Badge";
 import { formatSchedule } from "@/lib/ui/student/formatters";
@@ -12,6 +12,7 @@ import { computeStudentStatus, getStudentStatusMeta } from "@/lib/factories/stud
 type Props = {
   students: Student[];
   onStudentClick?: (student: Student) => void;
+  studentHrefOf?: (student: Student) => string;
   onAddStudent?: () => void;
   onSyncOwnStudents?: () => void;
   role?: "a" | "t" | "s";
@@ -20,17 +21,19 @@ type Props = {
 export default function TeacherStudentListCard({
   students,
   onStudentClick,
+  studentHrefOf,
   onAddStudent,
   onSyncOwnStudents,
   role = "t",
 }: Props) {
-  const router = useRouter();
-  const handleClick =
-    onStudentClick ??
-    ((s: Student) => {
-      saveCurrentStudentToken(s.token);
-      router.push(`/${role}/smain`);
-    });
+  const handleClick = onStudentClick;
+
+  const studentHref = (student: Student) => {
+    if (role === "a" || role === "t") {
+      return `/${role}/tmain/${encodeURIComponent(student.token)}`;
+    }
+    return `/${role}/smain`;
+  };
 
   const statusMetaOf = (s: Student) => {
     return getStudentStatusMeta(computeStudentStatus(s));
@@ -98,35 +101,61 @@ export default function TeacherStudentListCard({
         <div style={{ marginTop: 8, color: "var(--text-muted)" }}>학생이 없습니다.</div>
       ) : (
         <div style={{ marginTop: 10, display: "grid", gap: 6 }}>
-          {students.map((s) => (
-            <div
-              key={s.id}
-              style={{
-                display: "grid",
-                gridTemplateColumns: "0.8fr minmax(0, 1.2fr)",
-                gap: 6,
-                padding: "8px 10px",
-                border: "1px solid var(--surface-border)",
-                borderRadius: 8,
-                background: "var(--surface-bg)",
-                cursor: "pointer",
-              }}
-              onClick={() => handleClick(s)}
-              onMouseEnter={(e) => (e.currentTarget.style.background = "var(--surface-hover)")}
-              onMouseLeave={(e) => (e.currentTarget.style.background = "var(--surface-bg)")}
-            >
-              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                <span>
-                  {s.cohort ?? "-"} · <span style={{ fontWeight: 700 }}>{s.name}</span>
-                </span>
-                {(() => {
-                  const meta = statusMetaOf(s);
-                  return <Badge tone={meta.tone}>{meta.label}</Badge>;
-                })()}
-              </div>
-              <div style={{ textAlign: "left" }}>{scheduleTextOf(s) || "-"}</div>
-            </div>
-          ))}
+          {students.map((s) => {
+            const rowStyle: React.CSSProperties = {
+              display: "grid",
+              gridTemplateColumns: "0.8fr minmax(0, 1.2fr)",
+              gap: 6,
+              padding: "8px 10px",
+              border: "1px solid var(--surface-border)",
+              borderRadius: 8,
+              background: "var(--surface-bg)",
+              cursor: "pointer",
+              color: "inherit",
+              textDecoration: "none",
+            };
+            const rowContent = (
+              <>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                  <span>
+                    {s.cohort ?? "-"} · <span style={{ fontWeight: 700 }}>{s.name}</span>
+                  </span>
+                  {(() => {
+                    const meta = statusMetaOf(s);
+                    return <Badge tone={meta.tone}>{meta.label}</Badge>;
+                  })()}
+                </div>
+                <div style={{ textAlign: "left" }}>{scheduleTextOf(s) || "-"}</div>
+              </>
+            );
+
+            if (handleClick) {
+              return (
+                <div
+                  key={s.id}
+                  style={rowStyle}
+                  onClick={() => handleClick(s)}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = "var(--surface-hover)")}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = "var(--surface-bg)")}
+                >
+                  {rowContent}
+                </div>
+              );
+            }
+
+            return (
+              <Link
+                key={s.id}
+                href={studentHrefOf ? studentHrefOf(s) : studentHref(s)}
+                style={rowStyle}
+                onClick={() => saveCurrentStudentToken(s.token)}
+                onMouseEnter={(e) => (e.currentTarget.style.background = "var(--surface-hover)")}
+                onMouseLeave={(e) => (e.currentTarget.style.background = "var(--surface-bg)")}
+              >
+                {rowContent}
+              </Link>
+            );
+          })}
         </div>
       )}
     </section>
