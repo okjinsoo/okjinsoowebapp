@@ -1,11 +1,11 @@
 # Project Status (Latest)
 
-기준 시각: 2026-05-08 04:04 (KST)
+기준 시각: 2026-05-08 04:08 (KST)
 대상 프로젝트: `v1`
 
 ## 1분 요약
 
-- 최신 운영 반영본: 2026-05-07 17:26 (KST), `dpl_5AuCDsWmHoEVbeBBSCW8GALK2cF3`
+- 최신 운영 반영본: 2026-05-08 04:06 (KST), `dpl_BbF9j6bm7LsqxJ2PG44cN6Y3AbA4`
 - 운영 주소: `https://okjinsoowebapp.vercel.app`
 - 관리자 `tmain`을 `teacherToken/studentToken` 기반 경로로 재정비하고, 구경로는 호환 리다이렉트로 유지
 - 인증/권한 보호 체계(브리지 쿠키 + 경로가드 + API 권한검증) 정비 완료
@@ -29,8 +29,9 @@
 
 ## 최근 변경(운영 영향 큰 항목)
 
+- 2026-05-08 04:06: 프로덕션 배포 `dpl_BbF9j6bm7LsqxJ2PG44cN6Y3AbA4` (최신)
 - 2026-05-08 04:04: 관리자 `tmain` 경로를 `/a/tmain/[teacherToken]/smain/[studentToken]` 구조로 전환, 구 `/a/tmain/teacher/...`는 리다이렉트 유지, 멀티탭/휠클릭 QA 통과
-- 2026-05-07 17:26: 프로덕션 배포 `dpl_5AuCDsWmHoEVbeBBSCW8GALK2cF3` (최신)
+- 2026-05-07 17:26: 프로덕션 배포 `dpl_5AuCDsWmHoEVbeBBSCW8GALK2cF3`
 - 2026-05-06 17:49: `tmain` 회차 카드 공통화, 시간 표기 `HH:mm` 통일
 - 2026-05-06 00:25: 기본회차 `분리보정` 기능 추가
 - 2026-05-05 20:50: 회차 추가 운영 전환, `planCount/sessions` 정합성 자동 복구
