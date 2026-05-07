@@ -40,7 +40,6 @@ export default function ReauthPage() {
     const requestCalendar = shouldRequestCalendarScope(nextPath);
     return buildGoogleAuthUrl(redirectTo, {
       requestCalendar,
-      forceConsent: true,
     });
   }, [loginReady, nextPath]);
 

@@ -200,7 +200,7 @@ export default function HomePage() {
     const nextPath = normalizeNextPath(redirectFrom);
     const redirectTo = buildCallbackRedirectUrl({ origin: window.location.origin, nextPath });
     const requestCalendar = shouldRequestCalendarScope(nextPath);
-    const url = buildGoogleAuthUrl(redirectTo, requestCalendar, { forceConsent: true });
+    const url = buildGoogleAuthUrl(redirectTo, requestCalendar);
     if (!url) {
       setBusy(false);
       setAutoReauthRequested(false);
