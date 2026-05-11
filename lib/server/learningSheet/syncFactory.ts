@@ -43,6 +43,8 @@ type TeacherSheetMap = {
   updatedAt: string;
 };
 
+type SnapshotStateKvRaw = Record<string, unknown>;
+
 type LeafMeta = {
   title: string;
   lectureUrl: string;
@@ -99,6 +101,20 @@ function parseTeacherSheetMap(raw: string | null): TeacherSheetMap | null {
     createdAt: (row.createdAt ?? "").trim() || new Date().toISOString(),
     updatedAt: (row.updatedAt ?? "").trim() || new Date().toISOString(),
   };
+}
+
+function parseTeacherSheetMapValue(raw: unknown): TeacherSheetMap | null {
+  if (typeof raw === "string") {
+    return parseTeacherSheetMap(raw);
+  }
+  if (!raw || typeof raw !== "object") {
+    return null;
+  }
+  try {
+    return parseTeacherSheetMap(JSON.stringify(raw));
+  } catch {
+    return null;
+  }
 }
 
 function normalizeTabName(raw: string): string {
@@ -520,14 +536,10 @@ async function upsertTeacherSheetMap(args: {
     throw new Error(`teacher_sheet_map_fetch_failed:${currentRes.status}`);
   }
 
-  const rows = (await currentRes.json()) as Array<{ state_kv?: Record<string, unknown> | null }>;
+  const rows = (await currentRes.json()) as Array<{ state_kv?: SnapshotStateKvRaw | null }>;
   const stateKvRaw = rows[0]?.state_kv;
-  const merged: Record<string, string> = {};
-  if (stateKvRaw && typeof stateKvRaw === "object") {
-    for (const [key, value] of Object.entries(stateKvRaw)) {
-      if (typeof value === "string") merged[key] = value;
-    }
-  }
+  const merged: SnapshotStateKvRaw =
+    stateKvRaw && typeof stateKvRaw === "object" ? { ...stateKvRaw } : {};
 
   merged[teacherMapKey(args.teacherId)] = JSON.stringify(args.nextValue);
 
@@ -557,6 +569,36 @@ async function upsertTeacherSheetMap(args: {
   }
 }
 
+async function fetchTeacherSheetMapFromSnapshotByTeacherId(teacherId: string): Promise<TeacherSheetMap | null> {
+  const cfg = getSupabaseAdminConfig();
+  if (!cfg) {
+    throw new Error("supabase_admin_config_missing");
+  }
+
+  const fetchUrl = new URL("/rest/v1/app_state_snapshots", cfg.url);
+  fetchUrl.searchParams.set("select", "state_kv");
+  fetchUrl.searchParams.set("id", `eq.${SNAPSHOT_ID}`);
+  fetchUrl.searchParams.set("limit", "1");
+
+  const res = await fetch(fetchUrl.toString(), {
+    method: "GET",
+    headers: {
+      apikey: cfg.serviceRoleKey,
+      Authorization: `Bearer ${cfg.serviceRoleKey}`,
+    },
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    throw new Error(`teacher_sheet_map_fetch_failed:${res.status}`);
+  }
+
+  const rows = (await res.json()) as Array<{ state_kv?: SnapshotStateKvRaw | null }>;
+  const stateKvRaw = rows[0]?.state_kv;
+  if (!stateKvRaw || typeof stateKvRaw !== "object") return null;
+
+  return parseTeacherSheetMapValue(stateKvRaw[teacherMapKey(teacherId)]);
+}
+
 async function ensureTeacherSpreadsheet(args: {
   teacher: Teacher;
   snapshotStateKv: Record<string, string>;
@@ -566,7 +608,10 @@ async function ensureTeacherSpreadsheet(args: {
     throw new Error("google_owner_oauth_not_configured");
   }
 
-  const existing = parseTeacherSheetMap(args.snapshotStateKv[teacherMapKey(args.teacher.id)] ?? null);
+  const mapKey = teacherMapKey(args.teacher.id);
+  const fromViewerSnapshot = parseTeacherSheetMapValue(args.snapshotStateKv[mapKey] ?? null);
+  const existing =
+    fromViewerSnapshot ?? (await fetchTeacherSheetMapFromSnapshotByTeacherId(args.teacher.id));
   if (existing?.spreadsheetId) {
     const nextValue: TeacherSheetMap = {
       ...existing,
