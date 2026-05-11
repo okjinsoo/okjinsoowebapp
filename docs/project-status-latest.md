@@ -1,11 +1,11 @@
 # Project Status (Latest)
 
-기준 시각: 2026-05-08 04:21 (KST)
+기준 시각: 2026-05-08 04:39 (KST)
 대상 프로젝트: `v1`
 
 ## 1분 요약
 
-- 최신 운영 반영본: 2026-05-08 04:18 (KST), `dpl_AMHzET3CpZHcpNp4gobHVwqyJGJx`
+- 최신 운영 반영본: 2026-05-08 04:36 (KST), `dpl_7XGWLu8CDFZ2gn4AjC1Jb3r5VPCT`
 - 운영 주소: `https://okjinsoowebapp.vercel.app`
 - 관리자 `tmain`을 `teacherToken/studentToken` 기반 경로로 재정비하고, 구경로는 호환 리다이렉트로 유지
 - 인증/권한 보호 체계(브리지 쿠키 + 경로가드 + API 권한검증) 정비 완료
@@ -29,7 +29,8 @@
 
 ## 최근 변경(운영 영향 큰 항목)
 
-- 2026-05-08 04:18: 프로덕션 배포 `dpl_AMHzET3CpZHcpNp4gobHVwqyJGJx` (최신)
+- 2026-05-08 04:36: 프로덕션 배포 `dpl_7XGWLu8CDFZ2gn4AjC1Jb3r5VPCT` (최신)
+- 2026-05-08 04:18: 프로덕션 배포 `dpl_AMHzET3CpZHcpNp4gobHVwqyJGJx`
 - 2026-05-08 04:15: 관리자 `tmain` 학생 상세 진입 시 서버 snapshot canonical 조회 제거로 로드 지연 완화
 - 2026-05-08 04:06: 프로덕션 배포 `dpl_BbF9j6bm7LsqxJ2PG44cN6Y3AbA4`
 - 2026-05-08 04:04: 관리자 `tmain` 경로를 `/a/tmain/[teacherToken]/smain/[studentToken]` 구조로 전환, 구 `/a/tmain/teacher/...`는 리다이렉트 유지, 멀티탭/휠클릭 QA 통과

@@ -21,7 +21,7 @@ import {
 
 const SNAPSHOT_ID = "main";
 const TEACHER_SHEET_MAP_PREFIX = "tutorweb_learning_sheet_teacher_v1:";
-const HEADER_ROW = ["기간", "회차", "학습", "내용", "제출여부", "링크"];
+const HEADER_ROW = ["기간", "회차", "학습", "제출여부", "내용", "링크"];
 
 export type LearningSheetSyncResult = {
   teacherId: string;
@@ -66,7 +66,7 @@ type SessionScopedRow = {
   sessionIndex: number;
   category: "강의" | "문제" | "오답노트" | "공지";
   content: string;
-  submit: "T" | "미제출" | "NC";
+  submit: "T" | "F" | "";
   link: string;
 };
 
@@ -240,8 +240,8 @@ function parseProgressByLeafIdFromStateKv(args: {
   return parsed;
 }
 
-function asSubmit(done: boolean): "T" | "미제출" {
-  return done ? "T" : "미제출";
+function asSubmit(done: boolean): "T" | "F" {
+  return done ? "T" : "F";
 }
 
 function buildRowsForSession(args: {
@@ -275,7 +275,7 @@ function buildRowsForSession(args: {
         sessionIndex: session.index,
         category: "공지",
         content: (p.noticeContent ?? "").trim() || "공지",
-        submit: "NC",
+        submit: "",
         link: "",
       });
       continue;
@@ -354,8 +354,8 @@ function buildRowsForStudent(args: {
         row.period,
         String(row.sessionIndex),
         row.category,
-        row.content,
         row.submit,
+        row.content,
         row.link,
       ]);
     }
@@ -388,14 +388,14 @@ function makeConditionalFormatRequests(sheetId: number, existingCount: number): 
           {
             sheetId,
             startRowIndex: 3,
-            startColumnIndex: 4,
-            endColumnIndex: 5,
+            startColumnIndex: 3,
+            endColumnIndex: 4,
           },
         ],
         booleanRule: {
           condition: {
             type: "TEXT_EQ",
-            values: [{ userEnteredValue: "미제출" }],
+            values: [{ userEnteredValue: "F" }],
           },
           format: {
             backgroundColor: rgb(1, 0.9, 0.9),
@@ -437,6 +437,58 @@ function makeConditionalFormatRequests(sheetId: number, existingCount: number): 
         },
       },
     });
+  }
+
+  return requests;
+}
+
+function makeSubmitCheckboxValidationRequests(sheetId: number, rows: string[][]): unknown[] {
+  const requests: unknown[] = [];
+
+  requests.push({
+    setDataValidation: {
+      range: {
+        sheetId,
+        startRowIndex: 3,
+        startColumnIndex: 3,
+        endColumnIndex: 4,
+      },
+      rule: null,
+    },
+  });
+
+  let runStart = -1;
+  for (let i = 0; i < rows.length; i += 1) {
+    const submit = (rows[i]?.[3] ?? "").trim();
+    const eligible = submit === "T" || submit === "F";
+    if (eligible && runStart < 0) {
+      runStart = i;
+    }
+
+    const shouldClose = runStart >= 0 && (!eligible || i === rows.length - 1);
+    if (!shouldClose) continue;
+
+    const endIndex = eligible && i === rows.length - 1 ? i + 1 : i;
+    requests.push({
+      setDataValidation: {
+        range: {
+          sheetId,
+          startRowIndex: 3 + runStart,
+          endRowIndex: 3 + endIndex,
+          startColumnIndex: 3,
+          endColumnIndex: 4,
+        },
+        rule: {
+          condition: {
+            type: "BOOLEAN",
+            values: [{ userEnteredValue: "T" }, { userEnteredValue: "F" }],
+          },
+          strict: true,
+          showCustomUi: true,
+        },
+      },
+    });
+    runStart = -1;
   }
 
   return requests;
@@ -730,6 +782,7 @@ async function writeStudentSheet(args: {
   ];
 
   formatRequests.push(...makeConditionalFormatRequests(args.sheetId, args.existingConditionalCount));
+  formatRequests.push(...makeSubmitCheckboxValidationRequests(args.sheetId, args.rows));
 
   await sheetsBatchUpdate({
     spreadsheetId: args.spreadsheetId,
