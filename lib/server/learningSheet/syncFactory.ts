@@ -228,7 +228,7 @@ function weekLabelFromDisplayAt(displayAt: string): string {
   const diffDays = Math.floor((weekStart.getTime() - firstWeekStart.getTime()) / (24 * 60 * 60 * 1000));
   const weekOfMonth = Math.floor(diffDays / 7) + 1;
 
-  return `${weekStartYmd}~${weekEndYmd} (${month}월 ${weekOfMonth}주차)`;
+  return `${month}월 ${weekOfMonth}주차 (${weekStartYmd}~${weekEndYmd})`;
 }
 
 function parseLeafIdsFromStateKv(args: {
@@ -815,13 +815,103 @@ async function writeStudentSheet(args: {
       },
     },
     {
-      autoResizeDimensions: {
-        dimensions: {
+      repeatCell: {
+        range: {
+          sheetId: args.sheetId,
+          startRowIndex: 3,
+          startColumnIndex: 1,
+          endColumnIndex: 4,
+        },
+        cell: {
+          userEnteredFormat: {
+            horizontalAlignment: "CENTER",
+          },
+        },
+        fields: "userEnteredFormat.horizontalAlignment",
+      },
+    },
+    {
+      updateDimensionProperties: {
+        range: {
           sheetId: args.sheetId,
           dimension: "COLUMNS",
           startIndex: 0,
+          endIndex: 1,
+        },
+        properties: {
+          pixelSize: 75,
+        },
+        fields: "pixelSize",
+      },
+    },
+    {
+      updateDimensionProperties: {
+        range: {
+          sheetId: args.sheetId,
+          dimension: "COLUMNS",
+          startIndex: 1,
+          endIndex: 2,
+        },
+        properties: {
+          pixelSize: 30,
+        },
+        fields: "pixelSize",
+      },
+    },
+    {
+      updateDimensionProperties: {
+        range: {
+          sheetId: args.sheetId,
+          dimension: "COLUMNS",
+          startIndex: 2,
+          endIndex: 3,
+        },
+        properties: {
+          pixelSize: 75,
+        },
+        fields: "pixelSize",
+      },
+    },
+    {
+      updateDimensionProperties: {
+        range: {
+          sheetId: args.sheetId,
+          dimension: "COLUMNS",
+          startIndex: 3,
+          endIndex: 4,
+        },
+        properties: {
+          pixelSize: 21,
+        },
+        fields: "pixelSize",
+      },
+    },
+    {
+      updateDimensionProperties: {
+        range: {
+          sheetId: args.sheetId,
+          dimension: "COLUMNS",
+          startIndex: 4,
+          endIndex: 5,
+        },
+        properties: {
+          pixelSize: 300,
+        },
+        fields: "pixelSize",
+      },
+    },
+    {
+      updateDimensionProperties: {
+        range: {
+          sheetId: args.sheetId,
+          dimension: "COLUMNS",
+          startIndex: 5,
           endIndex: 6,
         },
+        properties: {
+          pixelSize: 75,
+        },
+        fields: "pixelSize",
       },
     },
   ];
