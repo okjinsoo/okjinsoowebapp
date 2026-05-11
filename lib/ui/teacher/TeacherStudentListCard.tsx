@@ -15,6 +15,7 @@ type Props = {
   studentHrefOf?: (student: Student) => string;
   onAddStudent?: () => void;
   onSyncOwnStudents?: () => void;
+  onSyncLearningSheet?: () => void;
   role?: "a" | "t" | "s";
 };
 
@@ -24,6 +25,7 @@ export default function TeacherStudentListCard({
   studentHrefOf,
   onAddStudent,
   onSyncOwnStudents,
+  onSyncLearningSheet,
   role = "t",
 }: Props) {
   const handleClick = onStudentClick;
@@ -85,6 +87,11 @@ export default function TeacherStudentListCard({
           <Badge className="bg-slate-200 text-slate-700">{students.length}명</Badge>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          {onSyncLearningSheet ? (
+            <button className="btn btn-blue" onClick={onSyncLearningSheet}>
+              학습 현황 동기화
+            </button>
+          ) : null}
           {onSyncOwnStudents ? (
             <button className="btn btn-blue" onClick={onSyncOwnStudents}>
               본인 학생 회차 동기화

@@ -38,11 +38,26 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=YOUR_SUPABASE_ANON_KEY
 SUPABASE_SERVICE_ROLE_KEY=YOUR_SUPABASE_SERVICE_ROLE_KEY
 AUTH_BRIDGE_COOKIE_SECRET=SET_A_LONG_RANDOM_SECRET_FOR_AUTH_BRIDGE
 CRON_BACKUP_SECRET=SET_A_LONG_RANDOM_SECRET
+
+# Google Sheets 관리자 OAuth (학습 현황 동기화)
+GOOGLE_SHEETS_OAUTH_CLIENT_ID=...
+# 선택: 클라이언트가 secret을 발급하는 타입이면 입력
+GOOGLE_SHEETS_OAUTH_CLIENT_SECRET=...
+GOOGLE_SHEETS_OAUTH_REFRESH_TOKEN=...
+GOOGLE_SHEETS_OWNER_EMAIL=...
+GOOGLE_SHEETS_PARENT_FOLDER_ID=...
+
+# 선택: 시트 메뉴(Apps Script) 호출 보호
+LEARNING_SHEET_MENU_SECRET=SET_A_LONG_RANDOM_SECRET
+# 선택: 주간 학습시트 크론 전용 키 (미설정 시 CRON_BACKUP_SECRET 사용)
+CRON_LEARNING_SHEET_SECRET=...
 ```
 
 설명:
 - `AUTH_BRIDGE_COOKIE_SECRET`: 브리지 쿠키 서명 키
 - `CRON_BACKUP_SECRET`: 일일 백업 API 보호 키
+- `GOOGLE_SHEETS_*`: 관리자 OAuth 기반 학습시트 동기화 키
+- `LEARNING_SHEET_MENU_SECRET`: 시트 상단 메뉴 연동 웹훅 보호 키
 
 ### 3-3. 개발 서버
 
@@ -97,6 +112,9 @@ npm run test:run      # 테스트 1회 실행
 - `/api/students/[id]/sessions`
 - `/api/teachers`
 - `/api/ops/backup/daily`
+- `/api/ops/learning-sheet/sync`
+- `/api/ops/learning-sheet/weekly`
+- `/api/ops/learning-sheet/sync-by-sheet`
 
 ## 6. 권한/보안 요약
 

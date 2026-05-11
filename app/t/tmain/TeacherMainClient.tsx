@@ -43,6 +43,7 @@ export default function TeacherMainClient({
   const router = useRouter();
   const { students, teachers, metricsMap } = useStudentRegistry();
   const [selectedTeacherId, setSelectedTeacherId] = useState<string | null>(() => loadCurrentTeacherId());
+  const [isLearningSheetSyncing, setIsLearningSheetSyncing] = useState(false);
   const normalizedAdminTeacherToken = (adminTeacherToken ?? "").trim();
   const teacherId = useMemo(() => {
     if (initialRole === "t") return findTeacherByLoginEmail(teachers)?.id ?? null;
@@ -178,6 +179,72 @@ export default function TeacherMainClient({
     window.alert("요청을 전송했어요. 2~5초 뒤 학생별 회차 상태를 확인해주세요.");
   }
 
+  async function onClickSyncLearningSheet() {
+    if (isLearningSheetSyncing) return;
+
+    if (!teacherId) {
+      window.alert("선생님을 먼저 선택해주세요.");
+      return;
+    }
+
+    const targetStudents = visibleStudents.filter((student) => student.teacherId === teacherId);
+    if (targetStudents.length === 0) {
+      window.alert("동기화할 학생이 없습니다.");
+      return;
+    }
+
+    const teacherLabel = currentTeacherName || "선생님";
+    const ok = window.confirm(
+      `${teacherLabel} 담당 학생 ${targetStudents.length}명의 학습 현황을 구글 시트로 동기화할까요?`
+    );
+    if (!ok) return;
+
+    setIsLearningSheetSyncing(true);
+    try {
+      const res = await fetch("/api/ops/learning-sheet/sync", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          teacherId,
+        }),
+      });
+      const payload = (await res.json().catch(() => null)) as
+        | {
+            ok?: boolean;
+            error?: string;
+            result?: {
+              spreadsheetUrl?: string;
+              syncedStudentCount?: number;
+              rowsWritten?: number;
+            };
+          }
+        | null;
+
+      if (!res.ok || !payload?.ok || !payload.result) {
+        const reason = payload?.error ?? `HTTP_${res.status}`;
+        window.alert(`학습 현황 동기화에 실패했습니다.\n사유: ${reason}`);
+        return;
+      }
+
+      const syncedStudents = payload.result.syncedStudentCount ?? 0;
+      const rowsWritten = payload.result.rowsWritten ?? 0;
+      const url = (payload.result.spreadsheetUrl ?? "").trim();
+      const message =
+        `학습 현황 동기화 완료\n` +
+        `- 학생 수: ${syncedStudents}명\n` +
+        `- 기록 행: ${rowsWritten}행` +
+        (url ? `\n- 시트: ${url}` : "");
+      window.alert(message);
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : "unknown_error";
+      window.alert(`학습 현황 동기화에 실패했습니다.\n사유: ${reason}`);
+    } finally {
+      setIsLearningSheetSyncing(false);
+    }
+  }
+
   return (
     <main className="p-6">
       <div style={{ marginBottom: 12 }}>
@@ -234,6 +301,7 @@ export default function TeacherMainClient({
               : undefined
           }
           onSyncOwnStudents={onClickSyncOwnStudents}
+          onSyncLearningSheet={onClickSyncLearningSheet}
           onAddStudent={() => router.push(`/${initialRole}/tmain/new`)}
         />
       ) : (
