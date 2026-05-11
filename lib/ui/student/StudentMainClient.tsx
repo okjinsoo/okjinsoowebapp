@@ -1,97 +1,21 @@
 // lib/ui/student/StudentMainClient.tsx
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { AUTH_EVENT } from "@/lib/auth/supabaseAuth";
-import { resolveSelectionForRole } from "@/lib/auth/loginSelection";
-import {
-  clearCurrentTeacherId,
-  loadCurrentTeacherId,
-  saveCurrentTeacherId,
-  TEACHERS_EVENT,
-} from "@/lib/storage/teachers";
-import type { Student, Teacher } from "@/lib/types/index";
+import { buildSmainBasePath } from "@/lib/routes/appRouteBuilder";
 import StudentHubCore from "@/lib/ui/student/StudentHubCore";
 import RoleGateCard from "@/lib/ui/common/RoleGateCard";
-import {
-  clearCurrentStudentToken,
-  GATE_EVENT,
-  loadCurrentStudentToken,
-  saveCurrentStudentToken,
-} from "@/lib/ui/common/roleGateStorage";
-import { readRosterServerFirst } from "@/lib/storage/serverRead";
+import useRoleScopedSelection from "@/lib/ui/student/hooks/useRoleScopedSelection";
 
 export default function StudentMainClient({ role }: { role: "a" | "t" | "s" }) {
-  const [hydrated, setHydrated] = useState(false);
-  const [students, setStudents] = useState<Student[]>([]);
-  const [teachers, setTeachers] = useState<Teacher[]>([]);
-  const [studentToken, setStudentToken] = useState<string | null>(null);
-  const [teacherId, setTeacherId] = useState<string | null>(null);
-
-  const applySelection = useCallback((nextStudents: Student[], nextTeachers: Teacher[]) => {
-    const selection = resolveSelectionForRole({
-      role,
-      teachers: nextTeachers,
-      students: nextStudents,
-      savedTeacherId: loadCurrentTeacherId(),
-      savedStudentToken: loadCurrentStudentToken(),
-    });
-
-    setStudentToken(selection.studentToken);
-    setTeacherId(selection.teacherId);
-
-    if (selection.studentToken) saveCurrentStudentToken(selection.studentToken);
-    else clearCurrentStudentToken();
-
-    if (selection.teacherId) saveCurrentTeacherId(selection.teacherId);
-    else clearCurrentTeacherId();
-  }, [role]);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    const refreshRoster = async () => {
-      const next = await readRosterServerFirst();
-      if (cancelled) return;
-      setStudents(next.students);
-      setTeachers(next.teachers);
-      applySelection(next.students, next.teachers);
-      setHydrated(true);
-    };
-
-    void refreshRoster();
-    return () => {
-      cancelled = true;
-    };
-  }, [applySelection]);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    const refreshRoster = async () => {
-      const next = await readRosterServerFirst();
-      if (cancelled) return;
-      setStudents(next.students);
-      setTeachers(next.teachers);
-      applySelection(next.students, next.teachers);
-    };
-
-    const requestGateRefresh = () => {
-      void refreshRoster();
-    };
-
-    window.addEventListener(GATE_EVENT, requestGateRefresh);
-    window.addEventListener(AUTH_EVENT, requestGateRefresh);
-    window.addEventListener("tutorweb:studentsUpdated", requestGateRefresh);
-    window.addEventListener(TEACHERS_EVENT, requestGateRefresh);
-    return () => {
-      cancelled = true;
-      window.removeEventListener(GATE_EVENT, requestGateRefresh);
-      window.removeEventListener(AUTH_EVENT, requestGateRefresh);
-      window.removeEventListener("tutorweb:studentsUpdated", requestGateRefresh);
-      window.removeEventListener(TEACHERS_EVENT, requestGateRefresh);
-    };
-  }, [applySelection]);
+  const {
+    hydrated,
+    students,
+    teachers,
+    studentToken,
+    teacherId,
+    setStudentToken,
+    setTeacherId,
+  } = useRoleScopedSelection({ role });
 
   if (!hydrated) {
     return (
@@ -121,7 +45,7 @@ export default function StudentMainClient({ role }: { role: "a" | "t" | "s" }) {
           <p style={{ color: "var(--text-muted)" }}>학생을 선택해야 페이지를 볼 수 있습니다.</p>
         </div>
       ) : (
-        <StudentHubCore role={role} token={studentToken} prefix={`/${role}/smain`} hideTokenInRoute />
+        <StudentHubCore role={role} token={studentToken} prefix={buildSmainBasePath(role)} hideTokenInRoute />
       )}
     </main>
   );

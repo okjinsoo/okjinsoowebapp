@@ -1,115 +1,41 @@
 // v1/lib/ui/student/StudentMainSessionDetailBase.tsx
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { AUTH_EVENT } from "@/lib/auth/supabaseAuth";
-import { resolveSelectionForRole } from "@/lib/auth/loginSelection";
+import { useMemo } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
-  clearCurrentTeacherId,
-  loadCurrentTeacherId,
-  saveCurrentTeacherId,
-  TEACHERS_EVENT,
-} from "@/lib/storage/teachers";
-import type { Student, Teacher } from "@/lib/types/index";
+  buildSmainBasePath,
+  buildSmainSessionDetailPath,
+  buildSmainSessionDetailPathWithToken,
+} from "@/lib/routes/appRouteBuilder";
 import SessionTopBarCore from "@/lib/ui/session/SessionTopBarCore";
 import SessionClientCore from "@/lib/ui/session/SessionClientCore";
 import RoleGateCard from "@/lib/ui/common/RoleGateCard";
-import {
-  clearCurrentStudentToken,
-  GATE_EVENT,
-  loadCurrentStudentToken,
-  saveCurrentStudentToken,
-} from "@/lib/ui/common/roleGateStorage";
-import { readRosterServerFirst } from "@/lib/storage/serverRead";
+import useRoleScopedSelection from "@/lib/ui/student/hooks/useRoleScopedSelection";
 
 export default function StudentMainSessionDetailBase({ role }: { role: "a" | "t" | "s" }) {
-  const params = useParams();
+  const pathname = usePathname();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const index = Number(params?.index ?? 0);
+  const index = useMemo(() => {
+    const parts = (pathname ?? "").split("/").filter(Boolean);
+    const tail = parts.at(-1) ?? "";
+    if (!/^\d+$/.test(tail)) return NaN;
+    return Number(tail);
+  }, [pathname]);
   const queryToken = (searchParams?.get("token") ?? "").trim();
-  const [token, setToken] = useState<string | null>(null);
-  const [students, setStudents] = useState<Student[]>([]);
-  const [teachers, setTeachers] = useState<Teacher[]>([]);
-  const [teacherId, setTeacherId] = useState<string | null>(null);
-
-  const applySelection = useCallback((nextStudents: Student[], nextTeachers: Teacher[]) => {
-    if (queryToken) {
-      const matched = nextStudents.find((student) => student.token === queryToken);
-      if (matched?.token) {
-        const matchedTeacherId = matched.teacherId ?? null;
-        setToken(matched.token);
-        setTeacherId(matchedTeacherId);
-        saveCurrentStudentToken(matched.token);
-        if (matchedTeacherId) saveCurrentTeacherId(matchedTeacherId);
-        else clearCurrentTeacherId();
-        return;
-      }
-    }
-
-    const selection = resolveSelectionForRole({
-      role,
-      teachers: nextTeachers,
-      students: nextStudents,
-      savedTeacherId: loadCurrentTeacherId(),
-      savedStudentToken: loadCurrentStudentToken(),
-    });
-
-    setToken(selection.studentToken);
-    setTeacherId(selection.teacherId);
-
-    if (selection.studentToken) saveCurrentStudentToken(selection.studentToken);
-    else clearCurrentStudentToken();
-
-    if (selection.teacherId) saveCurrentTeacherId(selection.teacherId);
-    else clearCurrentTeacherId();
-  }, [queryToken, role]);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    const refreshRoster = async () => {
-      const next = await readRosterServerFirst();
-      if (cancelled) return;
-      setStudents(next.students);
-      setTeachers(next.teachers);
-      applySelection(next.students, next.teachers);
-    };
-
-    void refreshRoster();
-    return () => {
-      cancelled = true;
-    };
-  }, [applySelection]);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    const refreshRoster = async () => {
-      const next = await readRosterServerFirst();
-      if (cancelled) return;
-      setStudents(next.students);
-      setTeachers(next.teachers);
-      applySelection(next.students, next.teachers);
-    };
-
-    const requestGateRefresh = () => {
-      void refreshRoster();
-    };
-
-    window.addEventListener(GATE_EVENT, requestGateRefresh);
-    window.addEventListener(AUTH_EVENT, requestGateRefresh);
-    window.addEventListener("tutorweb:studentsUpdated", requestGateRefresh);
-    window.addEventListener(TEACHERS_EVENT, requestGateRefresh);
-    return () => {
-      cancelled = true;
-      window.removeEventListener(GATE_EVENT, requestGateRefresh);
-      window.removeEventListener(AUTH_EVENT, requestGateRefresh);
-      window.removeEventListener("tutorweb:studentsUpdated", requestGateRefresh);
-      window.removeEventListener(TEACHERS_EVENT, requestGateRefresh);
-    };
-  }, [applySelection]);
+  const {
+    studentToken: token,
+    students,
+    teachers,
+    teacherId,
+    setStudentToken: setToken,
+    setTeacherId,
+  } = useRoleScopedSelection({
+    role,
+    preferredStudentToken: queryToken || null,
+  });
+  const smainBasePath = buildSmainBasePath(role);
 
   return (
     <main>
@@ -124,8 +50,16 @@ export default function StudentMainSessionDetailBase({ role }: { role: "a" | "t"
           onStudentChange={(next) => {
             setToken(next);
             if (Number.isFinite(index)) {
-              const basePath = `/${role}/smain/session/${index}`;
-              const href = next ? `${basePath}?token=${encodeURIComponent(next)}` : basePath;
+              const href = next
+                ? buildSmainSessionDetailPathWithToken({
+                    role,
+                    sessionIndex: index,
+                    studentToken: next,
+                  })
+                : buildSmainSessionDetailPath({
+                    role,
+                    sessionIndex: index,
+                  });
               router.push(href);
             }
           }}
@@ -134,7 +68,7 @@ export default function StudentMainSessionDetailBase({ role }: { role: "a" | "t"
 
       <div className="p-6 space-y-4">
         <div>
-          <button onClick={() => router.push(`/${role}/smain`)} className="btn btn-bold">
+          <button onClick={() => router.push(smainBasePath)} className="btn btn-bold">
             학생 정보
           </button>
         </div>

@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { buildAdminTeacherTmainPath } from "@/lib/routes/appRouteBuilder";
 
 export default async function AdminTeacherPathRestRedirectPage({
   params,
@@ -7,5 +8,5 @@ export default async function AdminTeacherPathRestRedirectPage({
 }) {
   const { teacherToken, rest } = await params;
   const suffix = Array.isArray(rest) ? rest.map((part) => encodeURIComponent(part)).join("/") : "";
-  redirect(`/a/tmain/${encodeURIComponent(teacherToken)}${suffix ? `/${suffix}` : ""}`);
+  redirect(`${buildAdminTeacherTmainPath(teacherToken)}${suffix ? `/${suffix}` : ""}`);
 }

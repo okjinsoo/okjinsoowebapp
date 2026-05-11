@@ -2,6 +2,10 @@
 
 import { useMemo } from "react";
 import Link from "next/link";
+import {
+  buildAdminTeacherStudentHubPath,
+  buildAdminTeacherTmainPath,
+} from "@/lib/routes/appRouteBuilder";
 import { saveCurrentStudentToken } from "@/lib/ui/common/roleGateStorage";
 import {
   getStudentStatusMeta,
@@ -62,8 +66,11 @@ export default function AdminMainPage() {
                   key={c.studentId}
                   href={
                     c.teacherToken
-                      ? `/a/tmain/${encodeURIComponent(c.teacherToken)}/smain/${encodeURIComponent(c.token)}`
-                      : `/a/tmain/${encodeURIComponent(c.token)}`
+                      ? buildAdminTeacherStudentHubPath({
+                          teacherToken: c.teacherToken,
+                          studentToken: c.token,
+                        })
+                      : buildAdminTeacherTmainPath(c.token)
                   }
                   style={{
                     display: "grid",

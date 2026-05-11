@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { buildAdminTeacherStudentHubPath } from "@/lib/routes/appRouteBuilder";
 import SessionTopBarCore from "@/lib/ui/session/SessionTopBarCore";
 import SessionClientCore from "@/lib/ui/session/SessionClientCore";
 import AdminTeacherStudentRouteGateCard from "@/lib/ui/common/AdminTeacherStudentRouteGateCard";
@@ -10,7 +11,10 @@ export default async function AdminTeacherStudentSessionDetailTokenPage({
 }) {
   const { teacherToken, studentToken, index } = await params;
   const sessionIndex = Number(index);
-  const studentHubHref = `/a/tmain/${encodeURIComponent(teacherToken)}/smain/${encodeURIComponent(studentToken)}`;
+  const studentHubHref = buildAdminTeacherStudentHubPath({
+    teacherToken,
+    studentToken,
+  });
 
   return (
     <div className="p-6 space-y-4">

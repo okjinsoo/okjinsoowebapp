@@ -3,6 +3,7 @@
 
 import React from "react";
 import Link from "next/link";
+import { buildTeacherStudentHubPath, buildTmainBasePath } from "@/lib/routes/appRouteBuilder";
 import type { Student } from "@/lib/types/index";
 import Badge from "@/lib/ui/common/Badge";
 import { formatSchedule } from "@/lib/ui/student/formatters";
@@ -31,10 +32,16 @@ export default function TeacherStudentListCard({
   const handleClick = onStudentClick;
 
   const studentHref = (student: Student) => {
-    if (role === "a" || role === "t") {
-      return `/${role}/tmain/${encodeURIComponent(student.token)}`;
+    if (role === "a") {
+      return `${buildTmainBasePath("a")}/${encodeURIComponent(student.token)}`;
     }
-    return `/${role}/smain`;
+    if (role === "t") {
+      return buildTeacherStudentHubPath({
+        role: "t",
+        studentToken: student.token,
+      });
+    }
+    return "/s/smain";
   };
 
   const statusMetaOf = (s: Student) => {

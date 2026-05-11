@@ -3,6 +3,11 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { findTeacherByLoginEmail } from "@/lib/auth/loginSelection";
+import {
+  buildAdminTeacherStudentHubPath,
+  buildAdminTeacherTmainPath,
+  buildTmainNewPath,
+} from "@/lib/routes/appRouteBuilder";
 import { AUTH_EVENT, loadAuthSession } from "@/lib/auth/supabaseAuth";
 import {
   clearCurrentTeacherId,
@@ -259,7 +264,7 @@ export default function TeacherMainClient({
             if (initialRole !== "a" || adminPathMode !== "teacherScoped") return;
             const nextToken = (teachers.find((teacher) => teacher.id === next)?.token ?? "").trim();
             if (!nextToken) return;
-            router.push(`/a/tmain/${encodeURIComponent(nextToken)}`);
+            router.push(buildAdminTeacherTmainPath(nextToken));
           }}
         />
       </div>
@@ -295,14 +300,15 @@ export default function TeacherMainClient({
           studentHrefOf={
             initialRole === "a" && currentTeacherToken
               ? (student) =>
-                  `/a/tmain/${encodeURIComponent(currentTeacherToken)}/smain/${encodeURIComponent(
-                    student.token
-                  )}`
+                  buildAdminTeacherStudentHubPath({
+                    teacherToken: currentTeacherToken,
+                    studentToken: student.token,
+                  })
               : undefined
           }
           onSyncOwnStudents={onClickSyncOwnStudents}
           onSyncLearningSheet={onClickSyncLearningSheet}
-          onAddStudent={() => router.push(`/${initialRole}/tmain/new`)}
+          onAddStudent={() => router.push(buildTmainNewPath(initialRole))}
         />
       ) : (
         <section style={{ marginTop: 14, border: "1px solid var(--surface-border)", borderRadius: 10, padding: 12, background: "var(--surface-bg)" }}>

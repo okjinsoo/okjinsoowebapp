@@ -1,4 +1,5 @@
 import StudentSessionListCore from "@/lib/ui/student/StudentSessionListCore";
+import { buildTmainBasePath } from "@/lib/routes/appRouteBuilder";
 
 export default async function TeacherStudentSessionListPage({
   params,
@@ -7,5 +8,5 @@ export default async function TeacherStudentSessionListPage({
 }) {
   const { token } = await params;
 
-  return <StudentSessionListCore role="t" token={token} prefix="/t/tmain" />;
+  return <StudentSessionListCore role="t" token={token} prefix={buildTmainBasePath("t")} />;
 }

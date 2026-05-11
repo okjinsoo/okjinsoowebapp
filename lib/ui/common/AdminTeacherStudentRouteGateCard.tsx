@@ -3,6 +3,14 @@
 import { useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useStudentRegistry } from "@/lib/hooks/useStudentRegistry";
+import {
+  buildAdminTeacherStudentEditPath,
+  buildAdminTeacherStudentHubPath,
+  buildAdminTeacherStudentSessionDetailPath,
+  buildAdminTeacherStudentSessionListPath,
+  buildAdminTeacherTmainPath,
+  buildTmainBasePath,
+} from "@/lib/routes/appRouteBuilder";
 import RoleGateCard from "@/lib/ui/common/RoleGateCard";
 import { saveCurrentStudentToken } from "@/lib/ui/common/roleGateStorage";
 import { saveCurrentTeacherId } from "@/lib/storage/teachers";
@@ -16,21 +24,35 @@ type Props = {
   sessionIndex?: number;
 };
 
-function encode(v: string): string {
-  return encodeURIComponent(v);
-}
-
 function buildStudentScopedPath(args: {
   teacherToken: string;
   studentToken: string;
   routeKind: RouteKind;
   sessionIndex?: number;
 }): string {
-  const base = `/a/tmain/${encode(args.teacherToken)}/smain/${encode(args.studentToken)}`;
-  if (args.routeKind === "session-list") return `${base}/session`;
-  if (args.routeKind === "session-detail") return `${base}/session/${Number.isFinite(args.sessionIndex) ? args.sessionIndex : 1}`;
-  if (args.routeKind === "edit") return `${base}/edit`;
-  return base;
+  if (args.routeKind === "session-list") {
+    return buildAdminTeacherStudentSessionListPath({
+      teacherToken: args.teacherToken,
+      studentToken: args.studentToken,
+    });
+  }
+  if (args.routeKind === "session-detail") {
+    return buildAdminTeacherStudentSessionDetailPath({
+      teacherToken: args.teacherToken,
+      studentToken: args.studentToken,
+      sessionIndex: Number.isFinite(args.sessionIndex) ? Number(args.sessionIndex) : 1,
+    });
+  }
+  if (args.routeKind === "edit") {
+    return buildAdminTeacherStudentEditPath({
+      teacherToken: args.teacherToken,
+      studentToken: args.studentToken,
+    });
+  }
+  return buildAdminTeacherStudentHubPath({
+    teacherToken: args.teacherToken,
+    studentToken: args.studentToken,
+  });
 }
 
 export default function AdminTeacherStudentRouteGateCard({
@@ -83,10 +105,10 @@ export default function AdminTeacherStudentRouteGateCard({
         saveCurrentTeacherId(nextTeacherId);
         const nextTeacherToken = (teachers.find((teacher) => teacher.id === nextTeacherId)?.token ?? "").trim();
         if (!nextTeacherToken) {
-          router.push("/a/tmain");
+          router.push(buildTmainBasePath("a"));
           return;
         }
-        router.push(`/a/tmain/${encode(nextTeacherToken)}`);
+        router.push(buildAdminTeacherTmainPath(nextTeacherToken));
       }}
       onStudentChange={(nextStudentToken) => {
         const nextStudent = students.find((student) => student.token === nextStudentToken);

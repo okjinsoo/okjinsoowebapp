@@ -4,6 +4,7 @@
 import { useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { findTeacherByLoginEmail } from "@/lib/auth/loginSelection";
+import { buildTmainBasePath } from "@/lib/routes/appRouteBuilder";
 import { useTeachersServerFirst } from "@/lib/hooks/useTeachersServerFirst";
 import {
   saveCurrentTeacherId,
@@ -11,7 +12,7 @@ import {
 } from "@/lib/storage/teachers";
 import StudentNewClient from "@/lib/ui/student/StudentNewClient";
 
-export default function TeacherStudentNewPageClient({ basePath = "/t/tmain" }: { basePath?: string }) {
+export default function TeacherStudentNewPageClient({ basePath = buildTmainBasePath("t") }: { basePath?: string }) {
   const router = useRouter();
 
   const { teachers, loaded } = useTeachersServerFirst();

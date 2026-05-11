@@ -1,4 +1,8 @@
 import Link from "next/link";
+import {
+  buildAdminTeacherStudentHubPath,
+  buildAdminTeacherStudentPrefixPath,
+} from "@/lib/routes/appRouteBuilder";
 import StudentSessionListCore from "@/lib/ui/student/StudentSessionListCore";
 import AdminTeacherStudentRouteGateCard from "@/lib/ui/common/AdminTeacherStudentRouteGateCard";
 
@@ -8,8 +12,10 @@ export default async function AdminTeacherStudentSessionListTokenPage({
   params: Promise<{ teacherToken: string; studentToken: string }>;
 }) {
   const { teacherToken, studentToken } = await params;
-  const encodedTeacherToken = encodeURIComponent(teacherToken);
-  const hubHref = `/a/tmain/${encodedTeacherToken}/smain/${encodeURIComponent(studentToken)}`;
+  const hubHref = buildAdminTeacherStudentHubPath({
+    teacherToken,
+    studentToken,
+  });
 
   return (
     <main>
@@ -28,7 +34,7 @@ export default async function AdminTeacherStudentSessionListTokenPage({
       <StudentSessionListCore
         role="a"
         token={studentToken}
-        prefix={`/a/tmain/${encodedTeacherToken}/smain`}
+        prefix={buildAdminTeacherStudentPrefixPath(teacherToken)}
       />
     </main>
   );

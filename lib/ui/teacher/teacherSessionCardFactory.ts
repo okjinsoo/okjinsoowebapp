@@ -1,4 +1,10 @@
 import { buildSessionCardViewModel, type SessionCardViewModel } from "@/lib/ui/session/sessionCardFactory";
+import {
+  buildAdminTeacherStudentSessionDetailPath,
+  buildSmainSessionDetailPathWithToken,
+  buildTeacherStudentSessionDetailPath,
+  buildTmainBasePath,
+} from "@/lib/routes/appRouteBuilder";
 
 export type TeacherSessionRow = {
   studentId: string;
@@ -36,11 +42,23 @@ export function buildTeacherSessionCardViewModel(args: {
   const detailHref =
     role === "a"
       ? row.teacherToken
-        ? `/a/tmain/${encodeURIComponent(row.teacherToken)}/smain/${encodeURIComponent(row.token)}/session/${row.index}`
-        : `/a/tmain`
+        ? buildAdminTeacherStudentSessionDetailPath({
+            teacherToken: row.teacherToken,
+            studentToken: row.token,
+            sessionIndex: row.index,
+          })
+        : buildTmainBasePath("a")
       : role === "t"
-        ? `/t/tmain/${encodeURIComponent(row.token)}/session/${row.index}`
-        : `/${role}/smain/session/${row.index}?token=${encodeURIComponent(row.token)}`;
+        ? buildTeacherStudentSessionDetailPath({
+            role: "t",
+            studentToken: row.token,
+            sessionIndex: row.index,
+          })
+        : buildSmainSessionDetailPathWithToken({
+            role,
+            sessionIndex: row.index,
+            studentToken: row.token,
+          });
   const badges = row.badges ?? [];
   const showLastClassBadge = Boolean(row.lastClass || badges.includes("마지막 수업"));
   const sessionCardModel = buildSessionCardViewModel({

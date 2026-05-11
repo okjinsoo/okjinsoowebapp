@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { buildTeacherStudentHubPath } from "@/lib/routes/appRouteBuilder";
 import SessionTopBarCore from "@/lib/ui/session/SessionTopBarCore";
 import SessionClientCore from "@/lib/ui/session/SessionClientCore";
 
@@ -9,7 +10,10 @@ export default async function TeacherSessionDetailPage({
 }) {
   const { token, index } = await params;
   const sessionIndex = Number(index);
-  const backHref = `/t/tmain/${encodeURIComponent(token)}`;
+  const backHref = buildTeacherStudentHubPath({
+    role: "t",
+    studentToken: token,
+  });
 
   return (
     <div className="p-6 space-y-4">

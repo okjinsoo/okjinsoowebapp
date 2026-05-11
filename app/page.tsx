@@ -23,6 +23,7 @@ import {
 } from "@/lib/auth/roleAuth";
 import { requiredRoleByPathname } from "@/lib/auth/accessPolicy";
 import { findStudentByLoginEmail } from "@/lib/auth/loginSelection";
+import { buildSmainBasePath, buildTmainBasePath } from "@/lib/routes/appRouteBuilder";
 import { loadCurrentRole, saveCurrentRole, saveCurrentStudentToken } from "@/lib/ui/common/roleGateStorage";
 import { readStudentsServerFirst } from "@/lib/storage/serverRead";
 
@@ -46,6 +47,8 @@ function shouldRequestCalendarScope(nextPath: string): boolean {
 
 export default function HomePage() {
   const router = useRouter();
+  const studentMainPath = buildSmainBasePath("s");
+  const teacherMainPath = buildTmainBasePath("t");
   // hydration mismatch 방지: 서버/클라이언트 첫 렌더를 동일하게 guest로 시작
   const [session, setSession] = useState<AuthSession | null>(null);
   const [role, setRole] = useState<UserRole>("guest");
@@ -113,14 +116,14 @@ export default function HomePage() {
 
   useEffect(() => {
     if (!session || roleLoading || !canAccessRole(role, "student")) return;
-    void router.prefetch("/s/smain");
-  }, [session, roleLoading, role, router]);
+    void router.prefetch(studentMainPath);
+  }, [session, roleLoading, role, router, studentMainPath]);
 
   useEffect(() => {
     if (!session || roleLoading) return;
     if (canAccessRole(role, "admin")) void router.prefetch("/a/amain");
-    if (canAccessRole(role, "teacher")) void router.prefetch("/t/tmain");
-  }, [session, roleLoading, role, router]);
+    if (canAccessRole(role, "teacher")) void router.prefetch(teacherMainPath);
+  }, [session, roleLoading, role, router, teacherMainPath]);
 
   useEffect(() => {
     if (nextAutoRedirectedRef.current) return;
@@ -159,9 +162,9 @@ export default function HomePage() {
       saveCurrentRole("s");
 
       studentAutoRedirectedRef.current = true;
-      setPendingPath("/s/smain");
+      setPendingPath(studentMainPath);
       startTransition(() => {
-        router.replace("/s/smain");
+        router.replace(studentMainPath);
       });
     };
 
@@ -169,7 +172,7 @@ export default function HomePage() {
     return () => {
       cancelled = true;
     };
-  }, [session, roleLoading, role, redirectFrom, autoReauthRequested, router, startTransition]);
+  }, [session, roleLoading, role, redirectFrom, autoReauthRequested, router, startTransition, studentMainPath]);
 
   const loginReady = useMemo(() => Boolean(getSupabaseConfig()), []);
   const localDevAdminLoginEnabled = useMemo(
@@ -325,14 +328,14 @@ export default function HomePage() {
   }
 
   function onClickStudentMove() {
-    setPendingPath("/s/smain");
+    setPendingPath(studentMainPath);
     startTransition(() => {
-      router.push("/s/smain");
+      router.push(studentMainPath);
     });
   }
 
   const loggedIn = Boolean(session);
-  const studentMovePending = isPending && pendingPath === "/s/smain";
+  const studentMovePending = isPending && pendingPath === studentMainPath;
 
   return (
     <main
@@ -485,7 +488,7 @@ export default function HomePage() {
                 ) : null}
                 {!roleLoading && canAccessRole(role, "teacher") ? (
                   <Link
-                    href="/t/tmain"
+                    href={teacherMainPath}
                     style={{
                       display: "inline-flex",
                       alignItems: "center",

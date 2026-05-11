@@ -1,5 +1,9 @@
 import StudentHubCore from "@/lib/ui/student/StudentHubCore";
 import AdminTeacherStudentRouteGateCard from "@/lib/ui/common/AdminTeacherStudentRouteGateCard";
+import {
+  buildAdminTeacherStudentPrefixPath,
+  buildAdminTeacherTmainPath,
+} from "@/lib/routes/appRouteBuilder";
 
 export default async function AdminTeacherStudentHubTokenPage({
   params,
@@ -7,7 +11,6 @@ export default async function AdminTeacherStudentHubTokenPage({
   params: Promise<{ teacherToken: string; studentToken: string }>;
 }) {
   const { teacherToken, studentToken } = await params;
-  const encodedTeacherToken = encodeURIComponent(teacherToken);
 
   return (
     <main>
@@ -21,8 +24,8 @@ export default async function AdminTeacherStudentHubTokenPage({
       <StudentHubCore
         role="a"
         token={studentToken}
-        prefix={`/a/tmain/${encodedTeacherToken}/smain`}
-        backToTmainHref={`/a/tmain/${encodedTeacherToken}`}
+        prefix={buildAdminTeacherStudentPrefixPath(teacherToken)}
+        backToTmainHref={buildAdminTeacherTmainPath(teacherToken)}
       />
     </main>
   );
