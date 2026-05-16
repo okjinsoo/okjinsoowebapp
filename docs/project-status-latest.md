@@ -1,12 +1,13 @@
 # Project Status (Latest)
 
-기준 시각: 2026-05-12 02:34 (KST)
+기준 시각: 2026-05-16 18:48 (KST)
 대상 프로젝트: `v1`
 
 ## 1분 요약
 
-- 최신 운영 반영본: 2026-05-12 02:34 (KST), `dpl_6AcKKYmY2vebLXhXoStrfwtPbdwk`
+- 최신 운영 반영본: 2026-05-16 18:48 (KST), `dpl_HDBXBN1WJE7XZyJkLwe3pvgZQyqo`
 - 운영 주소: `https://okjinsoowebapp.vercel.app`
+- 스냅샷 패치 시 `state_kv` 원본 키를 보존하도록 병합 로직을 보강해, 학습시트 매핑 키 유실로 인한 과거 시트 재사용 실패를 방지
 - 학습 현황 시트 기간 포맷을 `N월 N주차 (YYYY-MM-DD~YYYY-MM-DD)`로 변경하고 열 너비(A/C/F=75, B=30, D=21, E=300) 및 B/C/D 중앙정렬 적용
 - 학습 현황 시트 중복 생성 이슈 수정: `state_kv` 매핑 조회를 서비스 권한 경로로 보강해 기존 스프레드시트 재사용 안정화
 - 학습 현황 시트 `제출여부`를 체크박스 워크플로우(`T/F`, 공지 빈칸)로 전환하고 열 순서를 `학습 > 제출여부 > 내용`으로 조정
@@ -34,7 +35,9 @@
 
 ## 최근 변경(운영 영향 큰 항목)
 
-- 2026-05-12 02:34: 프로덕션 배포 `dpl_6AcKKYmY2vebLXhXoStrfwtPbdwk` (최신, 운영 별칭 `https://okjinsoowebapp.vercel.app`)
+- 2026-05-16 18:48: 프로덕션 배포 `dpl_HDBXBN1WJE7XZyJkLwe3pvgZQyqo` (최신, 운영 별칭 `https://okjinsoowebapp.vercel.app`)
+- 2026-05-16 18:46: 스냅샷 `state_kv` 병합 시 미허용 키를 보존하도록 수정(학습시트 매핑 키 유실/중복 시트 생성 재발 방지)
+- 2026-05-12 02:34: 프로덕션 배포 `dpl_6AcKKYmY2vebLXhXoStrfwtPbdwk`
 - 2026-05-12 02:26: `smain` 중복 라우트 축소(12개 page → 역할별 3개 캐치올) + 학생 선택 공통 훅/경로 빌더 통합 패치 적용
 - 2026-05-12 01:53: 프로덕션 배포 `dpl_9i8bjMQgWCh2SUhd1PQF4BE6U4Jc`
 - 2026-05-12 01:50: 학습 현황 시트 기간 표시를 `주차 우선` 포맷으로 변경, 열 너비 고정 및 B/C/D 중앙정렬 적용
