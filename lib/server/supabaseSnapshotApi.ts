@@ -508,7 +508,7 @@ export async function upsertSnapshotPatch(args: {
     }
   }
 
-  let mergedStateKv: Record<string, string> | undefined;
+  let mergedStateKv: Record<string, unknown> | undefined;
   if (touchesStateKv) {
     const currentResult = await fetchSnapshotRow({
       cfg,
@@ -516,12 +516,15 @@ export async function upsertSnapshotPatch(args: {
       select: ["state_kv"],
       useServiceRole: viewer.isLocalDevAdmin,
     });
-    const current = normalizeSnapshot(currentResult.row, currentResult.missing).stateKv;
+    const currentRaw =
+      currentResult.row?.state_kv && typeof currentResult.row.state_kv === "object"
+        ? { ...currentResult.row.state_kv }
+        : {};
     const dropStateKeys = Array.from(
       new Set((args.patch.dropStateKeys ?? []).map((key) => key.trim()).filter((key) => isSharedStateKvKey(key)))
     );
     mergedStateKv = {
-      ...current,
+      ...currentRaw,
       ...toStateKv(args.patch.stateKv ?? {}),
     };
     for (const key of dropStateKeys) {
@@ -534,7 +537,7 @@ export async function upsertSnapshotPatch(args: {
     teachers?: Teacher[];
     students?: Student[];
     sessions?: Session[];
-    state_kv?: Record<string, string>;
+    state_kv?: Record<string, unknown>;
   } = { id: SNAPSHOT_KEY };
 
   // [Phase 23 보안] 권한별 쓰기 제한
