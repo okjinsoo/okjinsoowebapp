@@ -26,6 +26,10 @@ export type SheetMeta = {
   conditionalRuleCount: number;
 };
 
+function escapeDriveQueryValue(value: string): string {
+  return value.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+}
+
 function readOwnerOAuthConfig(): OwnerOAuthConfig | null {
   const clientId = (
     process.env.GOOGLE_SHEETS_OAUTH_CLIENT_ID ?? process.env.GOOGLE_OAUTH_CLIENT_ID ?? ""
@@ -186,6 +190,57 @@ export async function createSpreadsheet(args: { title: string }): Promise<Spread
   return {
     spreadsheetId: payload.spreadsheetId,
     spreadsheetUrl: payload.spreadsheetUrl,
+  };
+}
+
+export async function findExistingSpreadsheetByTitle(args: {
+  title: string;
+  ownerEmail?: string | null;
+  parentFolderId?: string | null;
+}): Promise<SpreadsheetSummary | null> {
+  const title = args.title.trim();
+  if (!title) return null;
+
+  const qParts = [
+    "mimeType='application/vnd.google-apps.spreadsheet'",
+    `name='${escapeDriveQueryValue(title)}'`,
+    "trashed=false",
+  ];
+
+  const ownerEmail = (args.ownerEmail ?? "").trim().toLowerCase();
+  if (ownerEmail) {
+    qParts.push(`'${escapeDriveQueryValue(ownerEmail)}' in owners`);
+  }
+
+  const parentFolderId = (args.parentFolderId ?? "").trim();
+  if (parentFolderId) {
+    qParts.push(`'${escapeDriveQueryValue(parentFolderId)}' in parents`);
+  }
+
+  const params = new URLSearchParams({
+    q: qParts.join(" and "),
+    pageSize: "10",
+    orderBy: "createdTime asc",
+    fields: "files(id,webViewLink)",
+    supportsAllDrives: "true",
+    includeItemsFromAllDrives: "true",
+  });
+
+  const payload = await googleFetchJson<{
+    files?: Array<{ id?: string; webViewLink?: string }>;
+  }>({
+    method: "GET",
+    url: `https://www.googleapis.com/drive/v3/files?${params.toString()}`,
+  });
+
+  const first = payload.files?.find((row) => (row.id ?? "").trim());
+  const spreadsheetId = (first?.id ?? "").trim();
+  if (!spreadsheetId) return null;
+
+  return {
+    spreadsheetId,
+    spreadsheetUrl:
+      (first?.webViewLink ?? "").trim() || `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit`,
   };
 }
 

@@ -10,6 +10,7 @@ import {
   assertOwnerOAuthReady,
   createSpreadsheet,
   ensureWriterPermission,
+  findExistingSpreadsheetByTitle,
   getOwnerEmail,
   getParentFolderId,
   getSpreadsheetSheets,
@@ -622,6 +623,36 @@ async function ensureTeacherSpreadsheet(args: {
   }
 
   const title = `학습현황_${args.teacher.name}`;
+  const recovered = await findExistingSpreadsheetByTitle({
+    title,
+    ownerEmail,
+    parentFolderId: getParentFolderId(),
+  });
+  if (recovered?.spreadsheetId) {
+    const teacherEmail = (args.teacher.email ?? "").trim();
+    if (teacherEmail) {
+      await ensureWriterPermission({
+        fileId: recovered.spreadsheetId,
+        email: teacherEmail,
+        sendNotificationEmail: false,
+      });
+    }
+
+    const nowIso = new Date().toISOString();
+    const nextValue: TeacherSheetMap = {
+      teacherId: args.teacher.id,
+      spreadsheetId: recovered.spreadsheetId,
+      spreadsheetUrl: recovered.spreadsheetUrl,
+      title,
+      ownerEmail,
+      createdAt: nowIso,
+      updatedAt: nowIso,
+    };
+
+    await upsertTeacherSheetMap({ teacherId: args.teacher.id, nextValue });
+    return nextValue;
+  }
+
   const created = await createSpreadsheet({ title });
 
   const parentFolderId = getParentFolderId();
