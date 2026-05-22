@@ -38,7 +38,6 @@
 
 ## 최근 변경(운영 영향 큰 항목)
 
-- 2026-05-22 19:06: 프로덕션 배포 `dpl_3uz7CTcy6HjNPrDBKKAR5QWgXmCi` (최신, 운영 별칭 `https://okjinsoowebapp.vercel.app`)
 - 2026-05-22 19:29: 프로덕션 배포 `dpl_EoUun1CZZrREcnB4jJuFdgK23rTt` (최신, 운영 별칭 `https://okjinsoowebapp.vercel.app`)
 - 2026-05-22 19:27: 학습시트 회차 누락 복구 실행(`2026-05-12` 백업에서 session state 297키 병합 복원), fallback `state_kv` 원본 조회 실패 시 동기화 중단 가드 추가
 - 2026-05-22 19:06: 프로덕션 배포 `dpl_3uz7CTcy6HjNPrDBKKAR5QWgXmCi` (운영 별칭 `https://okjinsoowebapp.vercel.app`)
