@@ -462,6 +462,31 @@ async function fetchRemoteStateKv(args: {
   return toStateKv(row?.state_kv);
 }
 
+async function fetchRemoteStateKvRaw(args: {
+  url: URL;
+  headers: Record<string, string>;
+}): Promise<Record<string, unknown>> {
+  const result = await fetchSnapshotRows({
+    url: args.url,
+    headers: args.headers,
+    select: "state_kv",
+  });
+  if (!result.ok) {
+    if (isMissingColumnError(result.text, "state_kv")) {
+      return {};
+    }
+    if (isNetworkFetchFailure(result)) {
+      return {};
+    }
+    throw new Error(`snapshot fetch failed(state_kv): ${result.status} ${result.text}`);
+  }
+  const row = result.rows[0];
+  if (!row?.state_kv || typeof row.state_kv !== "object" || Array.isArray(row.state_kv)) {
+    return {};
+  }
+  return { ...(row.state_kv as Record<string, unknown>) };
+}
+
 export async function readRemoteSharedStateKvValue(key: string): Promise<string | null> {
   if (isLocalOnlySnapshotMode()) {
     if (typeof window === "undefined") return null;
@@ -670,14 +695,27 @@ export async function pushSharedSnapshot(args?: PushSharedSnapshotArgs): Promise
     }
 
     const snapshotUrl = new URL("/rest/v1/app_state_snapshots", cfg.url);
-    const remoteStateKv = await fetchRemoteStateKv({
+    // Fallback 경로에서는 server-only 키(예: 학습시트 teacher map)까지 보존해야 한다.
+    const remoteStateKvRaw = await fetchRemoteStateKvRaw({
       url: snapshotUrl,
       headers: readHeaders,
     });
-    stateKv = {
-      ...remoteStateKv,
+    const mergedRaw: Record<string, unknown> = {
+      ...remoteStateKvRaw,
       ...(stateKvPatch ?? {}),
     };
+    stateKv = {};
+    for (const [key, value] of Object.entries(mergedRaw)) {
+      if (typeof value === "string") {
+        stateKv[key] = value;
+      } else if (value && typeof value === "object") {
+        try {
+          stateKv[key] = JSON.stringify(value);
+        } catch {
+          // noop
+        }
+      }
+    }
     for (const key of args?.dropStateKeys ?? []) {
       if (!shouldPersistKey(key)) continue;
       delete stateKv[key];
