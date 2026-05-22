@@ -1,12 +1,14 @@
 # Project Status (Latest)
 
-기준 시각: 2026-05-22 19:06 (KST)
+기준 시각: 2026-05-22 19:29 (KST)
 대상 프로젝트: `v1`
 
 ## 1분 요약
 
-- 최신 운영 반영본: 2026-05-22 19:06 (KST), `dpl_3uz7CTcy6HjNPrDBKKAR5QWgXmCi`
+- 최신 운영 반영본: 2026-05-22 19:29 (KST), `dpl_EoUun1CZZrREcnB4jJuFdgK23rTt`
 - 운영 주소: `https://okjinsoowebapp.vercel.app`
+- 학습시트 회차 누락 복구: `2026-05-12` 백업 기준으로 누락된 session state 키 297개를 안전 병합 복원(기존 현재값은 미덮어쓰기)
+- 스냅샷 fallback 경로에서 `state_kv` 원본 조회 네트워크 실패를 빈 객체로 처리하지 않고 즉시 중단하도록 보강해, 회차 키 대량 유실 재발을 차단
 - 학습시트 매핑 키가 비어 있을 때도 Drive에서 기존 `학습현황_{선생님}` 문서를 찾아 자동 재연결하도록 보강해, 기존 시트와 신규 시트 분리 저장 현상 완화
 - 스냅샷 패치 시 `state_kv` 원본 키를 보존하도록 병합 로직을 보강해, 학습시트 매핑 키 유실로 인한 과거 시트 재사용 실패를 방지
 - 학습 현황 시트 기간 포맷을 `N월 N주차 (YYYY-MM-DD~YYYY-MM-DD)`로 변경하고 열 너비(A/C/F=75, B=30, D=21, E=300) 및 B/C/D 중앙정렬 적용
@@ -37,6 +39,9 @@
 ## 최근 변경(운영 영향 큰 항목)
 
 - 2026-05-22 19:06: 프로덕션 배포 `dpl_3uz7CTcy6HjNPrDBKKAR5QWgXmCi` (최신, 운영 별칭 `https://okjinsoowebapp.vercel.app`)
+- 2026-05-22 19:29: 프로덕션 배포 `dpl_EoUun1CZZrREcnB4jJuFdgK23rTt` (최신, 운영 별칭 `https://okjinsoowebapp.vercel.app`)
+- 2026-05-22 19:27: 학습시트 회차 누락 복구 실행(`2026-05-12` 백업에서 session state 297키 병합 복원), fallback `state_kv` 원본 조회 실패 시 동기화 중단 가드 추가
+- 2026-05-22 19:06: 프로덕션 배포 `dpl_3uz7CTcy6HjNPrDBKKAR5QWgXmCi` (운영 별칭 `https://okjinsoowebapp.vercel.app`)
 - 2026-05-22 19:04: 스냅샷 `state_kv` fallback 병합 시 학습시트 매핑 키 보존 패치 적용(동일 선생님 신규 시트 분리 생성 재발 방지)
 - 2026-05-22 07:04: 프로덕션 배포 `dpl_9f8zAyhqYSLcVDryauiUdkWbcQ9f` (최신, 운영 별칭 `https://okjinsoowebapp.vercel.app`)
 - 2026-05-22 07:01: 학습시트 매핑 누락 시 Drive 제목 검색으로 기존 스프레드시트 자동 재연결 로직 추가
