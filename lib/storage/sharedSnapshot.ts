@@ -476,7 +476,7 @@ async function fetchRemoteStateKvRaw(args: {
       return {};
     }
     if (isNetworkFetchFailure(result)) {
-      return {};
+      throw new Error(`snapshot fetch failed(state_kv_network): ${result.text}`);
     }
     throw new Error(`snapshot fetch failed(state_kv): ${result.status} ${result.text}`);
   }
@@ -696,10 +696,19 @@ export async function pushSharedSnapshot(args?: PushSharedSnapshotArgs): Promise
 
     const snapshotUrl = new URL("/rest/v1/app_state_snapshots", cfg.url);
     // Fallback 경로에서는 server-only 키(예: 학습시트 teacher map)까지 보존해야 한다.
-    const remoteStateKvRaw = await fetchRemoteStateKvRaw({
-      url: snapshotUrl,
-      headers: readHeaders,
-    });
+    // 네트워크 실패 시 {}로 간주하면 기존 키가 유실될 수 있으므로 즉시 중단한다.
+    let remoteStateKvRaw: Record<string, unknown>;
+    try {
+      remoteStateKvRaw = await fetchRemoteStateKvRaw({
+        url: snapshotUrl,
+        headers: readHeaders,
+      });
+    } catch {
+      return {
+        sessionsSynced: false,
+        stateKvSynced: false,
+      };
+    }
     const mergedRaw: Record<string, unknown> = {
       ...remoteStateKvRaw,
       ...(stateKvPatch ?? {}),
