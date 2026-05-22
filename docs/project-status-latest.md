@@ -1,11 +1,11 @@
 # Project Status (Latest)
 
-기준 시각: 2026-05-22 07:04 (KST)
+기준 시각: 2026-05-22 19:06 (KST)
 대상 프로젝트: `v1`
 
 ## 1분 요약
 
-- 최신 운영 반영본: 2026-05-22 07:04 (KST), `dpl_9f8zAyhqYSLcVDryauiUdkWbcQ9f`
+- 최신 운영 반영본: 2026-05-22 19:06 (KST), `dpl_3uz7CTcy6HjNPrDBKKAR5QWgXmCi`
 - 운영 주소: `https://okjinsoowebapp.vercel.app`
 - 학습시트 매핑 키가 비어 있을 때도 Drive에서 기존 `학습현황_{선생님}` 문서를 찾아 자동 재연결하도록 보강해, 기존 시트와 신규 시트 분리 저장 현상 완화
 - 스냅샷 패치 시 `state_kv` 원본 키를 보존하도록 병합 로직을 보강해, 학습시트 매핑 키 유실로 인한 과거 시트 재사용 실패를 방지
@@ -36,6 +36,8 @@
 
 ## 최근 변경(운영 영향 큰 항목)
 
+- 2026-05-22 19:06: 프로덕션 배포 `dpl_3uz7CTcy6HjNPrDBKKAR5QWgXmCi` (최신, 운영 별칭 `https://okjinsoowebapp.vercel.app`)
+- 2026-05-22 19:04: 스냅샷 `state_kv` fallback 병합 시 학습시트 매핑 키 보존 패치 적용(동일 선생님 신규 시트 분리 생성 재발 방지)
 - 2026-05-22 07:04: 프로덕션 배포 `dpl_9f8zAyhqYSLcVDryauiUdkWbcQ9f` (최신, 운영 별칭 `https://okjinsoowebapp.vercel.app`)
 - 2026-05-22 07:01: 학습시트 매핑 누락 시 Drive 제목 검색으로 기존 스프레드시트 자동 재연결 로직 추가
 - 2026-05-16 18:48: 프로덕션 배포 `dpl_HDBXBN1WJE7XZyJkLwe3pvgZQyqo`
