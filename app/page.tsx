@@ -299,7 +299,12 @@ export default function HomePage() {
     setError("");
     const nextPath = normalizeNextPath(redirectFrom) || "/";
     const redirectTo = buildCallbackRedirectUrl({ origin: window.location.origin, nextPath });
-    const url = buildGoogleAuthUrl(redirectTo, true, { forceConsent: true });
+    const requestCalendar =
+      (!roleLoading && canAccessRole(role, "teacher")) || shouldRequestCalendarScope(nextPath);
+    const url = buildGoogleAuthUrl(redirectTo, {
+      requestCalendar,
+      forceConsent: true,
+    });
     if (!url) {
       setError("권한 다시 연결 URL을 만들지 못했어요.");
       return;
@@ -536,6 +541,26 @@ export default function HomePage() {
                 ) : null}
                 <button
                   type="button"
+                  onClick={onClickReconnectGoogleAuth}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    padding: "10px 16px",
+                    border: "1px solid #be123c",
+                    borderRadius: 10,
+                    background: "#fff1f2",
+                    color: "#be123c",
+                    fontWeight: 800,
+                    cursor: "pointer",
+                    userSelect: "none",
+                    minHeight: 44,
+                  }}
+                >
+                  구글 권한 다시 연결
+                </button>
+                <button
+                  type="button"
                   onClick={onClickLogout}
                   style={{
                     display: "inline-flex",
@@ -569,26 +594,7 @@ export default function HomePage() {
                   }}
                 >
                   ⚠️ <b>구글 캘린더 연결 열쇠가 만료되었습니다.</b><br/>
-                  <button
-                    type="button"
-                    onClick={onClickReconnectGoogleAuth}
-                    style={{
-                      marginTop: 8,
-                      display: "inline-flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      padding: "8px 12px",
-                      borderRadius: 8,
-                      border: "1px solid #be123c",
-                      background: "#be123c",
-                      color: "#fff",
-                      fontSize: 12,
-                      fontWeight: 700,
-                      cursor: "pointer",
-                    }}
-                  >
-                    구글 권한 다시 연결
-                  </button>
+                  위의 <b>구글 권한 다시 연결</b> 버튼을 눌러 권한을 새로 받아주세요.
                 </div>
               )}
             </>
