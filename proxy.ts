@@ -11,8 +11,17 @@ import {
   readSignedBridgeCookieAccessToken,
   resolveSupabaseViewerRole,
 } from "@/lib/security/requestAuth";
+import { logPerf } from "@/lib/server/performanceLog";
 
-const FIXED_ADMIN_EMAILS = new Set(["rapah0310@gmail.com"]);
+function getAdminEmails(): Set<string> {
+  const envEmails = (process.env.ADMIN_EMAILS ?? "")
+    .split(",")
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean);
+  return new Set(["rapah0310@gmail.com", ...envEmails]);
+}
+
+const FIXED_ADMIN_EMAILS = getAdminEmails();
 
 type RejectReason =
   | "SECRET_MISSING"
@@ -88,9 +97,39 @@ export async function proxy(request: NextRequest) {
   if (!requiredRole) {
     return NextResponse.next();
   }
+  const startMs = Date.now();
+  const route = "proxy";
+  const logDone = (status: number, result: string, extra?: Record<string, string | number | boolean | null>) => {
+    logPerf({
+      event: "done",
+      route,
+      requestId,
+      method: request.method,
+      status,
+      startMs,
+      extra: {
+        pathname,
+        requiredRole,
+        result,
+        ...(extra ?? {}),
+      },
+    });
+  };
+
+  logPerf({
+    event: "start",
+    route,
+    requestId,
+    method: request.method,
+    extra: {
+      pathname,
+      requiredRole,
+    },
+  });
 
   // 분리 테스트 서버에서는 로컬 관리자 세션 쿠키로 즉시 통과를 허용합니다.
   if (hasLocalDevAdminSession(request)) {
+    logDone(200, "local_dev_admin_allowed");
     return NextResponse.next();
   }
 
@@ -102,6 +141,7 @@ export async function proxy(request: NextRequest) {
       reason: "COOKIE_MISSING",
       cookieLen: signedTokenResult.cookieLen,
     });
+    logDone(307, "cookie_missing", { cookieLen: signedTokenResult.cookieLen });
     return redirectHome({ request });
   }
   if (signedTokenResult.kind === "secret_missing") {
@@ -111,6 +151,7 @@ export async function proxy(request: NextRequest) {
       reason: "SECRET_MISSING",
       cookieLen: signedTokenResult.cookieLen,
     });
+    logDone(307, "secret_missing", { cookieLen: signedTokenResult.cookieLen });
     return redirectHome({ request, clearAuthCookie: true });
   }
   if (signedTokenResult.kind === "cookie_invalid") {
@@ -120,6 +161,7 @@ export async function proxy(request: NextRequest) {
       reason: "COOKIE_SIGNATURE_INVALID",
       cookieLen: signedTokenResult.cookieLen,
     });
+    logDone(307, "cookie_signature_invalid", { cookieLen: signedTokenResult.cookieLen });
     return redirectHome({ request, clearAuthCookie: true });
   }
   if (signedTokenResult.kind === "token_missing") {
@@ -129,6 +171,7 @@ export async function proxy(request: NextRequest) {
       reason: "TOKEN_MISSING",
       cookieLen: signedTokenResult.cookieLen,
     });
+    logDone(307, "token_missing", { cookieLen: signedTokenResult.cookieLen });
     return redirectHome({ request, clearAuthCookie: true });
   }
   const accessToken = signedTokenResult.accessToken;
@@ -142,13 +185,16 @@ export async function proxy(request: NextRequest) {
       reason: "SUPABASE_CONFIG_MISSING",
       cookieLen,
     });
+    logDone(307, "supabase_config_missing", { cookieLen });
     return redirectHome({ request, clearAuthCookie: true });
   }
 
+  const authUserStartMs = Date.now();
   const user = await fetchSupabaseAuthUser({
     cfg,
     accessToken,
   });
+  const authUserMs = Date.now() - authUserStartMs;
   const serverEmail = (user?.email ?? "").trim().toLowerCase();
   if (!serverEmail) {
     logReject({
@@ -157,15 +203,18 @@ export async function proxy(request: NextRequest) {
       reason: "TOKEN_INVALID",
       cookieLen,
     });
+    logDone(307, "token_invalid", { cookieLen, authUserMs });
     return redirectHome({ request, clearAuthCookie: true });
   }
 
+  const roleStartMs = Date.now();
   const role = await resolveSupabaseViewerRole({
     cfg,
     accessToken,
     email: serverEmail,
     adminEmails: FIXED_ADMIN_EMAILS,
   });
+  const roleMs = Date.now() - roleStartMs;
   if (!canAccessRole(role, requiredRole)) {
     logReject({
       request,
@@ -174,9 +223,11 @@ export async function proxy(request: NextRequest) {
       cookieLen,
       actorEmail: serverEmail,
     });
+    logDone(307, "role_forbidden", { cookieLen, role, authUserMs, roleMs });
     return redirectHome({ request });
   }
 
+  logDone(200, "allowed", { cookieLen, role, authUserMs, roleMs });
   return NextResponse.next();
 }
 

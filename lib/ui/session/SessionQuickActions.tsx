@@ -269,6 +269,9 @@ function AdjustmentModalContent({
   const [draftOverrideHour, setDraftOverrideHour] = useState<number | null>(
     typeof meta.overrideHour === "number" ? meta.overrideHour : null
   );
+  const [draftOverrideMinute, setDraftOverrideMinute] = useState<number | null>(
+    typeof meta.overrideMinute === "number" ? (meta.overrideMinute >= 30 ? 30 : 0) : 0
+  );
   const [draftOverrideDurationHour, setDraftOverrideDurationHour] = useState<number | null>(
     typeof meta.overrideDurationMin === "number" && Number.isFinite(meta.overrideDurationMin)
       ? Math.max(1, Math.floor(meta.overrideDurationMin / 60))
@@ -314,6 +317,7 @@ function AdjustmentModalContent({
     if (!next) {
       setDraftOverrideDate("");
       setDraftOverrideHour(null);
+      setDraftOverrideMinute(0);
       setDraftOverrideDurationHour(null);
       return;
     }
@@ -388,7 +392,7 @@ function AdjustmentModalContent({
       carry: checkCarry ? Number(draftCarry) : 0,
       overrideDate: checkOverride ? draftOverrideDate : "",
       overrideHour: checkOverride ? draftOverrideHour : null,
-      overrideMinute: checkOverride ? 0 : null,
+      overrideMinute: checkOverride ? (draftOverrideMinute ?? 0) : null,
       overrideDurationMin: checkOverride ? Math.max(1, Math.floor(draftOverrideDurationHour ?? 1)) * 60 : null,
       reason: needReasonUI ? draftReason : "",
       record: needReasonUI ? draftRecord : "",
@@ -458,12 +462,13 @@ function AdjustmentModalContent({
             </div>
             {checkOverride && (
               <div className="grid gap-2">
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-4 gap-2">
                   <div className="text-sm font-semibold">수업 변경일</div>
-                  <div className="text-sm font-semibold">수업 변경 시간</div>
+                  <div className="text-sm font-semibold">변경 시</div>
+                  <div className="text-sm font-semibold">변경 분</div>
                   <div className="text-sm font-semibold">수업 시간</div>
                 </div>
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-4 gap-2">
                   <div>
                     <input
                       ref={overrideDateInputRef}
@@ -485,6 +490,7 @@ function AdjustmentModalContent({
                     value={draftOverrideHour === null ? "" : draftOverrideHour}
                     onChange={(e) => setDraftOverrideHour(e.target.value === "" ? null : Number(e.target.value))}
                     disabled={isSaving}
+                    aria-label="수업 변경 시작 시"
                   >
                     <option value="">시 선택</option>
                     {Array.from({ length: 24 }, (_, h) => (
@@ -496,11 +502,23 @@ function AdjustmentModalContent({
                   <select
                     className="rounded border border-neutral-300 px-2 py-1"
                     style={{ borderColor: "var(--control-border)" }}
+                    value={draftOverrideMinute === null ? 0 : draftOverrideMinute}
+                    onChange={(e) => setDraftOverrideMinute(Number(e.target.value) >= 30 ? 30 : 0)}
+                    disabled={isSaving}
+                    aria-label="수업 변경 시작 분"
+                  >
+                    <option value={0}>00분</option>
+                    <option value={30}>30분</option>
+                  </select>
+                  <select
+                    className="rounded border border-neutral-300 px-2 py-1"
+                    style={{ borderColor: "var(--control-border)" }}
                     value={draftOverrideDurationHour === null ? "" : draftOverrideDurationHour}
                     onChange={(e) =>
                       setDraftOverrideDurationHour(e.target.value === "" ? null : Math.max(1, Number(e.target.value)))
                     }
                     disabled={isSaving}
+                    aria-label="수업 변경 수업 시간"
                   >
                     <option value="">시간 선택</option>
                     {[1, 2].map((hours) => (

@@ -96,6 +96,7 @@ export type PaymentRecord = {
   sessionAddRules?: Array<{
     weekday: number; // 0..6
     hour: number; // 0..23
+    minute?: number; // 0..59 (0 또는 30)
     durationHour: 1 | 2;
   }>;
   // UI 표시용 합성 레코드(기본 카드) 구분값

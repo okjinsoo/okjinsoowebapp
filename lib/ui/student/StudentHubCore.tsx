@@ -114,8 +114,10 @@ function normalizeSessionAddCount(n: number): number {
   return Math.max(1, Math.floor(n));
 }
 
-function formatHourLabel(hour: number): string {
-  return `${String(normalizeHour(hour)).padStart(2, "0")}시`;
+function formatTimeLabel(hour: number, minute: number = 0): string {
+  const hh = String(normalizeHour(hour)).padStart(2, "0");
+  const mm = Number(minute) >= 30 ? "30" : "00";
+  return `${hh}시 ${mm}분`;
 }
 
 function weekdayFullLabel(n: number): string {
@@ -764,7 +766,7 @@ export default function StudentHubCore({
               ? rule.weekday
               : (Math.max(0, Math.min(6, Math.floor(Number(patch.weekday)))) as Weekday),
           hour: patch.hour === undefined ? rule.hour : normalizeHour(Number(patch.hour)),
-          minute: 0,
+          minute: patch.minute === undefined ? (rule.minute ?? 0) : (Number(patch.minute) >= 30 ? 30 : 0),
           durationHour:
             patch.durationHour === undefined
               ? rule.durationHour
@@ -786,7 +788,7 @@ export default function StudentHubCore({
         next.push({
           weekday: nextWeekday,
           hour: normalizeHour(Number(picked.hour)),
-          minute: 0,
+          minute: Number(picked.minute) >= 30 ? 30 : 0,
           durationHour: normalizeSessionAddDurationHour(Number(picked.durationHour)),
         });
       }
@@ -804,7 +806,7 @@ export default function StudentHubCore({
               ? rule.weekday
               : (Math.max(0, Math.min(6, Math.floor(Number(patch.weekday)))) as Weekday),
           hour: patch.hour === undefined ? rule.hour : normalizeHour(Number(patch.hour)),
-          minute: 0,
+          minute: patch.minute === undefined ? (rule.minute ?? 0) : (Number(patch.minute) >= 30 ? 30 : 0),
           durationHour:
             patch.durationHour === undefined
               ? rule.durationHour
@@ -2042,19 +2044,30 @@ export default function StudentHubCore({
                       </select>
                     </div>
                     <div style={{ display: "grid", gap: 6 }}>
-                      <span style={{ fontWeight: 700 }}>시작시간</span>
-                      <select
-                        value={rule.hour}
-                        onChange={(e) => updateSessionAddRule(i, { hour: Number(e.target.value) })}
-                        style={{ ...selectStyle, width: "100%" }}
-                        aria-label={`${i + 1}번째 수업 시작 시`}
-                      >
-                        {Array.from({ length: 24 }, (_, h) => (
-                          <option key={`hour-${h}`} value={h}>
-                            {formatHourLabel(h)}
-                          </option>
-                        ))}
-                      </select>
+                      <span style={{ fontWeight: 700 }}>시작 시간</span>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+                        <select
+                          value={rule.hour}
+                          onChange={(e) => updateSessionAddRule(i, { hour: Number(e.target.value) })}
+                          style={{ ...selectStyle, width: "100%" }}
+                          aria-label={`${i + 1}번째 수업 시작 시`}
+                        >
+                          {Array.from({ length: 24 }, (_, h) => (
+                            <option key={`hour-${h}`} value={h}>
+                              {String(h).padStart(2, "0")}시
+                            </option>
+                          ))}
+                        </select>
+                        <select
+                          value={rule.minute ?? 0}
+                          onChange={(e) => updateSessionAddRule(i, { minute: Number(e.target.value) as 0 | 30 })}
+                          style={{ ...selectStyle, width: "100%" }}
+                          aria-label={`${i + 1}번째 수업 시작 분`}
+                        >
+                          <option value={0}>00분</option>
+                          <option value={30}>30분</option>
+                        </select>
+                      </div>
                     </div>
                     <div style={{ display: "grid", gap: 6 }}>
                       <span style={{ fontWeight: 700 }}>수업시간</span>
@@ -2072,7 +2085,7 @@ export default function StudentHubCore({
                       </select>
                     </div>
                     <div style={{ color: "var(--text-muted)" }}>
-                      {weekdayFullLabel(rule.weekday)} · {formatHourLabel(rule.hour)} 시작 ·{" "}
+                      {weekdayFullLabel(rule.weekday)} · {formatTimeLabel(rule.hour, rule.minute ?? 0)} 시작 ·{" "}
                       {normalizeSessionAddDurationHour(rule.durationHour)}시간
                     </div>
                   </div>
@@ -2213,19 +2226,30 @@ export default function StudentHubCore({
                       </select>
                     </div>
                     <div style={{ display: "grid", gap: 6 }}>
-                      <span style={{ fontWeight: 700 }}>시작시간</span>
-                      <select
-                        value={rule.hour}
-                        onChange={(e) => updateScheduleEditRule(i, { hour: Number(e.target.value) })}
-                        style={{ ...selectStyle, width: "100%" }}
-                        aria-label={`${i + 1}번째 변경 시작 시`}
-                      >
-                        {Array.from({ length: 24 }, (_, h) => (
-                          <option key={`schedule-edit-hour-${h}`} value={h}>
-                            {formatHourLabel(h)}
-                          </option>
-                        ))}
-                      </select>
+                      <span style={{ fontWeight: 700 }}>시작 시간</span>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+                        <select
+                          value={rule.hour}
+                          onChange={(e) => updateScheduleEditRule(i, { hour: Number(e.target.value) })}
+                          style={{ ...selectStyle, width: "100%" }}
+                          aria-label={`${i + 1}번째 변경 시작 시`}
+                        >
+                          {Array.from({ length: 24 }, (_, h) => (
+                            <option key={`schedule-edit-hour-${h}`} value={h}>
+                              {String(h).padStart(2, "0")}시
+                            </option>
+                          ))}
+                        </select>
+                        <select
+                          value={rule.minute ?? 0}
+                          onChange={(e) => updateScheduleEditRule(i, { minute: Number(e.target.value) as 0 | 30 })}
+                          style={{ ...selectStyle, width: "100%" }}
+                          aria-label={`${i + 1}번째 변경 시작 분`}
+                        >
+                          <option value={0}>00분</option>
+                          <option value={30}>30분</option>
+                        </select>
+                      </div>
                     </div>
                     <div style={{ display: "grid", gap: 6 }}>
                       <span style={{ fontWeight: 700 }}>수업시간</span>
@@ -2245,7 +2269,7 @@ export default function StudentHubCore({
                       </select>
                     </div>
                     <div style={{ color: "var(--text-muted)" }}>
-                      {weekdayFullLabel(rule.weekday)} · {formatHourLabel(rule.hour)} 시작 ·{" "}
+                      {weekdayFullLabel(rule.weekday)} · {formatTimeLabel(rule.hour, rule.minute ?? 0)} 시작 ·{" "}
                       {normalizeSessionAddDurationHour(rule.durationHour)}시간
                     </div>
                   </div>

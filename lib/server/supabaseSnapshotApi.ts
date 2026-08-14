@@ -14,11 +14,19 @@ import {
   hasLocalDevAdminSession,
 } from "@/lib/auth/localDevAuth";
 import { logSecurityEvent } from "@/lib/security/securityLog";
+import { logPerf } from "@/lib/server/performanceLog";
 import { isSharedStateKvKey } from "@/lib/storage/sharedStateKeys";
 import type { Session, Student, Teacher } from "@/lib/types/index";
 
 const SNAPSHOT_KEY = "main";
-const FIXED_ADMIN_EMAILS = new Set(["rapah0310@gmail.com"]);
+export function getAdminEmails(): Set<string> {
+  const envEmails = (process.env.ADMIN_EMAILS ?? "")
+    .split(",")
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean);
+  return new Set(["rapah0310@gmail.com", ...envEmails]);
+}
+const FIXED_ADMIN_EMAILS = getAdminEmails();
 
 type SupabaseConfig = {
   url: string;
@@ -293,17 +301,52 @@ function resolveStudentId(email: string, snapshot: NormalizedSnapshot): string |
 }
 
 export async function resolveViewerContext(request: NextRequest): Promise<ViewerContext | null> {
+  const startMs = Date.now();
+  const requestId = requestIdOf(request);
+  const route = `${request.nextUrl.pathname}#resolveViewerContext`;
   const cfg = getSupabaseServerConfig();
-  if (!cfg) return null;
+  if (!cfg) {
+    logPerf({
+      event: "done",
+      route,
+      requestId,
+      method: request.method,
+      status: 500,
+      startMs,
+      extra: { result: "supabase_config_missing" },
+    });
+    return null;
+  }
 
   if (hasLocalDevAdminSession(request)) {
     if (!cfg.serviceRoleKey) return null;
+    const snapshotStartMs = Date.now();
     const snapshotResult = await fetchSnapshotRow({
       cfg,
       accessToken: cfg.serviceRoleKey,
       useServiceRole: true,
     });
+    const snapshotMs = Date.now() - snapshotStartMs;
     const snapshot = normalizeSnapshot(snapshotResult.row, snapshotResult.missing);
+    logPerf({
+      event: "done",
+      route,
+      requestId,
+      method: request.method,
+      status: 200,
+      startMs,
+      extra: {
+        result: "ok",
+        role: "admin",
+        authUserMs: 0,
+        snapshotMs,
+        roleMs: 0,
+        teachers: snapshot.teachers.length,
+        students: snapshot.students.length,
+        sessions: snapshot.sessions.length,
+        stateKvKeys: Object.keys(snapshot.stateKv).length,
+      },
+    });
     return {
       accessToken: cfg.serviceRoleKey,
       email: LOCAL_DEV_ADMIN_EMAIL,
@@ -322,17 +365,44 @@ export async function resolveViewerContext(request: NextRequest): Promise<Viewer
       allowAuthorizationHeader: true,
       allowLegacyCookieJson: true,
     })) ?? "";
-  if (!accessToken) return null;
+  if (!accessToken) {
+    logPerf({
+      event: "done",
+      route,
+      requestId,
+      method: request.method,
+      status: 401,
+      startMs,
+      extra: { result: "token_missing" },
+    });
+    return null;
+  }
 
+  const authUserStartMs = Date.now();
   const user = await fetchSupabaseAuthUser({ cfg, accessToken });
-  if (!user) return null;
+  const authUserMs = Date.now() - authUserStartMs;
+  if (!user) {
+    logPerf({
+      event: "done",
+      route,
+      requestId,
+      method: request.method,
+      status: 401,
+      startMs,
+      extra: { result: "auth_user_missing", authUserMs },
+    });
+    return null;
+  }
 
+  const snapshotStartMs = Date.now();
   const snapshotResult = await fetchSnapshotRow({ cfg, accessToken });
+  const snapshotMs = Date.now() - snapshotStartMs;
   const snapshot = normalizeSnapshot(snapshotResult.row, snapshotResult.missing);
   const normalizedEmail = normalizeEmail(user.email);
   const email = normalizedEmail || null;
 
   let role: ViewerRole = "guest";
+  const roleStartMs = Date.now();
   if (email && FIXED_ADMIN_EMAILS.has(email)) {
     role = "admin";
   } else if (email) {
@@ -346,9 +416,31 @@ export async function resolveViewerContext(request: NextRequest): Promise<Viewer
       role = resolveFallbackRole(email, snapshot) ?? "guest";
     }
   }
+  const roleMs = Date.now() - roleStartMs;
 
   const teacherId = email ? resolveTeacherId(email, snapshot) : null;
   const studentId = email ? resolveStudentId(email, snapshot) : null;
+  logPerf({
+    event: "done",
+    route,
+    requestId,
+    method: request.method,
+    status: 200,
+    startMs,
+    extra: {
+      result: "ok",
+      role,
+      authUserMs,
+      snapshotMs,
+      roleMs,
+      teachers: snapshot.teachers.length,
+      students: snapshot.students.length,
+      sessions: snapshot.sessions.length,
+      stateKvKeys: Object.keys(snapshot.stateKv).length,
+      hasTeacherId: Boolean(teacherId),
+      hasStudentId: Boolean(studentId),
+    },
+  });
 
   return {
     accessToken,
@@ -496,7 +588,7 @@ export async function upsertSnapshotPatch(args: {
     }
   }
 
-  if (hasStudents) {
+  if (hasStudents && viewer.role !== "student") {
     const patchStudents = args.patch.students ?? [];
     const currentStudents = viewer.snapshot.students;
     if (currentStudents.length > 5 && patchStudents.length < currentStudents.length * 0.5) {
@@ -540,6 +632,45 @@ export async function upsertSnapshotPatch(args: {
     state_kv?: Record<string, unknown>;
   } = { id: SNAPSHOT_KEY };
 
+  let finalStudentsPayload: Student[] | undefined;
+  if (hasStudents) {
+    if (viewer.role === "student") {
+      const patchStudent = args.patch.students?.[0];
+      if (patchStudent && viewer.studentId) {
+        finalStudentsPayload = viewer.snapshot.students.map((s) =>
+          s.id === viewer.studentId ? { ...s, ...patchStudent } : s
+        );
+      } else {
+        finalStudentsPayload = viewer.snapshot.students;
+      }
+    } else if (viewer.role === "teacher" && viewer.teacherId) {
+      // [동시성 보호] 선생님은 본인 담당 학생만 수정/저장하므로, 다른 선생님의 학생 정보는 최신 스냅샷에서 보존
+      const patchMap = new Map((args.patch.students ?? []).map((s) => [s.id, s]));
+      const otherStudents = viewer.snapshot.students.filter((s) => s.teacherId !== viewer.teacherId && !patchMap.has(s.id));
+      finalStudentsPayload = [...otherStudents, ...(args.patch.students ?? [])];
+    } else {
+      finalStudentsPayload = args.patch.students ?? [];
+    }
+  }
+
+  let finalSessionsPayload: Session[] | undefined;
+  if (hasSessions) {
+    if (viewer.role === "teacher" && viewer.teacherId) {
+      // [동시성 보호] 본인 담당 학생들의 세션만 패치로 갱신하고, 다른 선생님 담당 학생들의 세션은 최신 스냅샷에서 보존
+      const myStudentIds = new Set(
+        viewer.snapshot.students.filter((s) => s.teacherId === viewer.teacherId).map((s) => s.id)
+      );
+      const patchSessions = args.patch.sessions ?? [];
+      const patchStudentIds = new Set(patchSessions.map((s) => s.studentId));
+      const untouchedSessions = viewer.snapshot.sessions.filter(
+        (s) => !myStudentIds.has(s.studentId) && !patchStudentIds.has(s.studentId)
+      );
+      finalSessionsPayload = [...untouchedSessions, ...patchSessions];
+    } else {
+      finalSessionsPayload = args.patch.sessions ?? [];
+    }
+  }
+
   // [Phase 23 보안] 권한별 쓰기 제한
   if (viewer.role === "student") {
     // 1. 자신의 학생 정보만 수정 가능 (전체 학생 명단 수정 시도 차단)
@@ -577,8 +708,8 @@ export async function upsertSnapshotPatch(args: {
   }
 
   if (hasTeachers) payload.teachers = args.patch.teachers ?? [];
-  if (hasStudents) payload.students = args.patch.students ?? [];
-  if (hasSessions) payload.sessions = args.patch.sessions ?? [];
+  if (hasStudents) payload.students = finalStudentsPayload;
+  if (hasSessions) payload.sessions = finalSessionsPayload;
   if (touchesStateKv) payload.state_kv = mergedStateKv ?? {};
 
   const requestUrl = new URL("/rest/v1/app_state_snapshots", cfg.url);
@@ -617,8 +748,8 @@ export async function upsertSnapshotPatch(args: {
 
   const fallbackPayload: typeof payload = { id: SNAPSHOT_KEY };
   if (hasTeachers) fallbackPayload.teachers = args.patch.teachers ?? [];
-  if (hasStudents) fallbackPayload.students = args.patch.students ?? [];
-  if (hasSessions && !sessionsMissing) fallbackPayload.sessions = args.patch.sessions ?? [];
+  if (hasStudents) fallbackPayload.students = finalStudentsPayload;
+  if (hasSessions && !sessionsMissing) fallbackPayload.sessions = finalSessionsPayload;
   if (touchesStateKv && !stateKvMissing) fallbackPayload.state_kv = mergedStateKv ?? {};
 
   const fallback = await execute(fallbackPayload);

@@ -58,12 +58,13 @@ type AuthBridgeCookie = {
   accessToken: string;
 };
 
-const REFRESH_SKEW_MS = 60 * 1000;
+const REFRESH_SKEW_MS = 10 * 60 * 1000; // 만료 10분 전부터 안전하게 갱신
 const REFRESH_FAILURE_COOLDOWN_MS = 30 * 1000;
 let refreshInFlight: Promise<AuthSession | null> | null = null;
 let lastRefreshFailureAt = 0;
 let lastBridgeSyncPayloadKey = "";
 let lastBridgeSyncAt = 0;
+let autoRefreshInitialized = false;
 
 function parseAuthSessionRaw(raw: string | null): AuthSession | null {
   if (!raw) return null;
@@ -480,7 +481,34 @@ export async function getValidAccessToken(): Promise<string | null> {
   return session?.accessToken ?? null;
 }
 
+export function initAutoAuthRefresh(): void {
+  if (typeof window === "undefined" || autoRefreshInitialized) return;
+  autoRefreshInitialized = true;
+
+  // 1. 탭으로 돌아왔을 때(자습 후 다시 클릭) 즉시 만료 여부 확인 및 갱신
+  window.addEventListener("focus", () => {
+    void ensureAuthSession();
+  });
+
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") {
+      void ensureAuthSession();
+    }
+  });
+
+  // 2. 탭을 켜둔 채 방치해도 5분마다 조용히 세션을 점검하여 갱신
+  setInterval(() => {
+    void ensureAuthSession();
+  }, 5 * 60 * 1000);
+}
+
+// 클라이언트 환경에서 모듈 로드 시 즉시 자동 갱신 리스너 가동
+if (typeof window !== "undefined") {
+  initAutoAuthRefresh();
+}
+
 export function dispatchAuthUpdated(): void {
   if (typeof window === "undefined") return;
   window.dispatchEvent(new CustomEvent(AUTH_EVENT));
 }
+

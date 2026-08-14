@@ -1,12 +1,16 @@
 # Project Status (Latest)
 
-기준 시각: 2026-06-15 18:20 (KST)
+기준 시각: 2026-08-15 05:36 (KST)
 대상 프로젝트: `v1`
 
 ## 1분 요약
 
-- 최신 운영 반영본: 2026-06-15 18:20 (KST), `dpl_Ces4FtKurBd4Tx8ZLRVAff9uXEQB`
+- 최신 운영 반영본: 2026-08-15 05:36 (KST)
 - 운영 주소: `https://okjinsoowebapp.vercel.app`
+- 1시간 비활동 후 홈화면 튕김 방지: 백그라운드 토큰 자동 갱신(5분 주기) 및 탭 포커스/가시성 복귀 감지기(`visibilitychange`/`focus`) 도입
+- 수업 시간 `HH시` ➔ `HH시 00분` / `HH시 30분` 분리형 UI (방식 B) 전면 적용 (신규 등록, 시간 변경 모달, 회차 추가, 회차별 개별 오버라이드)
+- 학생 프로필 수정 시 전체 명부 파손 방지 및 선생님 간 동시 수정 시 타 담당 학생 세션/학생 데이터 보존 스마트 병합(Smart Merge) 도입
+- 관리자 이메일 `ADMIN_EMAILS` 환경변수 연동 및 `010_harden_app_state_snapshots_rls.sql` 보안 마이그레이션 추가
 - 홈 로그인 후 `구글 권한 다시 연결` 버튼을 항상 노출해, Drive/Calendar/Meet 권한이 꼬였을 때 즉시 재연결할 수 있도록 긴급 반영
 - 학습시트 회차 누락 복구: `2026-05-12` 백업 기준으로 누락된 session state 키 297개를 안전 병합 복원(기존 현재값은 미덮어쓰기)
 - 스냅샷 fallback 경로에서 `state_kv` 원본 조회 네트워크 실패를 빈 객체로 처리하지 않고 즉시 중단하도록 보강해, 회차 키 대량 유실 재발을 차단
@@ -26,7 +30,7 @@
 ## 현재 고정 운영 정책
 
 1. 관리자 정책
-- 관리자 이메일 고정값: `rapah0310@gmail.com`
+- 관리자 이메일 고정값: `rapah0310@gmail.com` (환경변수 `ADMIN_EMAILS`와 결합 확장 지원)
 
 2. 데이터 원본 정책
 - 학생/선생님/회차 읽기·저장은 서버(Supabase) 단일 원본 기준
@@ -39,7 +43,8 @@
 
 ## 최근 변경(운영 영향 큰 항목)
 
-- 2026-06-15 18:20: 프로덕션 배포 `dpl_Ces4FtKurBd4Tx8ZLRVAff9uXEQB` (최신, 운영 별칭 `https://okjinsoowebapp.vercel.app`)
+- 2026-08-15 05:36: 1시간 비활동 홈 튕김 방지(토큰 자동 연장) + 수업 시간 30분 단위 분리형 드롭다운(방식 B) 전면 적용 + 동시성 스마트 병합 패치
+- 2026-06-15 18:20: 프로덕션 배포 `dpl_Ces4FtKurBd4Tx8ZLRVAff9uXEQB` (운영 별칭 `https://okjinsoowebapp.vercel.app`)
 - 2026-06-15 18:18: 홈 로그인 후 `구글 권한 다시 연결` 버튼 상시 노출 긴급 패치 적용
 - 2026-05-22 19:29: 프로덕션 배포 `dpl_EoUun1CZZrREcnB4jJuFdgK23rTt` (운영 별칭 `https://okjinsoowebapp.vercel.app`)
 - 2026-05-22 19:27: 학습시트 회차 누락 복구 실행(`2026-05-12` 백업에서 session state 297키 병합 복원), fallback `state_kv` 원본 조회 실패 시 동기화 중단 가드 추가

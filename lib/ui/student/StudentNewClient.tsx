@@ -40,11 +40,17 @@ function normalizeDurationHour(n: number): number {
   return Math.round(clamped * 2) / 2;
 }
 
+function normalizeMinute(n: number): number {
+  if (!Number.isFinite(n)) return 0;
+  return Number(n) >= 30 ? 30 : 0;
+}
+
 export type StudentNewMode = "admin" | "teacher";
 
 type InitialSessionBox = {
   weekday: Weekday;
   hour: number;
+  minute: number;
   durationHour: number;
 };
 
@@ -257,7 +263,7 @@ export default function StudentNewClient(props: {
 
   const [initialWeeklyCount, setInitialWeeklyCount] = useState<number>(1);
   const [initialBoxes, setInitialBoxes] = useState<InitialSessionBox[]>([
-    { weekday: 1, hour: 17, durationHour: 1 },
+    { weekday: 1, hour: 17, minute: 0, durationHour: 1 },
   ]);
 
   const [error, setError] = useState<string>("");
@@ -285,10 +291,10 @@ export default function StudentNewClient(props: {
       .map((box) => ({
         weekday: box.weekday,
         hour: normalizeHour(box.hour),
-        minute: 0,
+        minute: normalizeMinute(box.minute),
         durationMin: Math.max(30, Math.round(normalizeDurationHour(box.durationHour) * 60)),
       }));
-    rules.sort((a, b) => a.weekday - b.weekday || a.hour - b.hour);
+    rules.sort((a, b) => a.weekday - b.weekday || a.hour - b.hour || a.minute - b.minute);
     return rules as ScheduleRule[];
   }, [initialBoxes, initialWeeklyCount]);
 
@@ -301,7 +307,7 @@ export default function StudentNewClient(props: {
     const nextCount = normalizeWeeklyCount(nextRawCount);
     setInitialWeeklyCount(nextCount);
     setInitialBoxes((prev) => {
-      const source = prev.length > 0 ? prev : [{ weekday: 1, hour: 17, durationHour: 1 }];
+      const source = prev.length > 0 ? prev : [{ weekday: 1, hour: 17, minute: 0, durationHour: 1 }];
       const next: InitialSessionBox[] = [];
       for (let i = 0; i < nextCount; i++) {
         const picked = prev[i] ?? source[i % source.length];
@@ -309,6 +315,7 @@ export default function StudentNewClient(props: {
         next.push({
           weekday,
           hour: normalizeHour(Number(picked.hour)),
+          minute: normalizeMinute(Number(picked.minute ?? 0)),
           durationHour: normalizeDurationHour(Number(picked.durationHour)),
         });
       }
@@ -326,6 +333,7 @@ export default function StudentNewClient(props: {
               ? box.weekday
               : (Math.max(0, Math.min(6, Math.floor(Number(patch.weekday)))) as Weekday),
           hour: patch.hour === undefined ? box.hour : normalizeHour(Number(patch.hour)),
+          minute: patch.minute === undefined ? box.minute : normalizeMinute(Number(patch.minute)),
           durationHour:
             patch.durationHour === undefined ? box.durationHour : normalizeDurationHour(Number(patch.durationHour)),
         };
@@ -796,8 +804,8 @@ export default function StudentNewClient(props: {
                 <div
                   style={{
                     display: "grid",
-                    gridTemplateColumns: "1fr 1fr 1fr",
-                    gap: 10,
+                    gridTemplateColumns: "1.2fr 1fr 1fr 1.2fr",
+                    gap: 8,
                     alignItems: "center",
                   }}
                 >
@@ -805,33 +813,47 @@ export default function StudentNewClient(props: {
                     value={box.weekday}
                     onChange={(e) => updateInitialBox(i, { weekday: Number(e.target.value) as Weekday })}
                     style={{ width: "100%", height: 40, padding: 8, border: "1px solid #ccc", borderRadius: 8 }}
+                    aria-label={`${i + 1}번째 수업 요일`}
                   >
                     {[0, 1, 2, 3, 4, 5, 6].map((d) => (
                       <option key={`weekday-${i}-${d}`} value={d}>
-                        {weekdayLabel(d)}
+                        {weekdayLabel(d)}요일
                       </option>
                     ))}
                   </select>
-                  <input
-                    type="number"
-                    min={0}
-                    max={23}
-                    step={1}
+                  <select
                     value={box.hour}
                     onChange={(e) => updateInitialBox(i, { hour: Number(e.target.value) })}
                     style={{ width: "100%", height: 40, padding: 8, border: "1px solid #ccc", borderRadius: 8 }}
                     aria-label={`${i + 1}번째 시작 시`}
-                  />
-                  <input
-                    type="number"
-                    min={0.5}
-                    max={6}
-                    step={0.5}
+                  >
+                    {Array.from({ length: 24 }, (_, h) => (
+                      <option key={`hour-${i}-${h}`} value={h}>
+                        {String(h).padStart(2, "0")}시
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    value={box.minute ?? 0}
+                    onChange={(e) => updateInitialBox(i, { minute: Number(e.target.value) })}
+                    style={{ width: "100%", height: 40, padding: 8, border: "1px solid #ccc", borderRadius: 8 }}
+                    aria-label={`${i + 1}번째 시작 분`}
+                  >
+                    <option value={0}>00분</option>
+                    <option value={30}>30분</option>
+                  </select>
+                  <select
                     value={box.durationHour}
                     onChange={(e) => updateInitialBox(i, { durationHour: Number(e.target.value) })}
                     style={{ width: "100%", height: 40, padding: 8, border: "1px solid #ccc", borderRadius: 8 }}
                     aria-label={`${i + 1}번째 수업 시간`}
-                  />
+                  >
+                    {[0.5, 1, 1.5, 2, 2.5, 3].map((dur) => (
+                      <option key={`dur-${i}-${dur}`} value={dur}>
+                        {dur}시간
+                      </option>
+                    ))}
+                  </select>
                 </div>
               </div>
             ))}

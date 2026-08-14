@@ -45,18 +45,25 @@ const formatYmdDot = (ymd?: string) => {
 type SessionAddRuleView = {
   weekday: number;
   hour: number;
+  minute?: number;
   durationHour: 1 | 2;
 };
 
 const DEFAULT_RULE: SessionAddRuleView = {
   weekday: 1,
   hour: 17,
+  minute: 0,
   durationHour: 1,
 };
 
 function normalizeHour(value: number): number {
   if (!Number.isFinite(value)) return 0;
   return Math.max(0, Math.min(23, Math.floor(value)));
+}
+
+function normalizeMinute(value: number | undefined): number {
+  if (!Number.isFinite(Number(value))) return 0;
+  return Number(value) >= 30 ? 30 : 0;
 }
 
 function normalizeWeeklyCount(value: number): number {
@@ -82,8 +89,10 @@ function weekdayLabel(weekday: number): string {
   return map[weekday] ?? "월요일";
 }
 
-function hourLabel(hour: number): string {
-  return `${String(normalizeHour(hour)).padStart(2, "0")}시`;
+function timeLabel(hour: number, minute?: number): string {
+  const hh = String(normalizeHour(hour)).padStart(2, "0");
+  const mm = normalizeMinute(minute) >= 30 ? "30" : "00";
+  return `${hh}시 ${mm}분`;
 }
 
 function readRulesFromRecord(record: PaymentRecord): SessionAddRuleView[] {
@@ -92,6 +101,7 @@ function readRulesFromRecord(record: PaymentRecord): SessionAddRuleView[] {
     .map((rule) => ({
       weekday: Math.max(0, Math.min(6, Math.floor(Number(rule.weekday) || 0))),
       hour: normalizeHour(Number(rule.hour)),
+      minute: normalizeMinute(rule.minute),
       durationHour: normalizeDurationHour(Number(rule.durationHour)),
     }))
     .slice(0, 7);
@@ -113,6 +123,7 @@ function readRulesFromScheduleEvent(student: Student, record: PaymentRecord): Se
       return {
         weekday: Math.max(0, Math.min(6, Math.floor(Number(rule.weekday) || 0))),
         hour: normalizeHour(Number(rule.hour)),
+        minute: normalizeMinute(rule.minute),
         durationHour: normalizeDurationHour(durationMin / 60),
       };
     })
@@ -138,6 +149,7 @@ function normalizeRule(rule: SessionAddRuleView): SessionAddRuleView {
   return {
     weekday: Math.max(0, Math.min(6, Math.floor(Number(rule.weekday) || 0))),
     hour: normalizeHour(Number(rule.hour)),
+    minute: normalizeMinute(rule.minute),
     durationHour: normalizeDurationHour(Number(rule.durationHour)),
   };
 }
@@ -566,18 +578,30 @@ export function StudentPaymentPanel({
                       </select>
                     </div>
                     <div style={{ display: "grid", gap: 6 }}>
-                      <span style={{ fontWeight: 700 }}>시작시간</span>
-                      <select
-                        value={rule.hour}
-                        onChange={(e) => updateRule(index, { hour: Number(e.target.value) })}
-                        style={{ ...selectStyle, width: "100%" }}
-                      >
-                        {Array.from({ length: 24 }, (_, hour) => (
-                          <option key={`hour-${hour}`} value={hour}>
-                            {hourLabel(hour)}
-                          </option>
-                        ))}
-                      </select>
+                      <span style={{ fontWeight: 700 }}>시작 시간</span>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+                        <select
+                          value={rule.hour}
+                          onChange={(e) => updateRule(index, { hour: Number(e.target.value) })}
+                          style={{ ...selectStyle, width: "100%" }}
+                          aria-label={`${index + 1}번째 시작 시`}
+                        >
+                          {Array.from({ length: 24 }, (_, hour) => (
+                            <option key={`hour-${hour}`} value={hour}>
+                              {String(hour).padStart(2, "0")}시
+                            </option>
+                          ))}
+                        </select>
+                        <select
+                          value={rule.minute ?? 0}
+                          onChange={(e) => updateRule(index, { minute: Number(e.target.value) as 0 | 30 })}
+                          style={{ ...selectStyle, width: "100%" }}
+                          aria-label={`${index + 1}번째 시작 분`}
+                        >
+                          <option value={0}>00분</option>
+                          <option value={30}>30분</option>
+                        </select>
+                      </div>
                     </div>
                     <div style={{ display: "grid", gap: 6 }}>
                       <span style={{ fontWeight: 700 }}>수업시간</span>
@@ -596,7 +620,7 @@ export function StudentPaymentPanel({
                       </select>
                     </div>
                     <div style={{ color: "var(--text-muted)" }}>
-                      {weekdayLabel(rule.weekday)} · {hourLabel(rule.hour)} 시작 · {rule.durationHour}시간
+                      {weekdayLabel(rule.weekday)} · {timeLabel(rule.hour, rule.minute)} 시작 · {rule.durationHour}시간
                     </div>
                   </div>
                 ))}
