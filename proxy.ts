@@ -6,11 +6,11 @@ import { hasLocalDevAdminSession } from "@/lib/auth/localDevAuth";
 import { logSecurityEvent } from "@/lib/security/securityLog";
 import {
   AUTH_BRIDGE_COOKIE_KEY,
-  fetchSupabaseAuthUser,
   getSupabaseAnonConfigFromEnv,
   readSignedBridgeCookieAccessToken,
   resolveSupabaseViewerRole,
 } from "@/lib/security/requestAuth";
+import { fetchSupabaseAuthUserCached } from "@/lib/server/authCache";
 import { logPerf } from "@/lib/server/performanceLog";
 
 function getAdminEmails(): Set<string> {
@@ -190,7 +190,7 @@ export async function proxy(request: NextRequest) {
   }
 
   const authUserStartMs = Date.now();
-  const user = await fetchSupabaseAuthUser({
+  const user = await fetchSupabaseAuthUserCached({
     cfg,
     accessToken,
   });
