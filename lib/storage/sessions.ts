@@ -2,7 +2,7 @@
 "use client";
 
 import { browserStorage } from "@/lib/storage/browserStorage";
-import { pushSharedSnapshot, readLocalStudents, readLocalTeachers } from "@/lib/storage/sharedSnapshot";
+import { pushSharedSnapshot, readLocalStudents, readLocalTeachers, STUDENTS_KEY } from "@/lib/storage/sharedSnapshot";
 import {
   rebuildTeacherGoogleCalendar,
   scheduleGoogleCalendarSync,
@@ -14,7 +14,7 @@ import {
   loadLatestCoreSnapshotBaselineServerRequired,
   mergeById,
 } from "@/lib/storage/safeSnapshotMerge";
-import type { Session } from "@/lib/types/index";
+import type { Session, Student } from "@/lib/types/index";
 
 const KEY = "tutorweb_sessions_v1";
 
@@ -109,6 +109,7 @@ export function saveSessions(list: Session[], options?: SaveSessionsOptions): vo
     previous,
     next: list,
     applyPatches: applySessionPatches,
+    applyStudentPatch: applyStudentPatches,
   });
 }
 
@@ -128,6 +129,7 @@ export async function saveSessionsServerFirst(
     previous,
     next: list,
     applyPatches: applySessionPatches,
+    applyStudentPatch: applyStudentPatches,
   });
 }
 
@@ -164,6 +166,48 @@ function applySessionPatches(patches: Array<{ id: string; patch: Partial<Session
     skipSharedSnapshot: false,
     serverRequired: true,
     suppressCalendarSync: true,
+  });
+}
+
+/**
+ * 동기화 엔진이 student.permanentMeetUrl을 기록할 때 호출됩니다.
+ * localStorage의 students 배열을 패치하고 서버에 업로드합니다.
+ */
+function applyStudentPatches(patches: Array<{ id: string; patch: Partial<Student> }>): void {
+  if (typeof window === "undefined") return;
+  if (!Array.isArray(patches) || patches.length === 0) return;
+
+  const patchById = new Map<string, Partial<Student>>();
+  for (const item of patches) {
+    if (!item || typeof item.id !== "string") continue;
+    const prev = patchById.get(item.id) ?? {};
+    patchById.set(item.id, { ...prev, ...(item.patch ?? {}) });
+  }
+  if (patchById.size === 0) return;
+
+  const current = readLocalStudents();
+  let changed = false;
+  const next = current.map((student) => {
+    const patch = patchById.get(student.id);
+    if (!patch) return student;
+    const same = Object.entries(patch).every(([key, value]) => {
+      const k = key as keyof Student;
+      return student[k] === value;
+    });
+    if (same) return student;
+    changed = true;
+    return { ...student, ...patch };
+  });
+
+  if (!changed) return;
+
+  // 로컬 스토리지 즉시 갱신
+  const nextRaw = JSON.stringify(next);
+  browserStorage.setItem(STUDENTS_KEY, nextRaw);
+
+  // 서버 스냅샷에도 반영 (suppressCalendarSync: true로 루프 방지)
+  void syncSharedSnapshot(loadSessions(), "merge", true).catch((err) => {
+    console.error("applyStudentPatches: 공유 스냅샷 동기화 실패:", err);
   });
 }
 
@@ -216,6 +260,7 @@ export function syncGoogleCalendarForExistingSessions(): void {
     previous: current,
     next: current,
     applyPatches: applySessionPatches,
+    applyStudentPatch: applyStudentPatches,
   });
 }
 
@@ -234,6 +279,7 @@ export function rebuildTeacherGoogleCalendarForStudentIds(studentIds: string[]):
     studentIds,
     sessions: current,
     applyPatches: applySessionPatches,
+    applyStudentPatch: applyStudentPatches,
   });
 }
 

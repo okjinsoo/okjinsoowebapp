@@ -74,6 +74,9 @@ export type Student = {
 
   // 구글 드라이브 본진 사물함 ID (원장님이 생성 및 부여)
   driveFolderId?: string;
+
+  // 학생 전용 고정 Google Meet 링크 (최초 회차 생성 시 1회 발급, 이후 모든 회차에서 재사용)
+  permanentMeetUrl?: string;
 };
 
 export type ScheduleChangeEvent = {
