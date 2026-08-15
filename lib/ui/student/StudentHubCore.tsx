@@ -710,7 +710,7 @@ export default function StudentHubCore({
       out.push({
         weekday: nextWeekday,
         hour: normalizeHour(Number(picked?.hour)),
-        minute: 0,
+        minute: Number(picked?.minute) >= 30 ? 30 : 0,
         durationHour: normalizeSessionAddDurationHour(rawDurationMin / 60),
       });
     }
@@ -748,7 +748,7 @@ export default function StudentHubCore({
         next.push({
           weekday: nextWeekday,
           hour: normalizeHour(Number(picked.hour)),
-          minute: 0,
+          minute: Number(picked.minute) >= 30 ? 30 : 0,
           durationHour: normalizeSessionAddDurationHour(Number(picked.durationHour)),
         });
       }
@@ -1172,7 +1172,7 @@ export default function StudentHubCore({
     const rules: ScheduleRule[] = drafts.map((rule) => ({
       weekday: rule.weekday,
       hour: normalizeHour(rule.hour),
-      minute: 0,
+      minute: Number(rule.minute) >= 30 ? 30 : 0,
       durationMin: normalizeSessionAddDurationHour(rule.durationHour) * 60,
     }));
     if (rules.length === 0) return setScheduleError("수업 요일/시간을 최소 1개 선택해주세요.");
