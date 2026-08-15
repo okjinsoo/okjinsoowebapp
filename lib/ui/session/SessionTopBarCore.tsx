@@ -353,10 +353,13 @@ export default function SessionTopBarCore({ role, token, index }: Props) {
     setDraftOverrideDate(meta.overrideDate ?? "");
 
     const hh = meta.overrideHour ?? null;
-    const durationHour =
-      typeof meta.overrideDurationMin === "number" && Number.isFinite(meta.overrideDurationMin)
-        ? Math.max(1, Math.floor(meta.overrideDurationMin / 60))
-        : null;
+    const durationHour = (() => {
+      if (typeof meta.overrideDurationMin !== "number" || !Number.isFinite(meta.overrideDurationMin)) return null;
+      const h = meta.overrideDurationMin / 60;
+      if (h <= 1.25) return 1;
+      if (h <= 1.75) return 1.5;
+      return 2;
+    })();
 
     setDraftOverrideHour(typeof hh === "number" ? hh : null);
     setDraftOverrideDurationHour(durationHour);
@@ -476,7 +479,7 @@ export default function SessionTopBarCore({ role, token, index }: Props) {
     const status = checkAbsent ? "absent" : checkPresent ? "present" : "planned";
 
     const h = checkOverride ? (draftOverrideHour ?? 0) : 0;
-    const durationMin = checkOverride ? Math.max(1, Math.floor(draftOverrideDurationHour ?? 1)) * 60 : null;
+    const durationMin = checkOverride ? Math.round(Math.max(0.5, draftOverrideDurationHour ?? 1) * 60) : null;
 
     setIsSaving(true);
     try {
@@ -753,9 +756,9 @@ export default function SessionTopBarCore({ role, token, index }: Props) {
                         }}
                       >
                         <option value="">시간 선택</option>
-                        {[1, 2].map((hours) => (
+                        {([1, 1.5, 2] as const).map((hours) => (
                           <option key={hours} value={hours}>
-                            {hours}시간
+                            {hours === 1.5 ? "1시간 30분" : `${hours}시간`}
                           </option>
                         ))}
                       </select>

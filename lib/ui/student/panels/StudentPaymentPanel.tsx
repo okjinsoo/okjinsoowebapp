@@ -46,7 +46,7 @@ type SessionAddRuleView = {
   weekday: number;
   hour: number;
   minute?: number;
-  durationHour: 1 | 2;
+  durationHour: 1 | 1.5 | 2;
 };
 
 const DEFAULT_RULE: SessionAddRuleView = {
@@ -71,9 +71,16 @@ function normalizeWeeklyCount(value: number): number {
   return Math.max(1, Math.min(7, Math.floor(value)));
 }
 
-function normalizeDurationHour(value: number): 1 | 2 {
+function normalizeDurationHour(value: number): 1 | 1.5 | 2 {
   if (!Number.isFinite(value)) return 1;
-  return value <= 1.5 ? 1 : 2;
+  if (value <= 1.25) return 1;
+  if (value <= 1.75) return 1.5;
+  return 2;
+}
+
+function formatDurationHourLabel(durationHour: number): string {
+  if (durationHour === 1.5) return "1시간 30분";
+  return `${durationHour}시간`;
 }
 
 function weekdayLabel(weekday: number): string {
@@ -608,19 +615,19 @@ export function StudentPaymentPanel({
                       <select
                         value={rule.durationHour}
                         onChange={(e) =>
-                          updateRule(index, { durationHour: Number(e.target.value) as 1 | 2 })
+                          updateRule(index, { durationHour: Number(e.target.value) as 1 | 1.5 | 2 })
                         }
                         style={{ ...selectStyle, width: "100%" }}
                       >
-                        {[1, 2].map((duration) => (
+                        {([1, 1.5, 2] as const).map((duration) => (
                           <option key={`duration-${duration}`} value={duration}>
-                            {duration}시간
+                            {formatDurationHourLabel(duration)}
                           </option>
                         ))}
                       </select>
                     </div>
                     <div style={{ color: "var(--text-muted)" }}>
-                      {weekdayLabel(rule.weekday)} · {timeLabel(rule.hour, rule.minute)} 시작 · {rule.durationHour}시간
+                      {weekdayLabel(rule.weekday)} · {timeLabel(rule.hour, rule.minute)} 시작 · {formatDurationHourLabel(normalizeDurationHour(rule.durationHour))}
                     </div>
                   </div>
                 ))}

@@ -272,11 +272,13 @@ function AdjustmentModalContent({
   const [draftOverrideMinute, setDraftOverrideMinute] = useState<number | null>(
     typeof meta.overrideMinute === "number" ? (meta.overrideMinute >= 30 ? 30 : 0) : 0
   );
-  const [draftOverrideDurationHour, setDraftOverrideDurationHour] = useState<number | null>(
-    typeof meta.overrideDurationMin === "number" && Number.isFinite(meta.overrideDurationMin)
-      ? Math.max(1, Math.floor(meta.overrideDurationMin / 60))
-      : null
-  );
+  const [draftOverrideDurationHour, setDraftOverrideDurationHour] = useState<number | null>(() => {
+    if (typeof meta.overrideDurationMin !== "number" || !Number.isFinite(meta.overrideDurationMin)) return null;
+    const h = meta.overrideDurationMin / 60;
+    if (h <= 1.25) return 1;
+    if (h <= 1.75) return 1.5;
+    return 2;
+  });
   const [draftReason, setDraftReason] = useState<string>(meta.reason ?? "");
   const [draftRecord, setDraftRecord] = useState<string>(meta.record ?? "");
   const overrideDateInputRef = useRef<HTMLInputElement | null>(null);
@@ -380,8 +382,8 @@ function AdjustmentModalContent({
     if (checkOverride) {
       if (!draftOverrideDate) return alert("수업 변경일을 입력해주세요.");
       if (draftOverrideHour === null) return alert("수업 변경 시간을 선택해주세요.");
-      if (draftOverrideDurationHour === null || draftOverrideDurationHour < 1) {
-        return alert("수업 시간을 1시간 이상 입력해주세요.");
+      if (draftOverrideDurationHour === null || draftOverrideDurationHour <= 0) {
+        return alert("수업 시간을 선택해주세요.");
       }
     }
     if (checkCarry && !isNonNegInt(draftCarry)) return alert("이월 횟수는 0 이상의 정수여야 합니다.");
@@ -393,7 +395,7 @@ function AdjustmentModalContent({
       overrideDate: checkOverride ? draftOverrideDate : "",
       overrideHour: checkOverride ? draftOverrideHour : null,
       overrideMinute: checkOverride ? (draftOverrideMinute ?? 0) : null,
-      overrideDurationMin: checkOverride ? Math.max(1, Math.floor(draftOverrideDurationHour ?? 1)) * 60 : null,
+      overrideDurationMin: checkOverride ? Math.round(Math.max(0.5, draftOverrideDurationHour ?? 1) * 60) : null,
       reason: needReasonUI ? draftReason : "",
       record: needReasonUI ? draftRecord : "",
     });
@@ -510,23 +512,23 @@ function AdjustmentModalContent({
                     <option value={0}>00분</option>
                     <option value={30}>30분</option>
                   </select>
-                  <select
-                    className="rounded border border-neutral-300 px-2 py-1"
-                    style={{ borderColor: "var(--control-border)" }}
-                    value={draftOverrideDurationHour === null ? "" : draftOverrideDurationHour}
-                    onChange={(e) =>
-                      setDraftOverrideDurationHour(e.target.value === "" ? null : Math.max(1, Number(e.target.value)))
-                    }
-                    disabled={isSaving}
-                    aria-label="수업 변경 수업 시간"
-                  >
-                    <option value="">시간 선택</option>
-                    {[1, 2].map((hours) => (
-                      <option key={hours} value={hours}>
-                        {hours}시간
-                      </option>
-                    ))}
-                  </select>
+                    <select
+                      className="rounded border border-neutral-300 px-2 py-1"
+                      style={{ borderColor: "var(--control-border)" }}
+                      value={draftOverrideDurationHour === null ? "" : draftOverrideDurationHour}
+                      onChange={(e) =>
+                        setDraftOverrideDurationHour(e.target.value === "" ? null : Number(e.target.value))
+                      }
+                      disabled={isSaving}
+                      aria-label="수업 변경 수업 시간"
+                    >
+                      <option value="">시간 선택</option>
+                      {([1, 1.5, 2] as const).map((hours) => (
+                        <option key={hours} value={hours}>
+                          {hours === 1.5 ? "1시간 30분" : `${hours}시간`}
+                        </option>
+                      ))}
+                    </select>
                 </div>
                 {draftOverrideDate ? (
                   <div className="text-xs" style={{ color: "var(--text-muted)" }}>
