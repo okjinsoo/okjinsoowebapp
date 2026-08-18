@@ -42,7 +42,7 @@ export default function AppFooter() {
 
         <div className="app-footer-bottom">
           <p className="app-footer-copy">
-            © {new Date().getFullYear()} 옥진수학 (Okjin Math). All rights reserved.
+            © {new Date().getFullYear()} 옥진수학 (okjinsoomath). All rights reserved.
           </p>
         </div>
       </div>
