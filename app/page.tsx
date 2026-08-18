@@ -648,9 +648,16 @@ export default function HomePage() {
           ) : null}
         </div>
 
-        {/* 정책 연결 푸터 (Google 심사 필수 요건) */}
+        {/* 정책 및 수강안내 연결 링크 */}
         <div style={{ marginTop: 24, textAlign: "center", borderTop: "1px solid var(--surface-border)", paddingTop: 16 }}>
-          <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 12, fontSize: 12, color: "var(--text-muted)" }}>
+          <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 12, fontSize: 12, color: "var(--text-muted)", flexWrap: "wrap" }}>
+            <Link
+              href="/programs"
+              style={{ color: "#2563eb", textDecoration: "none", fontWeight: 700 }}
+            >
+              수업 및 결제 안내
+            </Link>
+            <span style={{ color: "var(--surface-border)" }}>|</span>
             <span
               role="button"
               onClick={onClickTesterLogin}

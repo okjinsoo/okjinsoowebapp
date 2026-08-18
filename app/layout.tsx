@@ -3,6 +3,7 @@ import BrandHomeButton from "@/lib/ui/common/BrandHomeButton";
 import AuthControl from "@/lib/ui/common/AuthControl";
 import SharedSnapshotAgent from "@/lib/ui/common/SharedSnapshotAgent";
 import PageTitleAgent from "@/lib/ui/common/PageTitleAgent";
+import AppFooter from "@/lib/ui/common/AppFooter";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -24,8 +25,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
-      <body className="antialiased">
+    <html lang="ko">
+      <body className="antialiased flex flex-col min-h-screen">
         <SharedSnapshotAgent />
         <PageTitleAgent />
         <div className="app-topbar">
@@ -37,9 +38,10 @@ export default function RootLayout({
             </div>
           </div>
         </div>
-        <div className="app-content">
+        <div className="app-content flex-1">
           {children}
         </div>
+        <AppFooter />
       </body>
     </html>
   );
