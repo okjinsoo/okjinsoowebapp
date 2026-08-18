@@ -35,20 +35,24 @@ export default function ProgramsPage() {
             <div>
               <div className="flex justify-between items-start mb-3">
                 <span className="px-2.5 py-1 text-xs font-bold rounded bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200">
-                  그룹 코칭
+                  그룹 코칭 (주 5시간)
                 </span>
-                <span className="text-xs text-slate-500">4주 기준</span>
+                <span className="text-xs text-slate-500 font-medium">4주 과정 (총 20시간)</span>
               </div>
               <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100 mb-2">
-                그룹 수업 3시간 + 개별 피드백 2시간
+                그룹 수업 + 1:1 개별 피드백 (4주)
               </h3>
               <p className="text-sm text-slate-600 dark:text-slate-400 mb-4">
-                핵심 개념 완벽 정리와 실전 문제 풀이 그룹 수업에, 학생별 취약점을 짚어주는 1:1 개별 피드백이 결합된 종합 코칭 프로그램입니다.
+                <strong>매주 그룹 수업 3시간 + 1:1 개별 피드백 2시간(주 5시간)</strong>을 4주 동안 체계적으로 진행하는 종합 코칭 프로그램입니다.
               </p>
               <ul className="text-sm text-slate-600 dark:text-slate-300 space-y-2 mb-6 bg-slate-50 dark:bg-slate-900/50 p-3.5 rounded-lg border border-slate-100 dark:border-slate-800">
                 <li className="flex items-center gap-2">
                   <span className="text-blue-600 font-bold">✓</span>
-                  <span><strong>수업 시간:</strong> 그룹 강의 3시간 + 개별 피드백 2시간</span>
+                  <span><strong>주당 수업:</strong> 매주 5시간 (그룹수업 3시간 + 개별피드백 2시간)</span>
+                </li>
+                <li className="flex items-center gap-2">
+                  <span className="text-blue-600 font-bold">✓</span>
+                  <span><strong>총 교습 시수:</strong> 4주간 총 20시간 (그룹 12시간 + 피드백 8시간)</span>
                 </li>
                 <li className="flex items-center gap-2">
                   <span className="text-blue-600 font-bold">✓</span>
@@ -56,12 +60,12 @@ export default function ProgramsPage() {
                 </li>
                 <li className="flex items-center gap-2">
                   <span className="text-blue-600 font-bold">✓</span>
-                  <span><strong>수강 주기:</strong> 4주 단위 갱신</span>
+                  <span><strong>수강 주기:</strong> 4주 단위 등록 및 갱신</span>
                 </li>
               </ul>
             </div>
             <div className="pt-4 border-t border-slate-100 dark:border-slate-700 flex justify-between items-baseline">
-              <span className="text-sm text-slate-500 font-medium">수강료 (4주)</span>
+              <span className="text-sm text-slate-500 font-medium">수강료 (4주 과정)</span>
               <span className="text-2xl font-black text-blue-600 dark:text-blue-400">
                 360,000<span className="text-sm font-normal text-slate-600 dark:text-slate-400">원</span>
               </span>
@@ -73,20 +77,24 @@ export default function ProgramsPage() {
             <div>
               <div className="flex justify-between items-start mb-3">
                 <span className="px-2.5 py-1 text-xs font-bold rounded bg-emerald-100 dark:bg-emerald-900 text-emerald-800 dark:text-emerald-200">
-                  1:1 맞춤 과외
+                  1:1 맞춤 과외 (주 4시간)
                 </span>
-                <span className="text-xs text-slate-500">4주 기준</span>
+                <span className="text-xs text-slate-500 font-medium">4주 과정 (총 16시간)</span>
               </div>
               <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100 mb-2">
-                개인 과외 4시간
+                1:1 맞춤형 개인 과외 (4주)
               </h3>
               <p className="text-sm text-slate-600 dark:text-slate-400 mb-4">
-                학생의 현재 성취도와 목표에 맞춘 100% 1:1 밀착형 개별 맞춤 과외입니다. 오답 분석과 실시간 문답으로 취약 단원을 단기간에 보완합니다.
+                <strong>매주 1:1 맞춤 개인 과외 4시간(주 4시간)</strong>을 4주 동안 집중적으로 진행하여 취약 단원을 단기간에 보완하는 밀착 관리 프로그램입니다.
               </p>
               <ul className="text-sm text-slate-600 dark:text-slate-300 space-y-2 mb-6 bg-slate-50 dark:bg-slate-900/50 p-3.5 rounded-lg border border-slate-100 dark:border-slate-800">
                 <li className="flex items-center gap-2">
                   <span className="text-emerald-600 font-bold">✓</span>
-                  <span><strong>수업 시간:</strong> 1:1 맞춤 개인 과외 총 4시간</span>
+                  <span><strong>주당 수업:</strong> 매주 1:1 개인 과외 4시간</span>
+                </li>
+                <li className="flex items-center gap-2">
+                  <span className="text-emerald-600 font-bold">✓</span>
+                  <span><strong>총 교습 시수:</strong> 4주간 총 16시간 (1:1 밀착 코칭)</span>
                 </li>
                 <li className="flex items-center gap-2">
                   <span className="text-emerald-600 font-bold">✓</span>
@@ -94,12 +102,12 @@ export default function ProgramsPage() {
                 </li>
                 <li className="flex items-center gap-2">
                   <span className="text-emerald-600 font-bold">✓</span>
-                  <span><strong>수강 주기:</strong> 4주 단위 갱신</span>
+                  <span><strong>수강 주기:</strong> 4주 단위 등록 및 갱신</span>
                 </li>
               </ul>
             </div>
             <div className="pt-4 border-t border-slate-100 dark:border-slate-700 flex justify-between items-baseline">
-              <span className="text-sm text-slate-500 font-medium">수강료 (4주)</span>
+              <span className="text-sm text-slate-500 font-medium">수강료 (4주 과정)</span>
               <span className="text-2xl font-black text-emerald-600 dark:text-emerald-400">
                 360,000<span className="text-sm font-normal text-slate-600 dark:text-slate-400">원</span>
               </span>
