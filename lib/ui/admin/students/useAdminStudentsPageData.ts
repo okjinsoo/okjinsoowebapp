@@ -1,8 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { TEACHERS_EVENT } from "@/lib/storage/teachers";
-import { readRosterServerFirst } from "@/lib/storage/serverRead";
 import type { StudentStatusKind } from "@/lib/factories/studentStatusFactory";
 import { useStudentRegistry } from "@/lib/hooks/useStudentRegistry";
 import type { Student, Teacher } from "@/lib/types/index";
@@ -34,34 +32,12 @@ type UseAdminStudentsPageDataResult = {
 };
 
 export function useAdminStudentsPageData(): UseAdminStudentsPageDataResult {
-  const { metricsMap } = useStudentRegistry();
+  const { students, teachers, metricsMap } = useStudentRegistry();
   const [mounted, setMounted] = useState(false);
-  const [students, setStudents] = useState<Student[]>([]);
-  const [teachers, setTeachers] = useState<Teacher[]>([]);
 
   useEffect(() => {
-    let cancelled = false;
-
-    const refresh = async () => {
-      const next = await readRosterServerFirst();
-      if (cancelled) return;
-      setStudents(next.students);
-      setTeachers(next.teachers);
-    };
-
-    void refresh();
     const id = setTimeout(() => setMounted(true), 0);
-    const requestRefresh = () => {
-      void refresh();
-    };
-    window.addEventListener("tutorweb:studentsUpdated", requestRefresh);
-    window.addEventListener(TEACHERS_EVENT, requestRefresh);
-    return () => {
-      cancelled = true;
-      clearTimeout(id);
-      window.removeEventListener("tutorweb:studentsUpdated", requestRefresh);
-      window.removeEventListener(TEACHERS_EVENT, requestRefresh);
-    };
+    return () => clearTimeout(id);
   }, []);
 
   const cards = useMemo<AdminStudentCard[]>(() => {

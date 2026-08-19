@@ -2,7 +2,9 @@
 
 import { loadSessions } from "@/lib/storage/sessions";
 import { loadStudents } from "@/lib/storage/students";
-import { loadTeachers } from "@/lib/storage/teachers";
+import { loadTeachers, TEACHERS_EVENT } from "@/lib/storage/teachers";
+import { TUTORWEB_EVENTS } from "@/lib/events/tutorwebEvents";
+import { AUTH_EVENT } from "@/lib/auth/supabaseAuth";
 import type { Session, Student, Teacher } from "@/lib/types/index";
 
 type FetchResult<T> = {
@@ -12,7 +14,7 @@ type FetchResult<T> = {
 
 type ServerFirstSource = "server" | "local";
 
-const SOFT_CACHE_TTL_MS = 1500;
+const SOFT_CACHE_TTL_MS = 5000;
 
 type CacheEntry = {
   expiresAt: number;
@@ -21,6 +23,28 @@ type CacheEntry = {
 
 const responseCache = new Map<string, CacheEntry>();
 const inFlightRequests = new Map<string, Promise<FetchResult<unknown>>>();
+
+export function invalidateServerReadCache(): void {
+  responseCache.clear();
+}
+
+if (typeof window !== "undefined") {
+  window.addEventListener(TUTORWEB_EVENTS.studentsUpdated, invalidateServerReadCache);
+  window.addEventListener(TUTORWEB_EVENTS.sessionsUpdated, invalidateServerReadCache);
+  window.addEventListener(TEACHERS_EVENT, invalidateServerReadCache);
+  window.addEventListener(AUTH_EVENT, invalidateServerReadCache);
+  window.addEventListener("storage", (e: StorageEvent) => {
+    if (
+      e.key === null ||
+      e.key === "tutorweb_students_v1" ||
+      e.key === "tutorweb_teachers_v1" ||
+      e.key === "tutorweb_sessions_v1" ||
+      (e.key && e.key.startsWith("tutorweb_auth_session"))
+    ) {
+      invalidateServerReadCache();
+    }
+  });
+}
 
 function stripLegacyStudentFields(student: Student): Student {
   const next = { ...student } as Student & {

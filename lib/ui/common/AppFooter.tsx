@@ -28,7 +28,7 @@ export default function AppFooter() {
             <span className="app-footer-divider">|</span>
             <span><strong>사업자등록번호:</strong> 612-24-93399</span>
             <span className="app-footer-divider">|</span>
-            <span><strong>통신판매업신고:</strong> 신고 준비중</span>
+            <span><strong>통신판매업신고:</strong> 2026-서울마포-2150</span>
           </div>
           <div className="app-footer-info-row">
             <span><strong>사업장 주소:</strong> 서울특별시 마포구 백범로 205, 104-407</span>

@@ -127,28 +127,11 @@ export default function useRoleScopedSelection(args: UseRoleScopedSelectionArgs)
       setHydrated(true);
     };
 
-    void requestRefresh();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [applySelection]);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    const requestRefresh = async () => {
-      const next = await readRosterServerFirst();
-      if (cancelled) return;
-      setStudents(next.students);
-      setTeachers(next.teachers);
-      applySelection(next.students, next.teachers);
-      setHydrated(true);
-    };
-
     const onRefresh = () => {
       void requestRefresh();
     };
+
+    void requestRefresh();
 
     window.addEventListener(GATE_EVENT, onRefresh);
     window.addEventListener(AUTH_EVENT, onRefresh);

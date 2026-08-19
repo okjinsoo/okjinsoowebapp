@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import type { Student } from "@/lib/types/index";
 import { GATE_EVENT, loadCurrentStudentToken } from "@/lib/ui/common/roleGateStorage";
 import { TUTORWEB_EVENTS } from "@/lib/events/tutorwebEvents";
-import { readStudentsServerFirst } from "@/lib/storage/serverRead";
+import { readLocalStudents, STUDENTS_KEY } from "@/lib/storage/sharedSnapshot";
 
 const APP_TITLE = "옥진수학";
 
@@ -82,33 +82,35 @@ function resolveTitle(pathname: string, students: Student[], selectedToken: stri
 
 export default function PageTitleAgent() {
   const pathname = usePathname() ?? "/";
-  const [students, setStudents] = useState<Student[]>([]);
+  const [students, setStudents] = useState<Student[]>(() => readLocalStudents());
   const [gateTick, setGateTick] = useState(0);
 
   useEffect(() => {
-    let cancelled = false;
-    const refreshStudents = async () => {
-      const next = await readStudentsServerFirst();
-      if (cancelled) return;
-      setStudents(next.students);
+    const refreshStudents = () => {
+      setStudents(readLocalStudents());
     };
+
     const onGateUpdated = () => {
       setGateTick((v) => v + 1);
-      void refreshStudents();
+      refreshStudents();
     };
 
-    void refreshStudents();
-
-    const onStudentsUpdated = () => {
-      void refreshStudents();
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === null || e.key === STUDENTS_KEY) {
+        refreshStudents();
+      }
     };
 
-    window.addEventListener(TUTORWEB_EVENTS.studentsUpdated, onStudentsUpdated);
+    refreshStudents();
+
+    window.addEventListener(TUTORWEB_EVENTS.studentsUpdated, refreshStudents);
     window.addEventListener(GATE_EVENT, onGateUpdated);
+    window.addEventListener("storage", onStorage);
+
     return () => {
-      cancelled = true;
-      window.removeEventListener(TUTORWEB_EVENTS.studentsUpdated, onStudentsUpdated);
+      window.removeEventListener(TUTORWEB_EVENTS.studentsUpdated, refreshStudents);
       window.removeEventListener(GATE_EVENT, onGateUpdated);
+      window.removeEventListener("storage", onStorage);
     };
   }, []);
 
