@@ -1,10 +1,13 @@
 # Project Status (Latest)
 
-기준 시각: 2026-08-20 00:20 (KST)
+기준 시각: 2026-08-21 04:20 (KST)
 대상 프로젝트: `v1`
 
 ## 1분 요약
 
+- 최신 패치 반영: 2026-08-21 04:20 (KST)
+- 홈화면/로그인 화면 푸터 노출 구조 개선: `app/page.tsx` 및 공통 가드 페이지들의 `minHeight: calc(100vh - 56px)` 고정 높이를 `flex: 1` 유연 레이아웃으로 변경하여, 홈화면 접속 시 스크롤 없이도 하단 사업자 정보 푸터(`AppFooter.tsx`)가 화면 하단에 바로 상시 노출되도록 개선
+- 학생 상태 판정 조건 개선: '연장필요' 기준을 기존 잔여 회차(3회 이하) 기준에서 '마지막 수업일로부터 9일 전(D-9)' 기준으로 개편 (`studentStatusFactory.ts`, `useStudentRegistry.ts`, `StudentHubCore.tsx`)
 - 최신 운영 반영본: 2026-08-20 00:20 (KST)
 - 운영 주소: `https://okjinsoowebapp.vercel.app`
 - 하단 푸터 통신판매업신고번호 등록: `2026-서울마포-2150` 등록 완료 (`AppFooter.tsx`)

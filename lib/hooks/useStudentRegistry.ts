@@ -146,6 +146,10 @@ export function useStudentRegistry() {
       const overdueDays = finishedAll && todayMs !== null && lastMs !== null
         ? Math.floor((todayMs - lastMs) / 86400000)
         : 0;
+      const daysUntilLastSession =
+        lastMs !== null && todayMs !== null
+          ? Math.round((lastMs - todayMs) / 86400000)
+          : null;
 
       // 휴회 정책 제거: 상태 계산에서 휴회 입력값은 더 이상 사용하지 않는다.
       const pauseLifecycle = computePauseLifecycle(today, undefined);
@@ -155,6 +159,7 @@ export function useStudentRegistry() {
         overdueDays,
         remainingCount,
         passedCount,
+        daysUntilLastSession,
       });
 
       const lastClassIndex = null;

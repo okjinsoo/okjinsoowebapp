@@ -345,10 +345,13 @@ export default function HomePage() {
   return (
     <main
       style={{
-        minHeight: "calc(100vh - 56px)",
-        display: "grid",
-        placeItems: "center",
-        padding: 16,
+        display: "flex",
+        flexDirection: "column",
+        justifyContent: "center",
+        alignItems: "center",
+        flex: 1,
+        width: "100%",
+        padding: "24px 0",
         background: "var(--background)",
       }}
     >

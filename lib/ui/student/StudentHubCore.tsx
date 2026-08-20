@@ -486,6 +486,10 @@ export default function StudentHubCore({
       finishedAll && todayMs !== null && lastMs !== null
         ? Math.floor((todayMs - lastMs) / 86400000)
         : 0;
+    const daysUntilLastSession =
+      lastMs !== null && todayMs !== null
+        ? Math.round((lastMs - todayMs) / 86400000)
+        : null;
 
     const kind = computeStudentStatusFromMetrics({
       pauseLifecycle,
@@ -493,6 +497,7 @@ export default function StudentHubCore({
       overdueDays,
       remainingCount,
       passedCount,
+      daysUntilLastSession,
     });
     const meta = getStudentStatusMeta(kind);
     return { label: meta.label, bg: meta.bg, color: meta.color };

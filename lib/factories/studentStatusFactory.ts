@@ -4,7 +4,7 @@ export type StudentStatusKind =
   | "active"
   | "need_extension";
 
-import type { Student } from "@/lib/types/index";
+import type { Student, Session } from "@/lib/types/index";
 import { sessionsByStudent } from "@/lib/storage/sessions";
 import { buildBaseDatesISO, computeEffectiveISO, readMetaMap } from "@/lib/factories/sessionFactories";
 import { kstDateMs, todayYmdKST, ymdFromISO_KST } from "@/lib/utils/date";
@@ -27,15 +27,31 @@ export function isPauseScheduledByLastClass(todayYmd: string, lastClassYmd?: str
   return computePauseLifecycle(todayYmd, lastClassYmd) === "confirmed";
 }
 
+export function computeDaysUntilSession(todayYmd: string, targetYmd?: string | null): number | null {
+  if (!targetYmd) return null;
+  const todayMs = kstDateMs(todayYmd);
+  const targetMs = kstDateMs(targetYmd);
+  if (todayMs === null || targetMs === null) return null;
+  return Math.round((targetMs - todayMs) / 86400000);
+}
+
 export function computeStudentStatusFromMetrics(params: {
   pauseLifecycle: PauseLifecycle;
   hasPendingPauseRequest: boolean;
   overdueDays: number;
   remainingCount: number;
   passedCount: number;
+  daysUntilLastSession?: number | null;
 }): StudentStatusKind {
-  const { remainingCount, passedCount } = params;
-  if (remainingCount <= 3) return "need_extension";
+  const { remainingCount, passedCount, daysUntilLastSession } = params;
+
+  // 마지막 수업으로부터 9일 전부터 연장필요 (D-9 이하)
+  const isExtensionNeeded =
+    typeof daysUntilLastSession === "number"
+      ? daysUntilLastSession <= 9
+      : remainingCount <= 0;
+
+  if (isExtensionNeeded) return "need_extension";
   if (passedCount <= 3) return "new";
   return "active";
 }
@@ -53,15 +69,35 @@ export function computeStudentStatus(student: Student): StudentStatusKind {
       overdueDays: 0,
       remainingCount: Math.max(0, student.planCount ?? 0),
       passedCount: 0,
+      daysUntilLastSession: null,
     });
   }
 
-  const sessions = sessionsByStudent(student.id);
+  const realSessions = sessionsByStudent(student.id);
+  const planCount = student.planCount || 12;
+  const sessionsByIndex = new Map(realSessions.map((session) => [session.index, session]));
+  const maxIndex = Math.max(planCount, ...realSessions.map((s) => s.index), 0);
+  const rawSessions: Session[] = [];
+  for (let i = 1; i <= maxIndex; i += 1) {
+    const existing = sessionsByIndex.get(i);
+    if (existing) {
+      rawSessions.push(existing);
+      continue;
+    }
+    rawSessions.push({
+      id: `virtual_${student.id}_${i}`,
+      studentId: student.id,
+      index: i,
+      displayAt: "",
+      state: "normal",
+    });
+  }
+
   const baseDatesISO = buildBaseDatesISO(student, 60);
   const metaMap = readMetaMap(student.token);
   let passedCount = 0;
   let lastSessionISO: string | null = null;
-  for (const s of sessions) {
+  for (const s of rawSessions) {
     const { effectiveISO } = computeEffectiveISO({
       token: student.token,
       index: s.index,
@@ -74,7 +110,7 @@ export function computeStudentStatus(student: Student): StudentStatusKind {
     if (!lastSessionISO || effectiveISO > lastSessionISO) lastSessionISO = effectiveISO;
   }
 
-  const totalCount = Math.max(0, student.planCount ?? 0, sessions.length);
+  const totalCount = Math.max(0, student.planCount ?? 0, rawSessions.length);
   const remainingCount = Math.max(0, totalCount - passedCount);
   const finishedAll = totalCount > 0 && passedCount >= totalCount;
   const lastYmd = lastSessionISO ? ymdFromISO_KST(lastSessionISO) ?? "" : "";
@@ -84,6 +120,10 @@ export function computeStudentStatus(student: Student): StudentStatusKind {
     finishedAll && todayMs !== null && lastMs !== null
       ? Math.floor((todayMs - lastMs) / 86400000)
       : 0;
+  const daysUntilLastSession =
+    lastMs !== null && todayMs !== null
+      ? Math.round((lastMs - todayMs) / 86400000)
+      : null;
 
   return computeStudentStatusFromMetrics({
     pauseLifecycle,
@@ -91,6 +131,7 @@ export function computeStudentStatus(student: Student): StudentStatusKind {
     overdueDays,
     remainingCount,
     passedCount,
+    daysUntilLastSession,
   });
 }
 

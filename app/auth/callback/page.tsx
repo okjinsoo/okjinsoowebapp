@@ -89,10 +89,11 @@ export default function AuthCallbackPage() {
   return (
     <main
       style={{
-        minHeight: "calc(100vh - 56px)",
+        flex: 1,
         display: "grid",
         placeItems: "center",
-        padding: 16,
+        padding: "24px 0",
+        width: "100%",
       }}
     >
       <section
