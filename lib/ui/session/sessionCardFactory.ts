@@ -73,11 +73,12 @@ function kstWeekdayHourMinuteFromISO(iso: string): { weekday: number; hour: numb
       hour12: false,
     }).formatToParts(dt);
     const wk = parts.find((p) => p.type === "weekday")?.value ?? "";
-    const hh = Number(parts.find((p) => p.type === "hour")?.value ?? "0");
+    let hh = Number(parts.find((p) => p.type === "hour")?.value ?? "0");
+    if (hh === 24) hh = 0;
     const mm = Number(parts.find((p) => p.type === "minute")?.value ?? "0");
     const map: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
     const weekday = map[wk];
-    if (!Number.isFinite(weekday) || !Number.isFinite(hh) || !Number.isFinite(mm)) return null;
+    if (weekday === undefined || !Number.isFinite(weekday) || !Number.isFinite(hh) || !Number.isFinite(mm)) return null;
     return { weekday, hour: hh, minute: mm };
   } catch {
     return null;
@@ -92,6 +93,23 @@ export function resolveRulesForIndex(student: Student, index: number): ScheduleR
       rules = [...event.newRules];
     }
   }
+
+  // paymentHistory에 sessionAddRules가 있는 경우 durationMin 보강
+  const payments = [...(student.paymentHistory ?? [])].sort((a, b) => (a.startIndex || 0) - (b.startIndex || 0));
+  for (const p of payments) {
+    if (p.startIndex <= index && index <= p.endIndex && Array.isArray(p.sessionAddRules) && p.sessionAddRules.length > 0) {
+      const pRules = p.sessionAddRules;
+      rules = rules.map((r, i) => {
+        const pRule = pRules[i % pRules.length];
+        const pDurMin = pRule?.durationHour ? Math.round(pRule.durationHour * 60) : undefined;
+        return {
+          ...r,
+          durationMin: r.durationMin || pDurMin || 60,
+        };
+      });
+    }
+  }
+
   return rules;
 }
 
@@ -120,8 +138,17 @@ export function resolveDurationMinForSessionWithMeta(
   if (!iso) return normalizedRules[0].durationMin;
   const key = kstWeekdayHourMinuteFromISO(iso);
   if (!key) return normalizedRules[0].durationMin;
-  const matched = normalizedRules.find(
+
+  // 1. 요일과 시/분이 정확히 일치하는 규칙
+  const exactMatched = normalizedRules.find(
     (rule) => rule.weekday === key.weekday && rule.hour === key.hour && rule.minute === key.minute
   );
-  return (matched ?? normalizedRules[0]).durationMin;
+  if (exactMatched) return exactMatched.durationMin;
+
+  // 2. 요일만 일치하는 규칙 (시간이 약간 변경된 경우)
+  const weekdayMatched = normalizedRules.find((rule) => rule.weekday === key.weekday);
+  if (weekdayMatched) return weekdayMatched.durationMin;
+
+  // 3. 첫 번째 유효 규칙의 durationMin
+  return normalizedRules[0].durationMin;
 }

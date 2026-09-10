@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { AUTH_EVENT, loadAuthSession } from "@/lib/auth/supabaseAuth";
+import { AUTH_EVENT, isProviderTokenExpired, loadAuthSession } from "@/lib/auth/supabaseAuth";
 import { BROWSER_STORAGE_EVENT } from "@/lib/storage/browserStorage";
 import {
   pullSharedSnapshotAndHydrateWithOptions,
@@ -23,12 +23,14 @@ const PUSH_DEBOUNCE_MS = 700;
 const PUSH_RETRY_MS = 1500;
 const AUTH_KEY = "tutorweb_auth_session_v1";
 const LEGACY_CONSULT_STORE_KEY = "tutorweb_consultations_v1";
+const CALENDAR_SYNC_INITIAL_DELAY_MS = 1500;
 
 const PENING_LOCK_TIMEOUT_MS = 5000; 
 
 export default function SharedSnapshotAgent() {
   const hydratingRef = useRef(false);
   const pushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const calendarSyncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingStateKvRef = useRef<Record<string, string>>({});
   const pendingLockedAtRef = useRef<number | null>(null); 
   const calendarSyncKeyRef = useRef("");
@@ -41,17 +43,30 @@ export default function SharedSnapshotAgent() {
       // no-op
     }
 
-    const trySyncCalendarForCurrentLogin = () => {
-      const auth = loadAuthSession();
-      if (!auth?.email || !auth?.providerAccessToken) {
-        // 로그아웃(또는 토큰 소실) 시 다음 로그인에서 다시 1회 동기화되도록 키를 초기화
-        calendarSyncKeyRef.current = "";
-        return;
+    const trySyncCalendarForCurrentLogin = (delayMs = 0) => {
+      if (calendarSyncTimerRef.current) {
+        clearTimeout(calendarSyncTimerRef.current);
+        calendarSyncTimerRef.current = null;
       }
-      const syncKey = `${auth.email.toLowerCase()}::${auth.userId ?? ""}`;
-      if (calendarSyncKeyRef.current === syncKey) return;
-      calendarSyncKeyRef.current = syncKey;
-      syncGoogleCalendarForExistingSessions();
+
+      const executeSync = () => {
+        const auth = loadAuthSession();
+        if (!auth?.email || !auth?.providerAccessToken || isProviderTokenExpired(auth)) {
+          // 로그아웃, 토큰 소실 또는 만료 시 다음 로그인에서 다시 1회 동기화되도록 키를 초기화
+          calendarSyncKeyRef.current = "";
+          return;
+        }
+        const syncKey = `${auth.email.toLowerCase()}::${auth.userId ?? ""}`;
+        if (calendarSyncKeyRef.current === syncKey) return;
+        calendarSyncKeyRef.current = syncKey;
+        syncGoogleCalendarForExistingSessions();
+      };
+
+      if (delayMs > 0) {
+        calendarSyncTimerRef.current = setTimeout(executeSync, delayMs);
+      } else {
+        executeSync();
+      }
     };
 
     const hydrate = async (forceRemote = false) => {
@@ -119,7 +134,7 @@ export default function SharedSnapshotAgent() {
     };
 
     const onAuthChanged = () => {
-      trySyncCalendarForCurrentLogin();
+      trySyncCalendarForCurrentLogin(300);
       void hydrate(true);
     };
 
@@ -131,14 +146,18 @@ export default function SharedSnapshotAgent() {
       }
     };
 
-    // 초기 실행 시 서버 데이터 동기화
+    // 초기 실행 시 서버 데이터 동기화 및 캘린더 동기화 백그라운드 지연 실행
     void hydrate(true);
-    trySyncCalendarForCurrentLogin();
+    trySyncCalendarForCurrentLogin(CALENDAR_SYNC_INITIAL_DELAY_MS);
 
     const onPageHide = () => {
       if (pushTimerRef.current) {
         clearTimeout(pushTimerRef.current);
         pushTimerRef.current = null;
+      }
+      if (calendarSyncTimerRef.current) {
+        clearTimeout(calendarSyncTimerRef.current);
+        calendarSyncTimerRef.current = null;
       }
       flushPending();
     };
@@ -169,6 +188,10 @@ export default function SharedSnapshotAgent() {
         clearTimeout(pushTimerRef.current);
         pushTimerRef.current = null;
       }
+      if (calendarSyncTimerRef.current) {
+        clearTimeout(calendarSyncTimerRef.current);
+        calendarSyncTimerRef.current = null;
+      }
       window.removeEventListener(BROWSER_STORAGE_EVENT, onStorageChanged);
       window.removeEventListener("storage", onNativeStorageChanged);
       window.removeEventListener(AUTH_EVENT, onAuthChanged);
@@ -179,3 +202,4 @@ export default function SharedSnapshotAgent() {
 
   return null;
 }
+

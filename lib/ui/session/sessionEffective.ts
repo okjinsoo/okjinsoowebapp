@@ -120,13 +120,10 @@ async function writeMetaMap(token: string, metaMap: Record<number, SessionMeta>)
   }
 }
 
-export function readMetaMap(token: string): Record<number, SessionMeta> {
-  if (!token) return {};
+export function parseMetaMapFromRaw(raw: string | null | undefined): Record<number, SessionMeta> {
+  if (!raw) return {};
   try {
-    const raw = browserStorage.getItem(metaMapKey(token));
-    if (!raw) return {};
     const parsed = JSON.parse(raw) as Record<string, unknown>;
-
     const out: Record<number, SessionMeta> = {};
     for (const [k, v] of Object.entries(parsed)) {
       const idx = Number(k);
@@ -156,6 +153,34 @@ export function readMetaMap(token: string): Record<number, SessionMeta> {
   } catch {
     return {};
   }
+}
+
+export function readMetaMap(token: string): Record<number, SessionMeta> {
+  if (!token) return {};
+  try {
+    const raw = browserStorage.getItem(metaMapKey(token));
+    return parseMetaMapFromRaw(raw);
+  } catch {
+    return {};
+  }
+}
+
+export function getEffectiveMetaMap(args: {
+  token: string;
+  stateKv?: Record<string, string>;
+}): Record<number, SessionMeta> {
+  const { token, stateKv } = args;
+  if (!token) return {};
+
+  const serverRaw = stateKv ? stateKv[metaMapKey(token)] : undefined;
+  const serverMeta = parseMetaMapFromRaw(serverRaw);
+  const localMeta = readMetaMap(token);
+
+  // 서버 메타와 로컬 메타를 병합 (서버 스냅샷을 우선으로 하되 로컬 오버라이드 보존)
+  return {
+    ...serverMeta,
+    ...localMeta,
+  };
 }
 
 export async function upsertMeta(token: string, index: number, patch: Partial<SessionMeta>): Promise<SessionMeta> {

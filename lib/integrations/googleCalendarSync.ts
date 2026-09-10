@@ -1,13 +1,18 @@
 "use client";
 
-import { buildGoogleAuthUrl, loadAuthSession } from "@/lib/auth/supabaseAuth";
+import { buildGoogleAuthUrl, isProviderTokenExpired, loadAuthSession } from "@/lib/auth/supabaseAuth";
 import { readSnapshotServerFirst } from "@/lib/storage/serverRead";
 import type { Session, Student, Teacher } from "@/lib/types/index";
 import {
   buildBaseDatesISO,
-  readMetaMap,
   computeEffectiveISO,
+  getEffectiveMetaMap,
+  type SessionMeta,
 } from "@/lib/factories/sessionFactories";
+import {
+  resolveRulesForIndex,
+  resolveDurationMinForSessionWithMeta,
+} from "@/lib/ui/session/sessionCardFactory";
 
 function filterVisibleSessions(student: Student, sessions: Session[]): Session[] {
   void student;
@@ -32,12 +37,40 @@ type SyncArgs = {
 };
 
 const GOOGLE_CALENDAR_BASE_URL = "https://www.googleapis.com/calendar/v3";
-const DEFAULT_DURATION_MIN = 60;
 const SYNC_DEBOUNCE_MS = 900;
 const CREATE_PAST_GRACE_MS = 6 * 60 * 60 * 1000; // 6h
 const DUPLICATE_TIME_WINDOW_MS = 5 * 60 * 1000;
 const RECENT_CREATED_TTL_MS = 60 * 1000;
 const APP_CALENDAR_SUMMARY = "옥진수학";
+
+function formatKstRfc3339(isoOrYmd: string): string | null {
+  try {
+    const dt = new Date(isoOrYmd);
+    if (!Number.isFinite(dt.getTime())) return null;
+    const parts = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Seoul",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: false,
+    }).formatToParts(dt);
+
+    const y = parts.find((p) => p.type === "year")?.value ?? "1970";
+    const m = parts.find((p) => p.type === "month")?.value ?? "01";
+    const d = parts.find((p) => p.type === "day")?.value ?? "01";
+    let hh = parts.find((p) => p.type === "hour")?.value ?? "00";
+    if (hh === "24") hh = "00";
+    const mm = parts.find((p) => p.type === "minute")?.value ?? "00";
+    const ss = parts.find((p) => p.type === "second")?.value ?? "00";
+
+    return `${y}-${m}-${d}T${hh}:${mm}:${ss}+09:00`;
+  } catch {
+    return null;
+  }
+}
 const APP_CALENDAR_DESCRIPTION = "옥진수학 자동 생성 수업 일정";
 export const APP_EVENT_MARKER = "옥진수학 자동 생성 일정";
 const STUDENT_MIRROR_MARKER = "학생용 보조 일정";
@@ -802,12 +835,18 @@ function buildEventPayload(args: {
   student: Student;
   teacher: Teacher | null;
   includeMeetCreateRequest: boolean;
+  meta?: SessionMeta;
 }): Record<string, unknown> | null {
   const startIso = safeIso(args.session.displayAt);
   if (!startIso) return null;
 
-  const endIso = addMinutes(startIso, DEFAULT_DURATION_MIN);
+  const rules = resolveRulesForIndex(args.student, args.session.index);
+  const durationMin = resolveDurationMinForSessionWithMeta(startIso, rules, args.meta);
+  const endIso = addMinutes(startIso, durationMin);
   if (!endIso) return null;
+
+  const startKst = formatKstRfc3339(startIso) ?? startIso;
+  const endKst = formatKstRfc3339(endIso) ?? endIso;
 
   const summary = `${args.student.name} ${args.session.index}회차 수업`;
   const descriptionLines = [
@@ -815,6 +854,7 @@ function buildEventPayload(args: {
     `학생: ${args.student.name}`,
     args.teacher ? `선생님: ${args.teacher.name}` : "",
     `회차: ${args.session.index}`,
+    `수업시간: ${durationMin}분`,
     args.session.memo ? `메모: ${args.session.memo}` : "",
   ].filter((line) => Boolean(line));
 
@@ -825,11 +865,11 @@ function buildEventPayload(args: {
     description: descriptionLines.join("\n"),
     status: "confirmed",
     start: {
-      dateTime: startIso,
+      dateTime: startKst,
       timeZone: "Asia/Seoul",
     },
     end: {
-      dateTime: endIso,
+      dateTime: endKst,
       timeZone: "Asia/Seoul",
     },
     attendees,
@@ -861,6 +901,7 @@ async function createEvent(args: {
   session: Session;
   student: Student;
   teacher: Teacher | null;
+  meta?: SessionMeta;
   sendUpdates?: "all" | "none";
 }): Promise<{ eventId: string | null; meetUrl: string | null }> {
   // 학생 영구 Meet 링크가 있으면 새 Meet 발급 안 함
@@ -869,6 +910,7 @@ async function createEvent(args: {
     session: args.session,
     student: args.student,
     teacher: args.teacher,
+    meta: args.meta,
     includeMeetCreateRequest: !alreadyHasMeet,
   });
   if (!payload) {
@@ -900,6 +942,7 @@ async function updateEvent(args: {
   session: Session;
   student: Student;
   teacher: Teacher | null;
+  meta?: SessionMeta;
 }): Promise<{ eventId: string | null; meetUrl: string | null }> {
   const eventId = text(args.session.googleCalendarEventId);
   if (!eventId) return { eventId: null, meetUrl: null };
@@ -908,6 +951,7 @@ async function updateEvent(args: {
     session: args.session,
     student: args.student,
     teacher: args.teacher,
+    meta: args.meta,
     includeMeetCreateRequest: !text(args.session.googleMeetUrl),
   });
   if (!payload) {
@@ -964,12 +1008,18 @@ function buildStudentMirrorPayload(args: {
   session: Session;
   student: Student;
   teacher: Teacher | null;
+  meta?: SessionMeta;
 }): Record<string, unknown> | null {
   const startIso = safeIso(args.session.displayAt);
   if (!startIso) return null;
 
-  const endIso = addMinutes(startIso, DEFAULT_DURATION_MIN);
+  const rules = resolveRulesForIndex(args.student, args.session.index);
+  const durationMin = resolveDurationMinForSessionWithMeta(startIso, rules, args.meta);
+  const endIso = addMinutes(startIso, durationMin);
   if (!endIso) return null;
+
+  const startKst = formatKstRfc3339(startIso) ?? startIso;
+  const endKst = formatKstRfc3339(endIso) ?? endIso;
 
   const meetUrl = text(args.session.googleMeetUrl);
   const descriptionLines = [
@@ -978,6 +1028,7 @@ function buildStudentMirrorPayload(args: {
     `학생: ${args.student.name}`,
     args.teacher ? `선생님: ${args.teacher.name}` : "",
     `회차: ${args.session.index}`,
+    `수업시간: ${durationMin}분`,
     meetUrl ? `Meet 링크: ${meetUrl}` : "",
     args.session.memo ? `메모: ${args.session.memo}` : "",
   ].filter((line) => Boolean(line));
@@ -987,11 +1038,11 @@ function buildStudentMirrorPayload(args: {
     description: descriptionLines.join("\n"),
     ...(meetUrl ? { location: meetUrl } : {}),
     start: {
-      dateTime: startIso,
+      dateTime: startKst,
       timeZone: "Asia/Seoul",
     },
     end: {
-      dateTime: endIso,
+      dateTime: endKst,
       timeZone: "Asia/Seoul",
     },
     extendedProperties: {
@@ -1088,7 +1139,7 @@ async function runTeacherCalendarRebuild(args: {
   const auth = loadAuthSession();
   const providerToken = text(auth?.providerAccessToken);
   const currentEmail = normalizeEmail(auth?.email);
-  if (!providerToken || !currentEmail) {
+  if (!providerToken || !currentEmail || isProviderTokenExpired(auth)) {
     return;
   }
 
@@ -1154,7 +1205,7 @@ async function runTeacherCalendarRebuild(args: {
       // 대신 아래 개별 루프에서 findSessionEvents를 통해 확실하게 청소 및 입양을 진행합니다.
 
       const visibleRows = filterVisibleSessions(student, rows);
-      const localMetaMap = readMetaMap(student.token);
+      const effectiveMetaMap = getEffectiveMetaMap({ token: student.token, stateKv: snapshot.stateKv });
       const baseDatesISOForStudent = buildBaseDatesISO(student, 120);
 
       const effectiveRows = visibleRows.map((s: Session) => {
@@ -1162,7 +1213,7 @@ async function runTeacherCalendarRebuild(args: {
           token: student.token,
           index: s.index,
           baseDatesISO: baseDatesISOForStudent,
-          metaMap: localMetaMap,
+          metaMap: effectiveMetaMap,
         });
         return { ...s, displayAt: effectiveISO || s.displayAt };
       });
@@ -1176,6 +1227,7 @@ async function runTeacherCalendarRebuild(args: {
 
       for (const session of orderedSessions) {
         try {
+          const meta = effectiveMetaMap[session.index];
           // 1. 강제 청소 및 입양 (Purge & Adopt):
           // 현재 세션ID 또는 꼬리표(이름+회차) 기준 모든 일정을 뒤져서 유령을 청소합니다.
           const allSessionEvents = await findSessionEvents({
@@ -1227,6 +1279,7 @@ async function runTeacherCalendarRebuild(args: {
               session: sessionToCreateOrUpdate,
               student,
               teacher,
+              meta,
             });
           } else {
             // 학생에게 이미 영구 Meet 링크가 있으면 새로 발급하지 않음
@@ -1241,6 +1294,7 @@ async function runTeacherCalendarRebuild(args: {
               },
               student,
               teacher,
+              meta,
               sendUpdates: "none",
             });
           }
@@ -1313,6 +1367,7 @@ async function runSync(args: SyncArgs): Promise<void> {
   const snapshot = await readSnapshotServerFirst();
   const students = snapshot.students;
   const studentById = new Map(students.map((s) => [s.id, s] as const));
+  const stateKv = snapshot.stateKv;
 
   // 모든 세션에 대해 실시간 계산된 '진짜 날짜'를 먼저 입힙니다.
   const correctedNext = args.next.map((s) => {
@@ -1320,12 +1375,12 @@ async function runSync(args: SyncArgs): Promise<void> {
     if (!student) return s;
     // [성능] 각 세션마다 rebuild하는 대신 캐싱을 고려할 수 있으나, 일단 정확성을 위해 매번 계산
     const baseDatesISO = buildBaseDatesISO(student, 120);
-    const localMetaMap = readMetaMap(student.token);
+    const effectiveMetaMap = getEffectiveMetaMap({ token: student.token, stateKv });
     const { effectiveISO } = computeEffectiveISO({
       token: student.token,
       index: s.index,
       baseDatesISO,
-      metaMap: localMetaMap,
+      metaMap: effectiveMetaMap,
     });
     return { ...s, displayAt: effectiveISO || s.displayAt };
   });
@@ -1357,8 +1412,12 @@ async function runSync(args: SyncArgs): Promise<void> {
   const auth = loadAuthSession();
   const providerToken = text(auth?.providerAccessToken);
   const currentEmail = normalizeEmail(auth?.email);
-  if (!providerToken) {
-    applySyncErrorToTargets("구글 캘린더 권한 토큰이 없습니다. 홈에서 구글 권한을 다시 연결해주세요.");
+  if (!providerToken || isProviderTokenExpired(auth)) {
+    applySyncErrorToTargets(
+      !providerToken
+        ? "구글 캘린더 권한 토큰이 없습니다. 홈에서 구글 권한을 다시 연결해주세요."
+        : "구글 캘린더 권한 토큰이 만료되었습니다. 홈의 '구글 권한 다시 연결' 버튼을 눌러주세요."
+    );
     return;
   }
   if (!currentEmail) {
@@ -1657,6 +1716,9 @@ async function runSync(args: SyncArgs): Promise<void> {
         }
       }
 
+      const studentMetaMap = getEffectiveMetaMap({ token: student.token, stateKv });
+      const currentMeta = studentMetaMap[next.index];
+
       let result: { eventId: string | null; meetUrl: string | null };
       if (sessionForOwner.googleCalendarEventId) {
         try {
@@ -1666,6 +1728,7 @@ async function runSync(args: SyncArgs): Promise<void> {
             session: sessionForOwner,
             student,
             teacher,
+            meta: currentMeta,
           });
         } catch (err) {
           const message = err instanceof Error ? err.message : "Google Calendar 동기화 실패";
@@ -1682,6 +1745,7 @@ async function runSync(args: SyncArgs): Promise<void> {
               },
               student,
               teacher,
+              meta: currentMeta,
             });
           } else {
             throw err;
@@ -1699,6 +1763,7 @@ async function runSync(args: SyncArgs): Promise<void> {
           },
           student,
           teacher,
+          meta: currentMeta,
         });
         if (result.eventId) {
           saveRecentCreatedEvent({

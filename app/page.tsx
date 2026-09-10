@@ -49,10 +49,10 @@ export default function HomePage() {
   const router = useRouter();
   const studentMainPath = buildSmainBasePath("s");
   const teacherMainPath = buildTmainBasePath("t");
-  // hydration mismatch 방지: 서버/클라이언트 첫 렌더를 동일하게 guest로 시작
   const [session, setSession] = useState<AuthSession | null>(null);
   const [role, setRole] = useState<UserRole>("guest");
   const [roleLoading, setRoleLoading] = useState(false);
+  const [initialAuthChecked, setInitialAuthChecked] = useState(false);
   const [redirectFrom, setRedirectFrom] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -89,17 +89,24 @@ export default function HomePage() {
       if (!next) {
         setRole("guest");
         setRoleLoading(false);
+        setInitialAuthChecked(true);
         return;
       }
 
       setRoleLoading(true);
-      const nextRole = await resolveUserRole({
-        email: next.email,
-        accessToken: next.accessToken,
-      });
-      if (cancelled || currentRequestId !== requestId) return;
-      setRole(nextRole);
-      setRoleLoading(false);
+      try {
+        const nextRole = await resolveUserRole({
+          email: next.email,
+          accessToken: next.accessToken,
+        });
+        if (cancelled || currentRequestId !== requestId) return;
+        setRole(nextRole);
+      } finally {
+        if (!cancelled && currentRequestId === requestId) {
+          setRoleLoading(false);
+          setInitialAuthChecked(true);
+        }
+      }
     };
 
     const requestSync = () => {
@@ -234,26 +241,6 @@ export default function HomePage() {
     window.location.href = url;
   }
 
-  function onClickTesterLogin() {
-    setError("");
-    if (!loginReady) {
-      setError("환경변수가 비어 있어요. .env 설정을 먼저 해주세요.");
-      return;
-    }
-
-    setBusy(true);
-    saveKeepSignedInPreference(keepSignedIn);
-    const nextPath = normalizeNextPath(redirectFrom);
-    const redirectTo = buildCallbackRedirectUrl({ origin: window.location.origin, nextPath });
-    // 관리자/테스터 로그인: 캘린더 권한(requestCalendar) TRUE
-    const url = buildGoogleAuthUrl(redirectTo, true, { selectAccount: true });
-    if (!url) {
-      setBusy(false);
-      setError("로그인 URL을 만들지 못했어요.");
-      return;
-    }
-    window.location.href = url;
-  }
 
   async function onClickLocalDevAdminLogin() {
     setError("");
@@ -404,7 +391,27 @@ export default function HomePage() {
         </div>
 
         <div style={{ marginTop: 20 }}>
-          {!loggedIn ? (
+          {!initialAuthChecked ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: 12, padding: "8px 0" }}>
+              <div
+                className="skeleton-shimmer"
+                style={{
+                  height: 48,
+                  borderRadius: 12,
+                  width: "100%",
+                }}
+              />
+              <div
+                className="skeleton-shimmer"
+                style={{
+                  height: 18,
+                  borderRadius: 6,
+                  width: "50%",
+                  margin: "0 auto",
+                }}
+              />
+            </div>
+          ) : !loggedIn ? (
             <>
               <div className="google-signin-row">
                 <button
@@ -471,7 +478,19 @@ export default function HomePage() {
               <div style={{ marginTop: 6, fontSize: 13, color: "var(--text-subtle)" }}>
                 현재 권한: <b>{roleLoading ? "확인 중..." : roleLabel(role)}</b>
               </div>
-              <div style={{ marginTop: 8, display: "flex", gap: 8, flexWrap: "wrap" }}>
+              {roleLoading ? (
+                <div style={{ marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <div
+                    className="skeleton-shimmer"
+                    style={{ height: 44, width: 140, borderRadius: 10 }}
+                  />
+                  <div
+                    className="skeleton-shimmer"
+                    style={{ height: 44, width: 110, borderRadius: 10 }}
+                  />
+                </div>
+              ) : (
+                <div style={{ marginTop: 8, display: "flex", gap: 8, flexWrap: "wrap" }}>
                 {!roleLoading && canAccessRole(role, "admin") ? (
                   <Link
                     href="/a/amain"
@@ -562,26 +581,27 @@ export default function HomePage() {
                 >
                   구글 권한 다시 연결
                 </button>
-                <button
-                  type="button"
-                  onClick={onClickLogout}
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    padding: "10px 20px",
-                    border: "1px solid var(--surface-border)",
-                    borderRadius: 10,
-                    background: "var(--home-card-bg)",
-                    fontWeight: 700,
-                    cursor: "pointer",
-                    userSelect: "none",
-                    minHeight: 44,
-                  }}
-                >
-                  로그아웃
-                </button>
-              </div>
+                  <button
+                    type="button"
+                    onClick={onClickLogout}
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      padding: "10px 20px",
+                      border: "1px solid var(--surface-border)",
+                      borderRadius: 10,
+                      background: "var(--home-card-bg)",
+                      fontWeight: 700,
+                      cursor: "pointer",
+                      userSelect: "none",
+                      minHeight: 44,
+                    }}
+                  >
+                    로그아웃
+                  </button>
+                </div>
+              )}
 
               {isProviderTokenExpired(session) && !roleLoading && canAccessRole(role, "teacher") && (
                 <div
@@ -649,35 +669,6 @@ export default function HomePage() {
               등록 후 다시 로그인하면 자동으로 권한이 반영됩니다.
             </div>
           ) : null}
-        </div>
-
-        {/* 정책 및 수강안내 연결 링크 */}
-        <div style={{ marginTop: 24, textAlign: "center", borderTop: "1px solid var(--surface-border)", paddingTop: 16 }}>
-          <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 12, fontSize: 12, color: "var(--text-muted)", flexWrap: "wrap" }}>
-            <Link
-              href="/programs"
-              style={{ color: "#2563eb", textDecoration: "none", fontWeight: 700 }}
-            >
-              수업 및 결제 안내
-            </Link>
-            <span style={{ color: "var(--surface-border)" }}>|</span>
-            <span
-              role="button"
-              onClick={onClickTesterLogin}
-              style={{ cursor: "pointer" }}
-            >
-              테스터 로그인
-            </span>
-            <span style={{ color: "var(--surface-border)" }}>|</span>
-            <Link
-              href="/policy"
-              target="_blank"
-              rel="noopener noreferrer"
-              style={{ color: "var(--text-muted)", textDecoration: "none" }}
-            >
-              이용약관 및 개인정보처리방침
-            </Link>
-          </div>
         </div>
       </section>
       {autoReauthRequested ? (

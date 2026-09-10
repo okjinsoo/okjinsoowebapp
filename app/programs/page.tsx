@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import ProgramsCheckoutClient from "@/lib/ui/programs/ProgramsCheckoutClient";
 
 export const metadata: Metadata = {
   title: "수업 프로그램 및 결제 안내 | 옥진수학",
@@ -22,98 +23,14 @@ export default function ProgramsPage() {
         </p>
       </section>
 
-      {/* 대표 수업 상품 안내 카드 그리드 */}
+      {/* 대표 수업 상품 안내 카드 그리드 & 결제 연동 클라이언트 */}
       <section className="mb-12">
         <h2 className="text-xl font-bold mb-4 pb-2 border-b border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 flex items-center gap-2">
           <span>📚</span>
           <span>수강 프로그램 (판매 상품)</span>
         </h2>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* 상품 1: 그룹 수업 */}
-          <div className="rounded-xl border border-slate-200 dark:border-slate-700 p-6 bg-white dark:bg-slate-800 shadow-sm flex flex-col justify-between hover:border-blue-300 transition-colors">
-            <div>
-              <div className="flex justify-between items-start mb-3">
-                <span className="px-2.5 py-1 text-xs font-bold rounded bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200">
-                  그룹 코칭 (주 5시간)
-                </span>
-                <span className="text-xs text-slate-500 font-medium">4주 과정 (총 20시간)</span>
-              </div>
-              <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100 mb-2">
-                그룹 수업 + 1:1 개별 피드백 (4주)
-              </h3>
-              <p className="text-sm text-slate-600 dark:text-slate-400 mb-4">
-                <strong>매주 그룹 수업 3시간 + 1:1 개별 피드백 2시간(주 5시간)</strong>을 4주 동안 체계적으로 진행하는 종합 코칭 프로그램입니다.
-              </p>
-              <ul className="text-sm text-slate-600 dark:text-slate-300 space-y-2 mb-6 bg-slate-50 dark:bg-slate-900/50 p-3.5 rounded-lg border border-slate-100 dark:border-slate-800">
-                <li className="flex items-center gap-2">
-                  <span className="text-blue-600 font-bold">✓</span>
-                  <span><strong>주당 수업:</strong> 매주 5시간 (그룹수업 3시간 + 개별피드백 2시간)</span>
-                </li>
-                <li className="flex items-center gap-2">
-                  <span className="text-blue-600 font-bold">✓</span>
-                  <span><strong>총 교습 시수:</strong> 4주간 총 20시간 (그룹 12시간 + 피드백 8시간)</span>
-                </li>
-                <li className="flex items-center gap-2">
-                  <span className="text-blue-600 font-bold">✓</span>
-                  <span><strong>진행 방식:</strong> Google Meet 실시간 라이브 & 과제 첨삭</span>
-                </li>
-                <li className="flex items-center gap-2">
-                  <span className="text-blue-600 font-bold">✓</span>
-                  <span><strong>수강 주기:</strong> 4주 단위 등록 및 갱신</span>
-                </li>
-              </ul>
-            </div>
-            <div className="pt-4 border-t border-slate-100 dark:border-slate-700 flex justify-between items-baseline">
-              <span className="text-sm text-slate-500 font-medium">수강료 (4주 과정)</span>
-              <span className="text-2xl font-black text-blue-600 dark:text-blue-400">
-                360,000<span className="text-sm font-normal text-slate-600 dark:text-slate-400">원</span>
-              </span>
-            </div>
-          </div>
-
-          {/* 상품 2: 개인 과외 */}
-          <div className="rounded-xl border border-slate-200 dark:border-slate-700 p-6 bg-white dark:bg-slate-800 shadow-sm flex flex-col justify-between hover:border-emerald-300 transition-colors">
-            <div>
-              <div className="flex justify-between items-start mb-3">
-                <span className="px-2.5 py-1 text-xs font-bold rounded bg-emerald-100 dark:bg-emerald-900 text-emerald-800 dark:text-emerald-200">
-                  1:1 맞춤 과외 (주 4시간)
-                </span>
-                <span className="text-xs text-slate-500 font-medium">4주 과정 (총 16시간)</span>
-              </div>
-              <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100 mb-2">
-                1:1 맞춤형 개인 과외 (4주)
-              </h3>
-              <p className="text-sm text-slate-600 dark:text-slate-400 mb-4">
-                <strong>매주 1:1 맞춤 개인 과외 4시간(주 4시간)</strong>을 4주 동안 집중적으로 진행하여 취약 단원을 단기간에 보완하는 밀착 관리 프로그램입니다.
-              </p>
-              <ul className="text-sm text-slate-600 dark:text-slate-300 space-y-2 mb-6 bg-slate-50 dark:bg-slate-900/50 p-3.5 rounded-lg border border-slate-100 dark:border-slate-800">
-                <li className="flex items-center gap-2">
-                  <span className="text-emerald-600 font-bold">✓</span>
-                  <span><strong>주당 수업:</strong> 매주 1:1 개인 과외 4시간</span>
-                </li>
-                <li className="flex items-center gap-2">
-                  <span className="text-emerald-600 font-bold">✓</span>
-                  <span><strong>총 교습 시수:</strong> 4주간 총 16시간 (1:1 밀착 코칭)</span>
-                </li>
-                <li className="flex items-center gap-2">
-                  <span className="text-emerald-600 font-bold">✓</span>
-                  <span><strong>진행 방식:</strong> Google Meet 전용 화상 수업 및 개별 진도</span>
-                </li>
-                <li className="flex items-center gap-2">
-                  <span className="text-emerald-600 font-bold">✓</span>
-                  <span><strong>수강 주기:</strong> 4주 단위 등록 및 갱신</span>
-                </li>
-              </ul>
-            </div>
-            <div className="pt-4 border-t border-slate-100 dark:border-slate-700 flex justify-between items-baseline">
-              <span className="text-sm text-slate-500 font-medium">수강료 (4주 과정)</span>
-              <span className="text-2xl font-black text-emerald-600 dark:text-emerald-400">
-                360,000<span className="text-sm font-normal text-slate-600 dark:text-slate-400">원</span>
-              </span>
-            </div>
-          </div>
-        </div>
+        <ProgramsCheckoutClient />
       </section>
 
       {/* 수강 및 결제 진행 절차 */}
@@ -165,7 +82,7 @@ export default function ProgramsPage() {
       </section>
 
       {/* 취소 및 환불 규정 (학원법 및 전자상거래법 준수) */}
-      <section className="mb-12">
+      <section id="refund" className="mb-12">
         <h2 className="text-xl font-bold mb-4 pb-2 border-b border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 flex items-center gap-2">
           <span>⚖️</span>
           <span>취소 및 환불 규정</span>

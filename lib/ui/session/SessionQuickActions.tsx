@@ -523,9 +523,13 @@ function AdjustmentModalContent({
                       aria-label="수업 변경 수업 시간"
                     >
                       <option value="">시간 선택</option>
-                      {([1, 1.5, 2] as const).map((hours) => (
+                      {([1, 1.5, 2, 2.5, 3] as const).map((hours) => (
                         <option key={hours} value={hours}>
-                          {hours === 1.5 ? "1시간 30분" : `${hours}시간`}
+                          {hours === 1.5
+                            ? "1시간 30분"
+                            : hours === 2.5
+                              ? "2시간 30분"
+                              : `${hours}시간`}
                         </option>
                       ))}
                     </select>

@@ -91,7 +91,7 @@ type SessionAddRuleDraft = {
   weekday: Weekday;
   hour: number;
   minute: 0 | 30;
-  durationHour: 1 | 1.5 | 2;
+  durationHour: 1 | 1.5 | 2 | 2.5 | 3;
 };
 
 function normalizeHour(n: number): number {
@@ -99,15 +99,18 @@ function normalizeHour(n: number): number {
   return Math.max(0, Math.min(23, Math.floor(n)));
 }
 
-function normalizeSessionAddDurationHour(n: number): 1 | 1.5 | 2 {
+function normalizeSessionAddDurationHour(n: number): 1 | 1.5 | 2 | 2.5 | 3 {
   if (!Number.isFinite(n)) return 1;
   if (n <= 1.25) return 1;
   if (n <= 1.75) return 1.5;
-  return 2;
+  if (n <= 2.25) return 2;
+  if (n <= 2.75) return 2.5;
+  return 3;
 }
 
 function formatDurationHourLabel(durationHour: number): string {
   if (durationHour === 1.5) return "1시간 30분";
+  if (durationHour === 2.5) return "2시간 30분";
   return `${durationHour}시간`;
 }
 
@@ -2085,11 +2088,11 @@ export default function StudentHubCore({
                       <span style={{ fontWeight: 700 }}>수업시간</span>
                       <select
                         value={rule.durationHour}
-                        onChange={(e) => updateSessionAddRule(i, { durationHour: Number(e.target.value) as 1 | 1.5 | 2 })}
+                        onChange={(e) => updateSessionAddRule(i, { durationHour: Number(e.target.value) as 1 | 1.5 | 2 | 2.5 | 3 })}
                         style={{ ...selectStyle, width: "100%" }}
                         aria-label={`${i + 1}번째 수업 시간`}
                       >
-                        {([1, 1.5, 2] as const).map((duration) => (
+                        {([1, 1.5, 2, 2.5, 3] as const).map((duration) => (
                           <option key={`duration-${duration}`} value={duration}>
                             {formatDurationHourLabel(duration)}
                           </option>
@@ -2268,12 +2271,12 @@ export default function StudentHubCore({
                       <select
                         value={rule.durationHour}
                         onChange={(e) =>
-                          updateScheduleEditRule(i, { durationHour: Number(e.target.value) as 1 | 1.5 | 2 })
+                          updateScheduleEditRule(i, { durationHour: Number(e.target.value) as 1 | 1.5 | 2 | 2.5 | 3 })
                         }
                         style={{ ...selectStyle, width: "100%" }}
                         aria-label={`${i + 1}번째 변경 수업 시간`}
                       >
-                        {([1, 1.5, 2] as const).map((duration) => (
+                        {([1, 1.5, 2, 2.5, 3] as const).map((duration) => (
                           <option key={`schedule-edit-duration-${duration}`} value={duration}>
                             {formatDurationHourLabel(duration)}
                           </option>

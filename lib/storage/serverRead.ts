@@ -209,6 +209,7 @@ type SnapshotPayload = {
   teachers?: Teacher[];
   students?: Student[];
   sessions?: Session[];
+  stateKv?: Record<string, string>;
 };
 
 function ensureObject(value: unknown): Record<string, unknown> | null {
@@ -255,6 +256,7 @@ export async function readSnapshotServerFirst(): Promise<{
   teachers: Teacher[];
   students: Student[];
   sessions: Session[];
+  stateKv?: Record<string, string>;
   source: ServerFirstSource;
 }> {
   const server = await fetchServerJson<SnapshotPayload>("/api/snapshot", "snapshot");
@@ -269,10 +271,14 @@ export async function readSnapshotServerFirst(): Promise<{
     const sessions = Array.isArray(snapshot.sessions)
       ? (snapshot.sessions as Session[])
       : [];
+    const stateKv = snapshot.stateKv && typeof snapshot.stateKv === "object"
+      ? (snapshot.stateKv as Record<string, string>)
+      : undefined;
     return {
       teachers,
       students,
       sessions,
+      stateKv,
       source: "server",
     };
   }
@@ -289,6 +295,7 @@ export async function readSnapshotServerRequired(): Promise<{
   teachers: Teacher[];
   students: Student[];
   sessions: Session[];
+  stateKv?: Record<string, string>;
   source: "server";
 }> {
   const result = await readSnapshotServerFirst();

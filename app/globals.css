@@ -58,6 +58,26 @@
   animation: pulse-sync 2s infinite;
 }
 
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.skeleton-shimmer {
+  background: linear-gradient(
+    90deg,
+    rgba(229, 231, 235, 0.4) 25%,
+    rgba(229, 231, 235, 0.85) 37%,
+    rgba(229, 231, 235, 0.4) 63%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.4s ease-in-out infinite;
+}
+
 @media (prefers-color-scheme: dark) {
   :root {
     color-scheme: dark;
@@ -98,6 +118,16 @@
     --status-locked-bg: #111827;
     --status-locked-border: #334155;
     --status-locked-text: #94a3b8;
+  }
+
+  .skeleton-shimmer {
+    background: linear-gradient(
+      90deg,
+      rgba(30, 41, 59, 0.4) 25%,
+      rgba(51, 65, 85, 0.7) 37%,
+      rgba(30, 41, 59, 0.4) 63%
+    );
+    background-size: 200% 100%;
   }
 }
 

@@ -850,7 +850,13 @@ export default function StudentNewClient(props: {
                   >
                     {[0.5, 1, 1.5, 2, 2.5, 3].map((dur) => (
                       <option key={`dur-${i}-${dur}`} value={dur}>
-                        {dur}시간
+                        {dur === 0.5
+                          ? "30분"
+                          : dur === 1.5
+                            ? "1시간 30분"
+                            : dur === 2.5
+                              ? "2시간 30분"
+                              : `${dur}시간`}
                       </option>
                     ))}
                   </select>
