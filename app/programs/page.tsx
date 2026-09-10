@@ -90,7 +90,7 @@ export default function ProgramsPage() {
 
         <div className="rounded-xl border border-slate-200 dark:border-slate-700 p-5 bg-white dark:bg-slate-800 text-sm text-slate-700 dark:text-slate-300">
           <p className="mb-3 text-slate-600 dark:text-slate-400">
-            옥진수학은 「학원의 설립·운영 및 과외교습에 관한 법률」 제18조(교습비등의 반환 등) 및 「전자상거래 등에서의 소비자보호에 관한 법률」에 의거하여 다음과 같이 명확하고 투명한 환불 기준을 준수합니다.
+            옥진수학은 「전자상거래 등에서의 소비자보호에 관한 법률」 등 관련 법령을 준수하며, 잔여 수업 시수에 비례한 투명하고 공정한 환불 기준을 운영합니다.
           </p>
 
           <div className="overflow-x-auto my-4">
@@ -98,38 +98,40 @@ export default function ProgramsPage() {
               <thead>
                 <tr className="bg-slate-100 dark:bg-slate-900/70 border-y border-slate-200 dark:border-slate-700">
                   <th className="p-2.5 font-bold text-slate-800 dark:text-slate-200">구분</th>
-                  <th className="p-2.5 font-bold text-slate-800 dark:text-slate-200">반환 사유 발생일</th>
+                  <th className="p-2.5 font-bold text-slate-800 dark:text-slate-200">취소 및 환불 요청 시점</th>
                   <th className="p-2.5 font-bold text-slate-800 dark:text-slate-200">반환 금액 기준</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
                 <tr>
                   <td className="p-2.5 font-semibold text-slate-900 dark:text-slate-100">수업 시작 전</td>
-                  <td className="p-2.5">수업 개시일 전일까지 취소 요청 시</td>
+                  <td className="p-2.5">첫 수업 개시일 전일까지 취소 요청 시</td>
                   <td className="p-2.5 font-bold text-blue-600">이미 납부한 수강료 전액 환불</td>
                 </tr>
                 <tr>
-                  <td className="p-2.5 font-semibold text-slate-900 dark:text-slate-100" rowSpan={3}>
-                    수업 시작 후 (4주 기준)
+                  <td className="p-2.5 font-semibold text-slate-900 dark:text-slate-100">수업 시작 후 (4주 과정)</td>
+                  <td className="p-2.5">잔여 수업 시간이 남아 있는 경우</td>
+                  <td className="p-2.5 font-semibold text-slate-900 dark:text-slate-100">
+                    <strong>(잔여 수업 시간 / 총 등록 수업 시간)</strong> 비율 환불
                   </td>
-                  <td className="p-2.5">총 교습시간의 1/3 경과 전</td>
-                  <td className="p-2.5">이미 납부한 수강료의 <strong>2/3 해당액</strong> 환불</td>
-                </tr>
-                <tr>
-                  <td className="p-2.5">총 교습시간의 1/2 경과 전</td>
-                  <td className="p-2.5">이미 납부한 수강료의 <strong>1/2 해당액</strong> 환불</td>
-                </tr>
-                <tr>
-                  <td className="p-2.5">총 교습시간의 1/2 경과 후</td>
-                  <td className="p-2.5 text-slate-500">반환하지 아니함</td>
                 </tr>
               </tbody>
             </table>
           </div>
 
-          <div className="space-y-1 text-xs text-slate-500 mt-3">
-            <p>• 환불 신청은 대표 전화 또는 이메일로 접수하실 수 있으며, 접수일 기준으로 반환 금액이 산정됩니다.</p>
-            <p>• 계좌이체 결제 시 환불 요청일로부터 영업일 기준 3일 이내에 지정하신 계좌로 환불 처리됩니다.</p>
+          <div className="space-y-1.5 text-xs text-slate-500 dark:text-slate-400 mt-4 p-3.5 rounded-lg bg-slate-50 dark:bg-slate-900/50 border border-slate-100 dark:border-slate-800">
+            <p className="font-semibold text-slate-700 dark:text-slate-300">
+              ※ 환불 당일 예정 수업 처리 기준
+            </p>
+            <p>
+              • 1:1 맞춤 예약 수업의 특성 및 강사 일정 점유에 따라, <strong>수업 당일(수업 시작 12시간 이내)</strong>에 취소/환불을 요청하시는 경우 <strong>당일 예정된 수업 시간은 이미 진행된 것으로 간주하여 잔여 시간에서 제외</strong> 후 정산됩니다.
+            </p>
+            <p>
+              • 환불 신청은 대표 전화(010-8972-7209) 또는 이메일(rapah0310@gmail.com)로 접수하실 수 있으며, 접수일/접수 시각 기준으로 반환 금액이 산정됩니다.
+            </p>
+            <p>
+              • 신용카드 결제 취소는 카드사 승인 취소 절차에 따르며, 계좌이체 결제 시 환불 요청일로부터 영업일 기준 3일 이내에 지정하신 계좌로 환불 처리됩니다.
+            </p>
           </div>
         </div>
       </section>
