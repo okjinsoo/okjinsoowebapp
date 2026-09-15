@@ -1252,7 +1252,7 @@ export default function StudentHubCore({
     const rules: ScheduleRule[] = drafts.map((rule) => ({
       weekday: rule.weekday,
       hour: normalizeHour(rule.hour),
-      minute: 0,
+      minute: Number(rule.minute) >= 30 ? 30 : 0,
       durationMin: Math.round(normalizeSessionAddDurationHour(rule.durationHour) * 60),
     }));
     const addedCount = normalizeSessionAddCount(sessionAddCount);
@@ -1290,6 +1290,7 @@ export default function StudentHubCore({
       sessionAddRules: rules.map((rule) => ({
         weekday: rule.weekday,
         hour: rule.hour,
+        minute: rule.minute ?? 0,
         durationHour: normalizeSessionAddDurationHour((rule.durationMin ?? 60) / 60),
       })),
       memo: `회차 추가(${addedCount}회, 주 ${rules.length}회 패턴)`,

@@ -104,6 +104,7 @@ export function resolveRulesForIndex(student: Student, index: number): ScheduleR
         const pDurMin = pRule?.durationHour ? Math.round(pRule.durationHour * 60) : undefined;
         return {
           ...r,
+          minute: typeof pRule?.minute === "number" ? pRule.minute : r.minute,
           durationMin: r.durationMin || pDurMin || 60,
         };
       });
