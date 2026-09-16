@@ -1,11 +1,14 @@
 # Project Status (Latest)
 
-기준 시각: 2026-09-16 02:15 (KST)
+기준 시각: 2026-09-16 18:00 (KST)
 대상 프로젝트: `v1`
 
 ## 1분 요약
 
-- 최신 패치 반영: 2026-09-16 02:15 (KST)
+- 최신 패치 반영: 2026-09-16 18:00 (KST)
+- **회차 추가 기록 수정 모달 30분 선택(체크) 해제 버그 수정 (`StudentPaymentPanel.tsx`)**:
+  1) **`updateRule` 분(minute) 필드 누락 보정**: "회차 추가 수정" 모달에서 30분을 선택할 때 `updateRule` 함수에 `minute` 패치가 누락되어 무조건 00분으로 되돌아가던 치명적 버그 수정
+  2) **회차 일정(`scheduleChangeEvents`) 실시간 동기화**: 기록 수정 저장 시 `scheduleChangeEvents`의 `newRules`와 `startDate`도 함께 갱신하여 30분 시작 시간표가 실제 수업 일정에 즉시 반영되도록 보강
 - **회차 추가 30분 시작 시간 미반영 버그 수정 (`StudentHubCore.tsx`, `sessionCardFactory.ts`)**:
   1) **회차 추가 규칙 '분(minute)' 보존**: `StudentHubCore.tsx`의 `addSessionsSubmit`에서 `minute: 0`으로 하드코딩되어 있던 로직을 `Number(rule.minute) >= 30 ? 30 : 0`으로 수정하여 30분 시작 시간이 정상 반영되도록 개선
   2) **결제 이력 minute 정보 보존**: `paymentRecord.sessionAddRules` 생성 시 `minute: rule.minute ?? 0`을 포함하여 결제/회차 추가 내역에서도 분 정보가 보존되도록 보강
@@ -78,6 +81,7 @@
 
 ## 최근 변경(운영 영향 큰 항목)
 
+- 2026-09-16 18:00: 회차 추가 수정 모달에서 30분 선택 즉시 00분으로 튕기는 버그 수정 (`StudentPaymentPanel.tsx` updateRule minute 패치 및 scheduleChangeEvents 동기화 보강)
 - 2026-09-16 02:15: 회차 추가 시 30분 시작 시간 미반영 버그 수정 (`StudentHubCore.tsx`, `sessionCardFactory.ts`) + 1:1 맞춤 과외 설명 주 3시간/총 12시간 정정 (`ProgramsCheckoutClient.tsx`)
 - 2026-09-10 17:33: 토스페이먼츠 전자결제 및 카드사 심사용 결제창 연동 완료 (`/programs` 수강 신청 주문서 모달 + 토스 테스트 결제창 팝업 연동 + 성공/실패 콜백 페이지 구축)
 - 2026-08-31 15:10: 재부팅 후 초기 진입 멈춤(지연) 3단계 통합 최적화 (캘린더 1.5초 백그라운드 지연 실행 + 스켈레톤 로딩 UX + 토큰 만료 401 헛걸음 사전 가드)

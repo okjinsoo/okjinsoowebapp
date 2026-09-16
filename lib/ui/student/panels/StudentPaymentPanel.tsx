@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import type { PaymentRecord, Student } from "@/lib/types/index";
+import type { PaymentRecord, ScheduleRule, Student, Weekday } from "@/lib/types/index";
 import { buildDisplayRecords, normalizePaymentHistoryRanges } from "@/lib/factories/lessonStatusFactory";
 import { SERVER_SAVE_RETRY_MESSAGE } from "@/lib/messages/serverMessages";
 import { makeId } from "@/lib/utils/id";
@@ -356,6 +356,7 @@ export function StudentPaymentPanel({
         return normalizeRule({
           weekday: patch.weekday === undefined ? rule.weekday : patch.weekday,
           hour: patch.hour === undefined ? rule.hour : patch.hour,
+          minute: patch.minute === undefined ? rule.minute : patch.minute,
           durationHour: patch.durationHour === undefined ? rule.durationHour : patch.durationHour,
         });
       })
@@ -395,8 +396,25 @@ export function StudentPaymentPanel({
     };
     const nextHistory = history.map((record) => (record.id === editingRecordId ? updated : record));
 
+    const scheduleRules: ScheduleRule[] = nextRules.map((r) => ({
+      weekday: r.weekday as Weekday,
+      hour: r.hour,
+      minute: r.minute ?? 0,
+      durationMin: Math.round(r.durationHour * 60),
+    }));
+    const nextEvents = (student.scheduleChangeEvents ?? []).map((e) => {
+      if (previous.startIndex && e.startIndex === previous.startIndex) {
+        return {
+          ...e,
+          startDate: editStartDate,
+          newRules: scheduleRules,
+        };
+      }
+      return e;
+    });
+
     setEditSaving(true);
-    const ok = await applyHistory(nextHistory);
+    const ok = await applyHistory(nextHistory, { scheduleChangeEvents: nextEvents });
     setEditSaving(false);
     if (!ok) {
       setEditError(SERVER_SAVE_RETRY_MESSAGE);
