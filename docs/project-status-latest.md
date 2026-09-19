@@ -1,11 +1,12 @@
 # Project Status (Latest)
 
-기준 시각: 2026-09-19 03:05 (KST)
+기준 시각: 2026-09-19 18:35 (KST)
+최신 커밋: `e824802`
 대상 프로젝트: `v1`
 
 ## 1분 요약
 
-- 최신 패치 반영: 2026-09-19 03:05 (KST)
+- 최신 패치 반영: 2026-09-19 18:35 (KST) (커밋 `e824802`)
 - **과거 회차 미트 링크 상속 차단 및 완전 신규 고유 미트 발급 보장 패치 (방향 B 적용)**:
   1) **과거 일정 및 세션 미트 링크 입양(Adopt) 차단 (`googleCalendarSync.ts`)**:
      - 캘린더 재구축(`runTeacherCalendarRebuild`) 및 회차 동기화(`runSync`) 시, 학생에게 아직 고유 링크(`student.permanentMeetUrl`)가 없다면 과거 특정 회차(예: 36회차)나 캘린더 기존 일정(`canonicalEvent?.meetUrl`)의 링크를 무조건 입양하던 로직을 전격 차단
