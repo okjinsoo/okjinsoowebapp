@@ -6,6 +6,8 @@ import StudentHubCore from "@/lib/ui/student/StudentHubCore";
 import RoleGateCard from "@/lib/ui/common/RoleGateCard";
 import useRoleScopedSelection from "@/lib/ui/student/hooks/useRoleScopedSelection";
 
+import { StudentHubSkeleton } from "@/lib/ui/common/AppSkeleton";
+
 export default function StudentMainClient({ role }: { role: "a" | "t" | "s" }) {
   const {
     hydrated,
@@ -18,12 +20,7 @@ export default function StudentMainClient({ role }: { role: "a" | "t" | "s" }) {
   } = useRoleScopedSelection({ role });
 
   if (!hydrated) {
-    return (
-      <main style={{ padding: 20 }}>
-        <h1 className="page-title">학생 화면</h1>
-        <p style={{ marginTop: 8, color: "var(--text-muted)" }}>로딩 중...</p>
-      </main>
-    );
+    return <StudentHubSkeleton />;
   }
 
   return (

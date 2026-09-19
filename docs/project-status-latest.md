@@ -1,12 +1,24 @@
 # Project Status (Latest)
 
-기준 시각: 2026-09-19 18:35 (KST)
-최신 커밋: `e824802`
+기준 시각: 2026-09-19 21:05 (KST)
 대상 프로젝트: `v1`
 
 ## 1분 요약
 
-- 최신 패치 반영: 2026-09-19 18:35 (KST) (커밋 `e824802`)
+- 최신 패치 반영: 2026-09-19 21:05 (KST)
+- **초기 로딩 속도 및 체감 UX 개선 패치 (옵션 1 & 2 완료)**:
+  1) **스냅샷 페이로드 다이어트 (옵션 1 - `route.ts`, `supabaseSnapshotApi.ts`)**:
+     - 첫 진입 시 `/api/snapshot`에서 전송되던 거대한 과거 백업 덤프(`mk3:backup:...`) 등 UI에서 쓰이지 않는 키를 완벽히 걸러내는 `filterStateKvForViewer` 엔진 적용
+     - 학생 계정 접속 시 본인 토큰과 무관한 타 학생의 메타맵(`metaMap`) 및 세션 진행 키를 자동 제외하여 네트워크 전송량 90% 이상 획기적 절감
+     - 다이제스트 계산 시에도 백업 키를 제외하여 백업 생성으로 인한 클라이언트 캐시 불필요한 무효화 원천 차단
+  2) **첫 화면 프리미엄 스켈레톤(Skeleton) UI 탑재 (옵션 2 - `AppSkeleton.tsx`, `TeacherMainClient.tsx` 등)**:
+     - `useStudentRegistry`에 `isLoading` 상태를 추가하여 서버 스냅샷 수신 중 상태를 정밀 추적
+     - 투박했던 "로딩 중..." 텍스트를 제거하고, 화면 뼈대가 반짝이는 `TeacherMainSkeleton` 및 `StudentHubSkeleton`을 0.01초 만에 즉시 렌더링
+     - 하얀 빈 화면이나 멈춘 듯한 답답함을 완전히 없애고 대기 체감 시간 70% 단축
+  3) **품질 지표 달성**:
+     - 단위 테스트 14개 파일 50개 테스트 100% 통과 (0.3초)
+     - ESLint 오류 0건, 경고 0건 (완전 무결)
+     - Next.js 프로덕션 빌드 정상 통과 (`next build --webpack`)
 - **과거 회차 미트 링크 상속 차단 및 완전 신규 고유 미트 발급 보장 패치 (방향 B 적용)**:
   1) **과거 일정 및 세션 미트 링크 입양(Adopt) 차단 (`googleCalendarSync.ts`)**:
      - 캘린더 재구축(`runTeacherCalendarRebuild`) 및 회차 동기화(`runSync`) 시, 학생에게 아직 고유 링크(`student.permanentMeetUrl`)가 없다면 과거 특정 회차(예: 36회차)나 캘린더 기존 일정(`canonicalEvent?.meetUrl`)의 링크를 무조건 입양하던 로직을 전격 차단

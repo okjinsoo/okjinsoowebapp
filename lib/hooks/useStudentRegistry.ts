@@ -42,16 +42,21 @@ export function useStudentRegistry() {
   const [students, setStudents] = useState<Student[]>([]);
   const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [allSessions, setAllSessions] = useState<Session[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
 
     const refreshSnapshot = async () => {
-      const next = await readSnapshotServerFirst();
-      if (cancelled) return;
-      setStudents(next.students);
-      setTeachers(next.teachers);
-      setAllSessions(next.sessions);
+      try {
+        const next = await readSnapshotServerFirst();
+        if (cancelled) return;
+        setStudents(next.students);
+        setTeachers(next.teachers);
+        setAllSessions(next.sessions);
+      } finally {
+        if (!cancelled) setIsLoading(false);
+      }
     };
 
     const requestSnapshotRefresh = () => {
@@ -184,8 +189,9 @@ export function useStudentRegistry() {
       teachers,
       metricsMap,
       tick,
+      isLoading,
     };
-  }, [students, teachers, allSessions, tick]);
+  }, [students, teachers, allSessions, tick, isLoading]);
 
   return registry;
 }

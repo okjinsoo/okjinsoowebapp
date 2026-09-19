@@ -3,7 +3,33 @@ import type { NextRequest } from "next/server";
 
 import { resolveViewerContext, upsertSnapshotPatch } from "@/lib/server/supabaseSnapshotApi";
 import { logPerf, requestIdFromHeaders } from "@/lib/server/performanceLog";
+import { isSharedStateKvKey, SHARED_META_MAP_PREFIX } from "@/lib/storage/sharedStateKeys";
 import type { Session, Student, Teacher } from "@/lib/types/index";
+
+function filterStateKvForViewer(
+  stateKv: Record<string, string>,
+  viewer: { role: string; studentId: string | null; studentToken?: string | null }
+): Record<string, string> {
+  const out: Record<string, string> = {};
+  const isStudent = viewer.role === "student" && Boolean(viewer.studentToken);
+  const studentTokenPrefix = isStudent ? `mk3:${viewer.studentToken}:` : "";
+  const studentMetaKey = isStudent ? `${SHARED_META_MAP_PREFIX}${viewer.studentToken}` : "";
+
+  for (const [k, v] of Object.entries(stateKv)) {
+    if (!isSharedStateKvKey(k)) continue; // [다이어트 핵심] mk3:backup: 등 백업 키 및 불필요한 키 전송 차단
+
+    if (isStudent) {
+      // 학생 계정이면 본인 데이터만 선별
+      if (k.startsWith(SHARED_META_MAP_PREFIX) && k !== studentMetaKey) continue;
+      if (k.startsWith("mk3:") && !k.startsWith("mk3:lectureTree") && !k.startsWith("mk3:driveRootId")) {
+        if (!k.startsWith(studentTokenPrefix)) continue;
+      }
+    }
+
+    out[k] = v;
+  }
+  return out;
+}
 
 export async function GET(request: NextRequest) {
   const startMs = Date.now();
@@ -90,6 +116,17 @@ export async function GET(request: NextRequest) {
       ? viewer.snapshot.students.filter(s => s.id === viewer.studentId)
       : viewer.snapshot.students;
 
+    const studentToken = viewer.role === "student" && viewer.studentId
+      ? (viewer.snapshot.students.find(s => s.id === viewer.studentId)?.token ?? null)
+      : null;
+
+    // [옵션 1: 스냅샷 다이어트] 불필요한 백업 키 제거 및 페이로드 경량화
+    const stateKv = filterStateKvForViewer(viewer.snapshot.stateKv, {
+      role: viewer.role,
+      studentId: viewer.studentId,
+      studentToken,
+    });
+
     logPerf({
       event: "done",
       route,
@@ -103,7 +140,7 @@ export async function GET(request: NextRequest) {
         teachers: viewer.snapshot.teachers.length,
         students: students.length,
         sessions: sessions.length,
-        stateKvKeys: Object.keys(viewer.snapshot.stateKv).length,
+        stateKvKeys: Object.keys(stateKv).length,
       },
     });
     return NextResponse.json({
@@ -114,7 +151,7 @@ export async function GET(request: NextRequest) {
         teachers: viewer.snapshot.teachers, // 선생님 정보는 학생도 참조하므로 유지
         students,
         sessions,
-        stateKv: viewer.snapshot.stateKv,
+        stateKv,
       },
     });
   } catch (error) {

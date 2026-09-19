@@ -84,7 +84,8 @@ export function calculateSnapshotDigest(snapshot: NormalizedSnapshot): string {
   const tCount = snapshot.teachers.length;
   const sCount = snapshot.students.length;
   const sessCount = snapshot.sessions.length;
-  const kvKeys = Object.keys(snapshot.stateKv).sort();
+  // [다이어트] 백업 키(mk3:backup:...) 등 UI와 무관한 키를 제외하고 순수 공유 상태 키만 반영
+  const kvKeys = Object.keys(snapshot.stateKv).filter(isSharedStateKvKey).sort();
   const kvCount = kvKeys.length;
   
   // [Phase 24.3 개선] 단순히 키 개수만 세는 게 아니라, 내용물의 변화를 감지할 수 있는 지문 생성

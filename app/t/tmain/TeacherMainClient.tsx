@@ -31,6 +31,7 @@ import { useStudentRegistry } from "@/lib/hooks/useStudentRegistry";
 import { parseDateTime } from "@/lib/ui/session/format";
 import { resolveDurationMinForSessionWithMeta, resolveRulesForIndex } from "@/lib/ui/session/sessionCardFactory";
 import type { TeacherSessionRow } from "@/lib/ui/teacher/teacherSessionCardFactory";
+import { TeacherMainSkeleton } from "@/lib/ui/common/AppSkeleton";
 
 type TeacherMainRow = TeacherSessionRow & { diff: number };
 
@@ -46,7 +47,7 @@ export default function TeacherMainClient({
   adminPathMode = "legacy",
 }: TeacherMainClientProps) {
   const router = useRouter();
-  const { students, teachers, metricsMap } = useStudentRegistry();
+  const { students, teachers, metricsMap, isLoading } = useStudentRegistry();
   const [selectedTeacherId, setSelectedTeacherId] = useState<string | null>(() => loadCurrentTeacherId());
   const [isLearningSheetSyncing, setIsLearningSheetSyncing] = useState(false);
   const normalizedAdminTeacherToken = (adminTeacherToken ?? "").trim();
@@ -248,6 +249,10 @@ export default function TeacherMainClient({
     } finally {
       setIsLearningSheetSyncing(false);
     }
+  }
+
+  if (isLoading && teachers.length === 0 && students.length === 0) {
+    return <TeacherMainSkeleton />;
   }
 
   return (
