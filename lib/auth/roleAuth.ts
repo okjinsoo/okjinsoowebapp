@@ -11,8 +11,8 @@ import type { Student, Teacher } from "@/lib/types/index";
 export type UserRole = "guest" | "student" | "teacher" | "admin";
 export type { RequiredRole } from "@/lib/auth/accessPolicy";
 
-// 요청 반영: 관리자 기본 계정 고정
-const FIXED_ADMIN_EMAILS = ["rapah0310@gmail.com"];
+// 요청 반영: 관리자 기본 마스터 계정 상시 보장 + 환경변수(NEXT_PUBLIC_ADMIN_EMAILS) 동적 결합
+const DEFAULT_MASTER_ADMIN_EMAILS = ["rapah0310@gmail.com"];
 const ROLE_CACHE_KEY = "tutorweb_last_roles_v1";
 const ROLE_CACHE_TTL_MS = 10 * 60 * 1000;
 
@@ -62,7 +62,11 @@ async function resolveSnapshotRoleByEmail(args: {
 }
 
 export function getAdminEmailSet(): Set<string> {
-  return new Set(FIXED_ADMIN_EMAILS.map(normalizeEmail));
+  const envEmails = (process.env.NEXT_PUBLIC_ADMIN_EMAILS ?? "")
+    .split(",")
+    .map(normalizeEmail)
+    .filter(Boolean);
+  return new Set([...DEFAULT_MASTER_ADMIN_EMAILS.map(normalizeEmail), ...envEmails]);
 }
 
 function readRoleCache(): RoleCacheMap {

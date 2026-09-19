@@ -100,8 +100,8 @@ export default function TeacherStudentListCard({
             </button>
           ) : null}
           {onSyncOwnStudents ? (
-            <button className="btn btn-blue" onClick={onSyncOwnStudents}>
-              본인 학생 회차 동기화
+            <button className="btn btn-blue" onClick={onSyncOwnStudents} title="담당 학생들의 고유 미트 링크 및 캘린더 일정을 일괄 동기화합니다">
+              본인 학생 미트/캘린더 동기화
             </button>
           ) : null}
           {onAddStudent ? (

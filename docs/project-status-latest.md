@@ -1,11 +1,71 @@
 # Project Status (Latest)
 
-기준 시각: 2026-09-16 18:00 (KST)
+기준 시각: 2026-09-19 03:05 (KST)
 대상 프로젝트: `v1`
 
 ## 1분 요약
 
-- 최신 패치 반영: 2026-09-16 18:00 (KST)
+- 최신 패치 반영: 2026-09-19 03:05 (KST)
+- **과거 회차 미트 링크 상속 차단 및 완전 신규 고유 미트 발급 보장 패치 (방향 B 적용)**:
+  1) **과거 일정 및 세션 미트 링크 입양(Adopt) 차단 (`googleCalendarSync.ts`)**:
+     - 캘린더 재구축(`runTeacherCalendarRebuild`) 및 회차 동기화(`runSync`) 시, 학생에게 아직 고유 링크(`student.permanentMeetUrl`)가 없다면 과거 특정 회차(예: 36회차)나 캘린더 기존 일정(`canonicalEvent?.meetUrl`)의 링크를 무조건 입양하던 로직을 전격 차단
+     - 학생 고유 링크가 없는 경우 `googleMeetUrl`을 `undefined`로 전달하여 구글 캘린더 API에 `conferenceData.createRequest`를 트리거, **완전히 새로운 Google Meet 회의실**을 발급받도록 유도
+  2) **신규 미트 링크 생성 즉시 전체 회차 단일 통일**:
+     - 첫 번째 동기화 회차에서 구글이 발급한 깨끗한 새 링크를 즉시 `student.permanentMeetUrl`과 학생 객체에 저장하고, 같은 동기화 루프 내의 모든 회차 일정(`googleMeetUrl`)에 동일한 새 링크를 일괄 전파하여 회차 간 링크 불일치 완전 방지
+  3) **학생 정보 수정 화면 고유 링크 관리 기능 탑재 (`StudentEditClient.tsx`)**:
+     - 학생 정보 수정 페이지에 "학생 고유 Google Meet 링크" 입력 필드 및 **[초기화 (신규 링크 발급 준비)]** 버튼 탑재
+     - 기존에 잘못 굳어진 과거 링크가 있다면 버튼 클릭 한 번으로 비우고 저장 후, [회차 동기화]를 누르면 즉시 구글에서 완전 새로운 미트 방이 자동 발급되도록 지원
+  4) **품질 지표 달성**:
+     - 단위 테스트 14개 파일 50개 테스트 100% 통과 (0.3초)
+     - ESLint 오류 0건, 경고 0건 (완전 무결)
+     - Next.js 프로덕션 빌드 정상 통과 (`next build --webpack`)
+- **기술 부채 청산 Phase 3: DB 테이블 정규화 & 낙관적 동시성 제어(OCC) 듀얼라이트 엔진 구축 완료**:
+  1) **정규화 DDL 및 자동 버전 관리 트리거 (`db/migrations/011_normalize_tables_and_occ.sql`)**:
+     - `students` (token, permanent_meet_url, drive_folder_id, schedule_rules, payment_history 등) 및 `sessions` (student_id, session_index, display_at, google_meet_url, google_calendar_id 등) 정규화 테이블 스키마 구축
+     - 동시성 제어를 위한 `version int DEFAULT 1` 컬럼 추가 및 업데이트 시 자동 버전 증가 트리거(`increment_version_and_touch_updated_at`) 적용
+  2) **무중단 비동기 듀얼 라이트(Dual-Write) 엔진 구축 (`lib/server/dualWriteSync.ts`, `supabaseSnapshotApi.ts`)**:
+     - 기존 `app_state_snapshots` 저장 로직을 100% 안전하게 보존하면서, 저장 성공 시 백그라운드에서 신규 정규화 테이블(`students`, `sessions`)로 도메인 데이터를 행/열로 매핑하여 비동기 동시 기록(`executeDualWriteSync`)
+     - 에러 발생 시에도 기존 스냅샷 흐름에 영향을 주지 않도록 안전 격리 처리
+  3) **품질 지표 달성**:
+     - 도메인 ➔ 정규화 행 매핑 단위 테스트 3종 추가 (`dualWriteSync.test.ts`)
+     - 전체 단위 테스트 14개 파일 50개 테스트 100% 통과 (0.3초)
+     - ESLint 오류 0건, 경고 0건 (완전 무결)
+     - Next.js 프로덕션 빌드 정상 통과 (`next build --webpack`)
+- **학생별 고유 미트 링크 안정화 및 무승인 입장 보장 패치 (기존 학생 일괄/개별 재적용 버튼 탑재)**:
+  1) **기존 학생 일괄 및 개별 원클릭 재적용 버튼 탑재 (`TeacherStudentListCard.tsx`, `StudentHubCore.tsx`)**:
+     - 선생님 메인 화면(`/t/tmain`, `/a/tmain`)에 `[본인 학생 미트/캘린더 동기화]` 버튼을 통해 담당 전체 학생의 구글 캘린더를 최신 고유 미트 링크 및 학생 계정 초대 규칙으로 일괄 갱신 지원
+     - 개별 학생 상세 화면(`StudentHubCore.tsx`)에 `[회차/미트 동기화]` 버튼을 직관적으로 보강하여 해당 학생 1명만 즉시 최신 미트 규칙으로 갱신 지원
+  2) **캘린더 재구축 시 영구 미트 링크(`permanentMeetUrl`) 완전 상속 보장 (`googleCalendarSync.ts`)**:
+     - 캘린더를 재구축(`rebuildTeacherGoogleCalendar`)할 때 기존 회차들이 학생의 `permanentMeetUrl`을 우선 상속하도록 보강하여, 일괄 동기화 클릭 시 기존 학생들의 모든 회차 일정이 학생 고유 링크로 깔끔하게 통일되도록 구현
+  3) **회차 카드 [미트] 버튼 Fallback 안전장치 (`SessionQuickActions.tsx`, `SessionTopBarCore.tsx`)**:
+     - 회차별 캘린더 동기화가 아직 진행 중이거나 `googleMeetUrl`이 일시적으로 비어 있더라도, 학생 명부에 고유 링크(`student.permanentMeetUrl`)가 존재하면 즉시 해당 링크로 연결되도록 Fallback 처리하여 대기 팝업 없이 즉각적인 미트 입장 보장
+  4) **구글 캘린더 일정 참석자(Attendee) 바인딩 및 본문 고유 링크 기재 (`googleCalendarSync.ts`)**:
+     - 캘린더 일정 생성/수정 시 `student.googleEmail`이 누락 없이 참석자로 등록되도록 보강하여, 수업 시 학생이 별도 "수락 대기(노크)" 없이 즉시 화상 교실에 입장하도록 지원
+     - 캘린더 일정 본문(description)에도 `Google Meet: {permanentMeetUrl}`을 명시하여 초대받은 학생/학부모의 캘린더에서도 고유 링크 확인 가능
+  5) **학생 등록/수정 화면 가이드 강화 (`StudentNewClient.tsx`, `StudentEditClient.tsx`)**:
+     - 학생 구글 계정 입력란에 "구글 미트 수업 시 승인 대기 없이 바로 입장할 수 있도록 학생의 실제 구글 계정(Gmail)을 입력해주세요" 안내 문구 추가
+- **기술 부채 청산 Phase 2: 컴포넌트 분리 다이어트 & 관리자 RBAC 동적화 완료**:
+  1) **`StudentHubCore.tsx` 거대 모달 분리 및 400줄 경량화**:
+     - `StudentSessionAddModal.tsx` (회차 추가 모달, 약 425줄) 신규 분리
+     - `StudentScheduleChangeModal.tsx` (시간표 일괄 변경 모달, 약 434줄) 신규 분리
+     - 모달 오픈 시 내부 폼 컴포넌트(`Inner`) 마운트 패턴을 적용하여 React 상태 동기화 및 렌더링 최적화
+     - `StudentHubCore.tsx`에서 모달 인라인 JSX, 임시 폼 상태, 미사용 핸들러/스타일을 완전 제거하여 코드 약 400줄 다이어트 달성
+  2) **관리자 권한 RBAC 동적화 (`roleAuth.ts`)**:
+     - `getAdminEmailSet` 함수 개선: 기존 마스터 관리자(`rapah0310@gmail.com`)의 상시 기본 동작(fallback)을 보장하면서 `NEXT_PUBLIC_ADMIN_EMAILS` 환경변수의 쉼표 구분 다중 관리자 이메일을 동적으로 병합
+     - `accessPolicy.test.ts`에 마스터 관리자 및 환경변수 관리자 권한 보장 단위 테스트 추가
+  3) **품질 지표 달성**:
+     - 전체 단위 테스트 13개 파일 47개 테스트 100% 패스 (0.3초)
+     - ESLint 오류 0건, 경고 0건 (완전 무결)
+     - Next.js 프로덕션 빌드 정상 통과 (`next build --webpack`)
+- **환불 기능 시스템 경량화 및 수동 운영 정책 전환**:
+  1) **법적 고지 분리 유지**: 전자상거래법 및 PG/카드사 심사용 취소/환불 규정 안내(`/programs`, `/policy`) 텍스트는 법적 표준으로 완벽 유지
+  2) **앱 내부 복잡도 다이어트**: 앱 내부에서 잔여 시간과 퍼센트를 쪼개던 복잡한 환불 계산 엔진 및 모달 개발을 전격 폐지하고, 실제 환불 건 발생 시 관리자 콘솔(토스페이먼츠 상점 관리자 또는 계좌이체) 및 학생 상태 `종료(ended)` 처리를 통한 안전한 수동 운영 체제로 간소화
+- **기술 부채 청산 Phase 1: 시간표 복원 엔진 단위 테스트 구축 및 우선순위 버그 해결 완료**:
+  1) **시간표 복원 엔진 단위 테스트 (`sessionCardFactory.test.ts`)**: 30분 시작 시간표, 중간 회차(startIndex: 5) 시간표 변경 이벤트, 90/120/150/180분 매칭, 개별 회차 오버라이드 최우선 적용, 비정상 ISO 안전 fallback 등 8종 종합 단위 테스트 구축
+  2) **단위 테스트를 통해 발견된 잠재 버그 즉각 수정**:
+     - `sessionCardFactory.ts`에서 회차 추가 시 지정한 수업 시간(`durationHour`)이 기존 학생 규칙의 `durationMin`에 밀려 씹히던 우선순위 버그(`pDurMin || r.durationMin || 60`) 수정
+     - `normalizeDurationMin` export 누락 보완
+  3) **품질 지표 달성**: 전체 테스트 스위트 13개 파일, 46개 테스트 100% 패스 (0.3초대), Next.js 프로덕션 빌드 정상 통과
 - **회차 추가 기록 수정 모달 30분 선택(체크) 해제 버그 수정 (`StudentPaymentPanel.tsx`)**:
   1) **`updateRule` 분(minute) 필드 누락 보정**: "회차 추가 수정" 모달에서 30분을 선택할 때 `updateRule` 함수에 `minute` 패치가 누락되어 무조건 00분으로 되돌아가던 치명적 버그 수정
   2) **회차 일정(`scheduleChangeEvents`) 실시간 동기화**: 기록 수정 저장 시 `scheduleChangeEvents`의 `newRules`와 `startDate`도 함께 갱신하여 30분 시작 시간표가 실제 수업 일정에 즉시 반영되도록 보강

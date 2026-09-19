@@ -143,7 +143,10 @@ export default function SessionQuickActions({ role, token, index }: Props) {
     }).find((session) => session.index === index) ?? null;
   }, [currentStudent, allSessions, index]);
 
-  const meetUrl = typeof currentSession?.googleMeetUrl === "string" ? currentSession.googleMeetUrl.trim() : "";
+  const meetUrl =
+    (typeof currentSession?.googleMeetUrl === "string" && currentSession.googleMeetUrl.trim()) ||
+    (typeof currentStudent?.permanentMeetUrl === "string" && currentStudent.permanentMeetUrl.trim()) ||
+    "";
   const calendarStatus = currentSession?.googleCalendarStatus ?? "pending";
   const calendarError = typeof currentSession?.googleCalendarError === "string" ? currentSession.googleCalendarError.trim() : "";
 

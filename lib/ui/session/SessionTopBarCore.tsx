@@ -251,7 +251,10 @@ export default function SessionTopBarCore({ role, token, index }: Props) {
     });
   }, [index, mounted, effectiveISO, durationMin, dday, meta.status, achievementPercent, badges]);
 
-  const meetUrl = typeof currentSession?.googleMeetUrl === "string" ? currentSession.googleMeetUrl.trim() : "";
+  const meetUrl =
+    (typeof currentSession?.googleMeetUrl === "string" && currentSession.googleMeetUrl.trim()) ||
+    (typeof student?.permanentMeetUrl === "string" && student.permanentMeetUrl.trim()) ||
+    "";
   const calendarStatus = currentSession?.googleCalendarStatus ?? "pending";
   const calendarError = typeof currentSession?.googleCalendarError === "string" ? currentSession.googleCalendarError.trim() : "";
 

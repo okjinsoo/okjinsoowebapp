@@ -849,12 +849,14 @@ function buildEventPayload(args: {
   const endKst = formatKstRfc3339(endIso) ?? endIso;
 
   const summary = `${args.student.name} ${args.session.index}회차 수업`;
+  const effectiveMeetUrl = text(args.session.googleMeetUrl) || text(args.student.permanentMeetUrl);
   const descriptionLines = [
     APP_EVENT_MARKER,
     `학생: ${args.student.name}`,
     args.teacher ? `선생님: ${args.teacher.name}` : "",
     `회차: ${args.session.index}`,
     `수업시간: ${durationMin}분`,
+    effectiveMeetUrl ? `Google Meet: ${effectiveMeetUrl}` : "",
     args.session.memo ? `메모: ${args.session.memo}` : "",
   ].filter((line) => Boolean(line));
 
@@ -1237,7 +1239,12 @@ async function runTeacherCalendarRebuild(args: {
             student,
           });
 
-          let sessionToCreateOrUpdate = { ...session };
+          const hasPermanentMeet = Boolean(text(student.permanentMeetUrl));
+          let sessionToCreateOrUpdate = {
+            ...session,
+            // [방향 B]: 학생에게 이미 영구 링크가 있으면 그것을 쓰고, 없으면 과거 세션의 개별 링크를 비워 신규 발급 유도
+            googleMeetUrl: hasPermanentMeet ? student.permanentMeetUrl : undefined,
+          };
           if (allSessionEvents.length > 0) {
             await delay(100);
             const currentStartMs = new Date(safeIso(session.displayAt) ?? 0).getTime();
@@ -1247,12 +1254,12 @@ async function runTeacherCalendarRebuild(args: {
               return Math.abs(evStartMs - currentStartMs) <= DUPLICATE_TIME_WINDOW_MS;
             });
             const canonicalId = matchingCurrentTime?.eventId ?? allSessionEvents[0].eventId;
-            const canonicalEvent = allSessionEvents.find(ev => ev.eventId === canonicalId);
 
             sessionToCreateOrUpdate = {
               ...sessionToCreateOrUpdate,
               googleCalendarEventId: canonicalId ?? undefined,
-              googleMeetUrl: sessionToCreateOrUpdate.googleMeetUrl ?? canonicalEvent?.meetUrl ?? undefined,
+              // [방향 B]: 과거 캘린더 일정(canonicalEvent)의 meetUrl을 절대 입양하지 않음
+              googleMeetUrl: hasPermanentMeet ? student.permanentMeetUrl : undefined,
             };
 
             // 기준 외의 모든 유령 삭제
@@ -1582,14 +1589,19 @@ async function runSync(args: SyncArgs): Promise<void> {
         ownerEmail,
       });
 
+      const hasStudentPermanentMeet = Boolean(text(student.permanentMeetUrl));
       let sessionForOwner: Session = ownerMismatch
         ? {
           ...next,
           googleCalendarId: targetCalendarId,
           googleCalendarEventId: undefined,
-          googleMeetUrl: undefined,
+          googleMeetUrl: hasStudentPermanentMeet ? student.permanentMeetUrl : undefined,
         }
-        : next;
+        : {
+          ...next,
+          // [방향 B]: 학생에게 영구 링크가 없다면 과거 회차 링크(next.googleMeetUrl)를 상속하지 않고 비움
+          googleMeetUrl: hasStudentPermanentMeet ? student.permanentMeetUrl : undefined,
+        };
       let sessionCalendarId = calendarIdOf(sessionForOwner);
 
       if (sessionCalendarId !== targetCalendarId) {
@@ -1691,11 +1703,11 @@ async function runSync(args: SyncArgs): Promise<void> {
 
         if (!canonicalId) {
           canonicalId = matchingCurrentTime?.eventId ?? allSessionEvents[0].eventId;
-          const canonicalEvent = allSessionEvents.find(ev => ev.eventId === canonicalId);
           sessionForOwner = {
             ...sessionForOwner,
             googleCalendarEventId: canonicalId ?? undefined,
-            googleMeetUrl: sessionForOwner.googleMeetUrl ?? canonicalEvent?.meetUrl ?? undefined,
+            // [방향 B]: 과거 일정의 meetUrl을 입양하지 않음 (영구 링크가 있으면 유지, 없으면 비워둠)
+            googleMeetUrl: hasStudentPermanentMeet ? student.permanentMeetUrl : undefined,
           };
         }
 
@@ -1759,7 +1771,7 @@ async function runSync(args: SyncArgs): Promise<void> {
           calendarId: sessionCalendarId,
           session: {
             ...sessionForOwner,
-            googleMeetUrl: hasPermanentMeet ? student.permanentMeetUrl : sessionForOwner.googleMeetUrl,
+            googleMeetUrl: hasPermanentMeet ? student.permanentMeetUrl : undefined,
           },
           student,
           teacher,

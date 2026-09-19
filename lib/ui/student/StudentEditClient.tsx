@@ -75,6 +75,7 @@ export default function StudentEditClient(props: {
   const [grade, setGrade] = useState("");
   const [parentRole, setParentRole] = useState<"" | "father" | "mother">("");
   const [parentPhone, setParentPhone] = useState("");
+  const [permanentMeetUrl, setPermanentMeetUrl] = useState("");
   const [planCount, setPlanCount] = useState<number>(12);
   const [error, setError] = useState<string>("");
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -132,6 +133,7 @@ export default function StudentEditClient(props: {
     setPlanCount(Math.max(1, Number(student.planCount) || 12));
     setParentRole(student.parentRole ?? "");
     setParentPhone(student.parentPhone ?? "");
+    setPermanentMeetUrl(student.permanentMeetUrl ?? "");
     setInitialized(true);
   }, [student, initialized, fixedTeacherId]);
 
@@ -183,6 +185,7 @@ export default function StudentEditClient(props: {
       grade: grade,
       parentRole: parentRole ? parentRole : undefined,
       parentPhone: normalizePhoneDigits(parentPhone),
+      permanentMeetUrl: permanentMeetUrl.trim() ? permanentMeetUrl.trim() : undefined,
     };
 
     const baseline = await loadLatestCoreSnapshotBaselineServerRequired();
@@ -527,8 +530,56 @@ export default function StudentEditClient(props: {
                   marginTop: 6,
                 }}
               />
-              <div style={{ color: "var(--text-muted)", marginTop: 6 }}>
+              <div style={{ color: "var(--text-muted)", marginTop: 6, fontSize: "0.85rem" }}>
                 저장 값: <code>{googleEmail.trim() || "입력 필요"}</code>
+                <div style={{ color: "#2563eb", marginTop: 4, fontWeight: 500 }}>
+                  💡 구글 미트 수업 시 승인 대기 없이 바로 입장할 수 있도록 학생의 실제 구글 계정(Gmail)을 입력해주세요.
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <div style={{ fontWeight: 700, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span>학생 고유 Google Meet 링크</span>
+                {permanentMeetUrl.trim() && (
+                  <button
+                    type="button"
+                    onClick={() => setPermanentMeetUrl("")}
+                    style={{
+                      fontSize: "0.75rem",
+                      color: "#dc2626",
+                      background: "none",
+                      border: "1px solid #fca5a5",
+                      borderRadius: 4,
+                      padding: "2px 8px",
+                      cursor: "pointer",
+                    }}
+                  >
+                    초기화 (신규 링크 발급 준비)
+                  </button>
+                )}
+              </div>
+              <input
+                value={permanentMeetUrl}
+                onChange={(e) => setPermanentMeetUrl(e.target.value)}
+                placeholder="예: https://meet.google.com/xxx-yyyy-zzz (비워두면 동기화 시 새 방 자동 생성)"
+                style={{
+                  width: "100%",
+                  height: 44,
+                  padding: 10,
+                  border: "1px solid #ccc",
+                  borderRadius: 8,
+                  marginTop: 6,
+                }}
+              />
+              <div style={{ color: "var(--text-muted)", marginTop: 6, fontSize: "0.85rem" }}>
+                {permanentMeetUrl.trim() ? (
+                  <div>현재 등록된 링크: <code style={{ color: "#16a34a" }}>{permanentMeetUrl.trim()}</code></div>
+                ) : (
+                  <div style={{ color: "#2563eb", fontWeight: 500 }}>
+                    ✨ 링크가 비어있으면 캘린더 동기화 시 구글에서 <strong>완전 새로운 고유 미트 방</strong>을 자동으로 발급받아 모든 회차에 통일 적용합니다.
+                  </div>
+                )}
               </div>
             </div>
 

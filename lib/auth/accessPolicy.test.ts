@@ -19,4 +19,10 @@ describe("accessPolicy", () => {
     expect(canAccessRole("teacher", "student")).toBe(true);
     expect(canAccessRole("guest", "student")).toBe(false);
   });
+
+  test("getAdminEmailSet은 마스터 관리자 이메일을 상시 포함한다", async () => {
+    const { getAdminEmailSet } = await import("@/lib/auth/roleAuth");
+    const adminSet = getAdminEmailSet();
+    expect(adminSet.has("rapah0310@gmail.com")).toBe(true);
+  });
 });

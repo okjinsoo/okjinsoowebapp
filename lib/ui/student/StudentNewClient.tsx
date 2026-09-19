@@ -712,8 +712,11 @@ export default function StudentNewClient(props: {
                   marginTop: 6,
                 }}
               />
-              <div style={{ color: "var(--text-muted)", marginTop: 6 }}>
+              <div style={{ color: "var(--text-muted)", marginTop: 6, fontSize: "0.85rem" }}>
                 저장 값: <code>{googleEmail.trim() || "입력 필요"}</code>
+                <div style={{ color: "#2563eb", marginTop: 4, fontWeight: 500 }}>
+                  💡 구글 미트 수업 시 승인 대기 없이 바로 입장할 수 있도록 학생의 실제 구글 계정(Gmail)을 입력해주세요.
+                </div>
               </div>
             </div>
 

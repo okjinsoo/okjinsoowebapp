@@ -17,6 +17,7 @@ import { logSecurityEvent } from "@/lib/security/securityLog";
 import { logPerf } from "@/lib/server/performanceLog";
 import { isSharedStateKvKey } from "@/lib/storage/sharedStateKeys";
 import type { Session, Student, Teacher } from "@/lib/types/index";
+import { executeDualWriteSync } from "@/lib/server/dualWriteSync";
 
 const SNAPSHOT_KEY = "main";
 export function getAdminEmails(): Set<string> {
@@ -708,6 +709,14 @@ export async function upsertSnapshotPatch(args: {
 
   const first = await execute(payload);
   if (first.ok) {
+    // [Phase 3: 무중단 듀얼 라이트] 정규화 테이블로 비동기 동시 기록
+    void executeDualWriteSync({
+      students: finalStudentsPayload,
+      sessions: finalSessionsPayload,
+      cfg,
+      accessToken: viewer.accessToken,
+      useServiceRole: viewer.isLocalDevAdmin,
+    });
     return { sessionsSynced: true, stateKvSynced: true };
   }
 
@@ -727,6 +736,15 @@ export async function upsertSnapshotPatch(args: {
   if (!fallback.ok) {
     throw new Error(`snapshot upsert failed (fallback): ${fallback.status} ${fallback.text}`);
   }
+
+  // [Phase 3: 무중단 듀얼 라이트] 정규화 테이블로 비동기 동시 기록 (fallback 분기)
+  void executeDualWriteSync({
+    students: finalStudentsPayload,
+    sessions: finalSessionsPayload,
+    cfg,
+    accessToken: viewer.accessToken,
+    useServiceRole: viewer.isLocalDevAdmin,
+  });
 
   return {
     sessionsSynced: !hasSessions || !sessionsMissing,

@@ -56,9 +56,13 @@ export function buildSessionCardViewModel(args: BuildSessionCardViewArgs): Sessi
   };
 }
 
-function normalizeDurationMin(value: number): number {
-  if (!Number.isFinite(value)) return 60;
-  return Math.max(30, Math.round(value));
+export function normalizeDurationMin(value: number): number {
+  const rounded = Math.round(Number(value) || 60);
+  if (rounded <= 75) return 60;
+  if (rounded <= 105) return 90;
+  if (rounded <= 135) return 120;
+  if (rounded <= 165) return 150;
+  return 180;
 }
 
 function kstWeekdayHourMinuteFromISO(iso: string): { weekday: number; hour: number; minute: number } | null {
@@ -105,7 +109,7 @@ export function resolveRulesForIndex(student: Student, index: number): ScheduleR
         return {
           ...r,
           minute: typeof pRule?.minute === "number" ? pRule.minute : r.minute,
-          durationMin: r.durationMin || pDurMin || 60,
+          durationMin: pDurMin || r.durationMin || 60,
         };
       });
     }
