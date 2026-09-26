@@ -17,6 +17,8 @@ import {
 import {
   requestCalendarResyncForStudentIds,
   requestCalendarResyncForStudentIdsByAdmin,
+  requestResetAndResyncMeetForStudentIds,
+  requestResetAndResyncMeetForStudentIdsByAdmin,
 } from "@/lib/storage/sessions";
 import TodaySessionsCard from "@/lib/ui/teacher/TodaySessionsCard";
 import TeacherStudentListCard from "@/lib/ui/teacher/TeacherStudentListCard";
@@ -170,7 +172,11 @@ export default function TeacherMainClient({
     }
 
     const teacherLabel = currentTeacherName || "선생님";
-    const ok = window.confirm(`${teacherLabel} 담당 학생 ${targetStudentIds.length}명의 회차 동기화를 요청할까요?`);
+    const ok = window.confirm(
+      `${teacherLabel} 담당 학생 ${targetStudentIds.length}명의 미트/캘린더 동기화를 진행할까요?\n\n` +
+      `[확인]: 기존 미트 링크를 유지하며 캘린더 일정 및 회차 상태를 동기화합니다.\n\n` +
+      `※ 모든 학생의 미트 링크를 새로 발급받으려면 옆의 [미트 링크 일괄 초기화] 버튼을 이용해주세요.`
+    );
     if (!ok) return;
 
     if (initialRole === "a") {
@@ -183,6 +189,46 @@ export default function TeacherMainClient({
 
     requestCalendarResyncForStudentIds(targetStudentIds);
     window.alert("요청을 전송했어요. 2~5초 뒤 학생별 회차 상태를 확인해주세요.");
+  }
+
+  function onClickResetAndSyncOwnMeet() {
+    const targetStudentIds = visibleStudents
+      .map((student) => student.id)
+      .filter((id) => typeof id === "string" && id.trim());
+
+    if (targetStudentIds.length === 0) {
+      window.alert("초기화할 학생이 없습니다.");
+      return;
+    }
+
+    const auth = loadAuthSession();
+    const hasProviderToken = Boolean((auth?.providerAccessToken ?? "").trim());
+    if (!hasProviderToken) {
+      window.alert("구글 캘린더 권한 토큰이 없습니다. 홈에서 구글 권한을 다시 연결해주세요.");
+      return;
+    }
+
+    const teacherLabel = currentTeacherName || "선생님";
+    const ok = window.confirm(
+      `⚠️ [담당 학생 미트 링크 일괄 초기화]\n\n` +
+      `${teacherLabel} 담당 학생 ${targetStudentIds.length}명의 기존 Google Meet 링크를 모두 초기화할까요?\n\n` +
+      `[확인]을 누르면:\n` +
+      `1. 담당 학생 전체의 기존 고유 미트 링크가 초기화됩니다.\n` +
+      `2. 각 학생마다 완전히 새로운 고유 미트 링크가 1개씩 자동 발급됩니다.\n` +
+      `3. 모든 회차의 미트 주소가 새 링크로 통일되어 구글 캘린더에 반영됩니다.`
+    );
+    if (!ok) return;
+
+    if (initialRole === "a") {
+      requestResetAndResyncMeetForStudentIdsByAdmin(targetStudentIds);
+      window.alert(
+        `요청을 저장했어요.\n\n현재는 관리자 계정이므로 직접 생성하지 않고 pending으로 표시됩니다.\n담당 선생님 계정으로 로그인하면 새로운 Meet 링크가 자동으로 발급·생성됩니다.`
+      );
+      return;
+    }
+
+    requestResetAndResyncMeetForStudentIds(targetStudentIds);
+    window.alert("미트 링크 초기화 및 재발급 요청을 전송했어요. 3~5초 뒤 학생별 회차 상태를 확인해주세요.");
   }
 
   async function onClickSyncLearningSheet() {
@@ -312,6 +358,7 @@ export default function TeacherMainClient({
               : undefined
           }
           onSyncOwnStudents={onClickSyncOwnStudents}
+          onResetAndSyncOwnMeet={onClickResetAndSyncOwnMeet}
           onSyncLearningSheet={onClickSyncLearningSheet}
           onAddStudent={() => router.push(buildTmainNewPath(initialRole))}
         />

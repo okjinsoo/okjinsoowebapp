@@ -16,6 +16,7 @@ type Props = {
   studentHrefOf?: (student: Student) => string;
   onAddStudent?: () => void;
   onSyncOwnStudents?: () => void;
+  onResetAndSyncOwnMeet?: () => void;
   onSyncLearningSheet?: () => void;
   role?: "a" | "t" | "s";
 };
@@ -26,6 +27,7 @@ export default function TeacherStudentListCard({
   studentHrefOf,
   onAddStudent,
   onSyncOwnStudents,
+  onResetAndSyncOwnMeet,
   onSyncLearningSheet,
   role = "t",
 }: Props) {
@@ -102,6 +104,16 @@ export default function TeacherStudentListCard({
           {onSyncOwnStudents ? (
             <button className="btn btn-blue" onClick={onSyncOwnStudents} title="담당 학생들의 고유 미트 링크 및 캘린더 일정을 일괄 동기화합니다">
               본인 학생 미트/캘린더 동기화
+            </button>
+          ) : null}
+          {onResetAndSyncOwnMeet ? (
+            <button
+              className="btn btn-white"
+              onClick={onResetAndSyncOwnMeet}
+              style={{ borderColor: "#f59e0b", color: "#b45309", fontWeight: 600 }}
+              title="담당 학생들의 기존 Meet 링크를 모두 초기화하고 완전 새로운 고유 링크를 발급받아 동기화합니다"
+            >
+              미트 링크 일괄 초기화
             </button>
           ) : null}
           {onAddStudent ? (

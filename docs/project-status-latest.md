@@ -1,11 +1,21 @@
 # Project Status (Latest)
 
-기준 시각: 2026-09-27 02:30 (KST)
+기준 시각: 2026-09-27 02:55 (KST)
 대상 프로젝트: `v1`
 
 ## 1분 요약
 
-- 최신 패치 반영: 2026-09-27 02:30 (KST)
+- 최신 패치 반영: 2026-09-27 02:55 (KST)
+- **tmain 학생 리스트 영역 '미트 링크 일괄 초기화' 원클릭 기능 탑재 (`TeacherMainClient.tsx`, `TeacherStudentListCard.tsx`, `sessions.ts`)**:
+  1) **원클릭 미트 링크 일괄 초기화 버튼 탑재**:
+     - `tmain` 및 `a/tmain` 학생 리스트 상단 액션 바에 `[미트 링크 일괄 초기화]` 버튼 추가
+     - 담당 학생 전체의 고유 미트 링크(`permanentMeetUrl`) 및 모든 회차 세션의 `googleMeetUrl`을 1클릭으로 안전하게 초기화
+  2) **신규 미트 자동 발급 및 전체 회차 즉시 단일화 파이프라인 연계**:
+     - `requestResetAndResyncMeetForStudentIds` 및 관리자용 `requestResetAndResyncMeetForStudentIdsByAdmin` 구현
+     - 초기화와 동시에 캘린더 동기화 엔진이 자동 가동되어, 각 학생마다 완전 새로운 고유 Meet 링크를 1개씩 자동 발급받고 모든 회차 일정으로 일괄 통일
+  3) **동기화 안내 및 오작동 방지 안전 팝업**:
+     - `[본인 학생 미트/캘린더 동기화]` 클릭 시: 기존 링크 유지 동기화 안내 및 일괄 초기화 버튼 안내 포함
+     - `[미트 링크 일괄 초기화]` 클릭 시: 작업 영향도를 명확히 고지하는 3단계 상세 안내 팝업 제공
 - **Google Meet 전 회차 단일 통일 & 회차별 개별 발급 방지 패치 (방향 B 완성 - `googleCalendarSync.ts`)**:
   1) **회차별 서로 다른 미트 주소 생성 방지 & 단일 회의실 재사용 엔진 (`conferenceDataToReuse`)**:
      - 첫 회차(1회차)에서 신규 Google Meet 방을 발급받으면 해당 회의방의 `conferenceData`(ID 및 signature)를 확보하여, 이후 2회차, 3회차... 모든 회차 캘린더 이벤트에 동일한 회의실 데이터를 복사 전달
