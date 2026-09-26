@@ -3,6 +3,8 @@ import type { NextRequest } from "next/server";
 
 import { canReadStudent, filterSessionsForStudent, resolveViewerContext } from "@/lib/server/supabaseSnapshotApi";
 import { logPerf, requestIdFromHeaders } from "@/lib/server/performanceLog";
+import { fetchSessionsForStudentFromDb, isReadFromNormalizedEnabled } from "@/lib/server/normalizedDbApi";
+import { getSupabaseAnonConfigFromEnv } from "@/lib/security/requestAuth";
 
 export async function GET(
   request: NextRequest,
@@ -42,7 +44,28 @@ export async function GET(
       return NextResponse.json({ error: "forbidden" }, { status: 403 });
     }
 
-    const sessions = filterSessionsForStudent(viewer, id);
+    let sessions = null;
+    let readSource = "snapshot";
+
+    if (isReadFromNormalizedEnabled()) {
+      const cfg = getSupabaseAnonConfigFromEnv();
+      const dbSessions = await fetchSessionsForStudentFromDb({
+        studentId: id,
+        cfg: cfg ? { ...cfg, serviceRoleKey: (process.env.SUPABASE_SERVICE_ROLE_KEY ?? "").trim() || null } : undefined,
+        accessToken: viewer.accessToken,
+        useServiceRole: viewer.isLocalDevAdmin,
+      });
+
+      if (dbSessions && dbSessions.length > 0) {
+        sessions = dbSessions;
+        readSource = "normalized_db";
+      }
+    }
+
+    if (!sessions) {
+      sessions = filterSessionsForStudent(viewer, id);
+    }
+
     logPerf({
       event: "done",
       route,
@@ -52,12 +75,14 @@ export async function GET(
       startMs,
       extra: {
         result: "ok",
+        readSource,
         role: viewer.role,
         sessions: sessions.length,
       },
     });
     return NextResponse.json({
       ok: true,
+      readSource,
       sessions,
     });
   } catch (error) {

@@ -90,6 +90,14 @@ export function mapSessionToNormalizedRow(session: Session): NormalizedSessionRo
   };
 }
 
+function chunkArray<T>(items: T[], size: number): T[][] {
+  const chunks: T[][] = [];
+  for (let i = 0; i < items.length; i += size) {
+    chunks.push(items.slice(i, i + size));
+  }
+  return chunks;
+}
+
 /**
  * 스냅샷 패치 시 정규화 테이블(students, sessions)로 무중단 듀얼 라이트를 비동기 실행합니다.
  * 에러가 발생해도 기존 스냅샷 저장 흐름을 방해하지 않도록 안전하게 격리됩니다.
@@ -114,37 +122,45 @@ export async function executeDualWriteSync(args: {
   };
 
   try {
-    // 1. 학생 테이블 듀얼 라이트
+    // 1. 학생 테이블 듀얼 라이트 (100개씩 청크 분할)
     if (args.students && args.students.length > 0) {
       const studentRows = args.students.map(mapStudentToNormalizedRow);
+      const studentChunks = chunkArray(studentRows, 100);
       const studentUrl = new URL("/rest/v1/students?on_conflict=id", url);
-      const res = await fetch(studentUrl.toString(), {
-        method: "POST",
-        headers,
-        body: JSON.stringify(studentRows),
-        cache: "no-store",
-      });
-      if (res.ok) {
-        result.studentsWritten = studentRows.length;
-      } else {
-        console.warn("[DualWrite] students sync non-critical warning:", res.status);
+
+      for (const chunk of studentChunks) {
+        const res = await fetch(studentUrl.toString(), {
+          method: "POST",
+          headers,
+          body: JSON.stringify(chunk),
+          cache: "no-store",
+        });
+        if (res.ok) {
+          result.studentsWritten += chunk.length;
+        } else {
+          console.warn("[DualWrite] students chunk sync non-critical warning:", res.status);
+        }
       }
     }
 
-    // 2. 세션 테이블 듀얼 라이트
+    // 2. 세션 테이블 듀얼 라이트 (100개씩 청크 분할)
     if (args.sessions && args.sessions.length > 0) {
       const sessionRows = args.sessions.map(mapSessionToNormalizedRow);
+      const sessionChunks = chunkArray(sessionRows, 100);
       const sessionUrl = new URL("/rest/v1/sessions?on_conflict=id", url);
-      const res = await fetch(sessionUrl.toString(), {
-        method: "POST",
-        headers,
-        body: JSON.stringify(sessionRows),
-        cache: "no-store",
-      });
-      if (res.ok) {
-        result.sessionsWritten = sessionRows.length;
-      } else {
-        console.warn("[DualWrite] sessions sync non-critical warning:", res.status);
+
+      for (const chunk of sessionChunks) {
+        const res = await fetch(sessionUrl.toString(), {
+          method: "POST",
+          headers,
+          body: JSON.stringify(chunk),
+          cache: "no-store",
+        });
+        if (res.ok) {
+          result.sessionsWritten += chunk.length;
+        } else {
+          console.warn("[DualWrite] sessions chunk sync non-critical warning:", res.status);
+        }
       }
     }
   } catch (err) {
@@ -152,4 +168,76 @@ export async function executeDualWriteSync(args: {
   }
 
   return result;
+}
+
+/**
+ * 정규화 테이블의 현재 저장된 레코드 개수를 카운트합니다.
+ */
+export async function getNormalizedTableCounts(args: {
+  cfg?: { url: string; serviceRoleKey: string | null; anonKey: string };
+  accessToken?: string;
+  useServiceRole?: boolean;
+}): Promise<{ studentsCount: number; sessionsCount: number }> {
+  const result = { studentsCount: 0, sessionsCount: 0 };
+  if (!args.cfg || !args.cfg.url) return result;
+
+  const url = args.cfg.url;
+  const token = args.useServiceRole && args.cfg.serviceRoleKey ? args.cfg.serviceRoleKey : args.accessToken || args.cfg.anonKey;
+  const headers = {
+    apikey: token,
+    Authorization: `Bearer ${token}`,
+    Prefer: "count=exact",
+    Range: "0-0",
+  };
+
+  try {
+    const studentUrl = new URL("/rest/v1/students?select=id", url);
+    const sRes = await fetch(studentUrl.toString(), { method: "HEAD", headers, cache: "no-store" });
+    const sRange = sRes.headers.get("content-range") || "";
+    const sCount = Number(sRange.split("/")[1] || 0);
+    if (!Number.isNaN(sCount)) result.studentsCount = sCount;
+
+    const sessionUrl = new URL("/rest/v1/sessions?select=id", url);
+    const sesRes = await fetch(sessionUrl.toString(), { method: "HEAD", headers, cache: "no-store" });
+    const sesRange = sesRes.headers.get("content-range") || "";
+    const sesCount = Number(sesRange.split("/")[1] || 0);
+    if (!Number.isNaN(sesCount)) result.sessionsCount = sesCount;
+  } catch (err) {
+    console.warn("[DualWrite] getNormalizedTableCounts failed:", err);
+  }
+
+  return result;
+}
+
+/**
+ * 기존 스냅샷 데이터를 신규 정규화 테이블로 100% 전수 이관(Backfill)합니다.
+ */
+export async function backfillNormalizedTables(args: {
+  students: Student[];
+  sessions: Session[];
+  cfg?: { url: string; serviceRoleKey: string | null; anonKey: string };
+  accessToken?: string;
+  useServiceRole?: boolean;
+}): Promise<{
+  studentsTotal: number;
+  studentsBackfilled: number;
+  sessionsTotal: number;
+  sessionsBackfilled: number;
+  elapsedMs: number;
+}> {
+  const startMs = Date.now();
+  const res = await executeDualWriteSync({
+    students: args.students,
+    sessions: args.sessions,
+    cfg: args.cfg,
+    accessToken: args.accessToken,
+    useServiceRole: args.useServiceRole,
+  });
+  return {
+    studentsTotal: args.students.length,
+    studentsBackfilled: res.studentsWritten,
+    sessionsTotal: args.sessions.length,
+    sessionsBackfilled: res.sessionsWritten,
+    elapsedMs: Date.now() - startMs,
+  };
 }

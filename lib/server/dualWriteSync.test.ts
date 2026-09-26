@@ -128,4 +128,21 @@ describe("Phase 3: dualWriteSync mapping tests", () => {
     expect(row.google_calendar_status).toBe("synced");
     expect(row.updated_at).toBeDefined();
   });
+
+  it("handles empty or missing config in dualWriteSync and backfill safely without throwing", async () => {
+    const { executeDualWriteSync, backfillNormalizedTables, getNormalizedTableCounts } = await import("./dualWriteSync");
+
+    const syncRes = await executeDualWriteSync({});
+    expect(syncRes.studentsWritten).toBe(0);
+    expect(syncRes.sessionsWritten).toBe(0);
+
+    const counts = await getNormalizedTableCounts({});
+    expect(counts.studentsCount).toBe(0);
+    expect(counts.sessionsCount).toBe(0);
+
+    const backfillRes = await backfillNormalizedTables({ students: [], sessions: [] });
+    expect(backfillRes.studentsTotal).toBe(0);
+    expect(backfillRes.sessionsTotal).toBe(0);
+    expect(backfillRes.elapsedMs).toBeGreaterThanOrEqual(0);
+  });
 });

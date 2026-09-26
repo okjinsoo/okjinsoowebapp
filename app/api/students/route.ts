@@ -3,6 +3,8 @@ import type { NextRequest } from "next/server";
 
 import { filterStudentsForViewer, resolveViewerContext } from "@/lib/server/supabaseSnapshotApi";
 import { logPerf, requestIdFromHeaders } from "@/lib/server/performanceLog";
+import { fetchStudentsFromDb, isReadFromNormalizedEnabled } from "@/lib/server/normalizedDbApi";
+import { getSupabaseAnonConfigFromEnv } from "@/lib/security/requestAuth";
 
 export async function GET(request: NextRequest) {
   const startMs = Date.now();
@@ -25,7 +27,29 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "unauthorized" }, { status: 401 });
     }
 
-    const students = filterStudentsForViewer(viewer);
+    let students = null;
+    let readSource = "snapshot";
+
+    if (isReadFromNormalizedEnabled()) {
+      const cfg = getSupabaseAnonConfigFromEnv();
+      const dbStudents = await fetchStudentsFromDb({
+        cfg: cfg ? { ...cfg, serviceRoleKey: (process.env.SUPABASE_SERVICE_ROLE_KEY ?? "").trim() || null } : undefined,
+        accessToken: viewer.accessToken,
+        useServiceRole: viewer.isLocalDevAdmin,
+        teacherId: viewer.role === "teacher" ? viewer.teacherId : null,
+        studentId: viewer.role === "student" ? viewer.studentId : null,
+      });
+
+      if (dbStudents && dbStudents.length > 0) {
+        students = dbStudents;
+        readSource = "normalized_db";
+      }
+    }
+
+    if (!students) {
+      students = filterStudentsForViewer(viewer);
+    }
+
     logPerf({
       event: "done",
       route,
@@ -35,12 +59,14 @@ export async function GET(request: NextRequest) {
       startMs,
       extra: {
         result: "ok",
+        readSource,
         role: viewer.role,
         students: students.length,
       },
     });
     return NextResponse.json({
       ok: true,
+      readSource,
       students,
     });
   } catch (error) {
