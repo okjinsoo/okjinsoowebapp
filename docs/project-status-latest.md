@@ -1,11 +1,23 @@
 # Project Status (Latest)
 
-기준 시각: 2026-09-26 21:00 (KST)
+기준 시각: 2026-09-27 02:30 (KST)
 대상 프로젝트: `v1`
 
 ## 1분 요약
 
-- 최신 패치 반영: 2026-09-26 21:00 (KST)
+- 최신 패치 반영: 2026-09-27 02:30 (KST)
+- **Google Meet 전 회차 단일 통일 & 회차별 개별 발급 방지 패치 (방향 B 완성 - `googleCalendarSync.ts`)**:
+  1) **회차별 서로 다른 미트 주소 생성 방지 & 단일 회의실 재사용 엔진 (`conferenceDataToReuse`)**:
+     - 첫 회차(1회차)에서 신규 Google Meet 방을 발급받으면 해당 회의방의 `conferenceData`(ID 및 signature)를 확보하여, 이후 2회차, 3회차... 모든 회차 캘린더 이벤트에 동일한 회의실 데이터를 복사 전달
+     - 캘린더 이벤트의 `location` 및 `description`에도 학생 영구 Meet 링크를 일괄 기재하여 구글 캘린더 상에서도 동일한 회의실로 명확히 통일
+  2) **학생 영구 Meet 링크의 절대적 우선순위 확립**:
+     - 기존 `updateEvent` 시 구글 개별 이벤트 응답에 과거 링크가 남아있더라도 이를 무시하고, 학생의 `student.permanentMeetUrl`을 최우선으로 세션 `googleMeetUrl`에 강제 지정 (`finalMeetUrl = studentPermanentMeet || result.meetUrl`)
+  3) **미트 링크 불일치(Drift) 자동 감지 및 단일화 타겟팅**:
+     - 세션의 `googleMeetUrl`이 학생의 `permanentMeetUrl`과 다를 경우(`meetDrift = true`), 세션 일정이 변경되지 않았더라도 즉시 동기화 대상에 포함시켜 단 한 번의 동기화로 모든 회차가 동일한 고유 링크로 100% 자동 통일되도록 보장
+  4) **품질 지표 달성**:
+     - 단위 테스트 15개 파일 55개 테스트 100% 통과 (0.3초)
+     - ESLint 오류 0건, 경고 0건 (완전 무결)
+     - Next.js 프로덕션 빌드 정상 통과 (`next build --webpack`)
 - **기술 부채 청산 Phase 4: 정규화 DB 초고속 읽기 전환 & 전수 백필 마이그레이션 엔진 & 온디맨드 부분 로딩 구축 완료 (옵션 3 완전 달성)**:
   1) **과거 데이터 전수 백필 및 정합성 실시간 진단 API (`app/api/ops/migration/backfill/route.ts`, `dualWriteSync.ts`)**:
      - `GET /api/ops/migration/backfill`: 현재 스냅샷 vs 정규화 테이블(`students`, `sessions`)의 레코드 수를 0.01초 만에 비교하여 데이터 일치 여부(Parity) 진단

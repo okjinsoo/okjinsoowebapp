@@ -224,6 +224,16 @@ function extractMeetUrl(body: unknown): string | null {
   return null;
 }
 
+function extractConferenceData(body: unknown): Record<string, unknown> | null {
+  if (!body || typeof body !== "object") return null;
+  const rec = body as Record<string, unknown>;
+  const conf = rec.conferenceData;
+  if (conf && typeof conf === "object" && !Array.isArray(conf)) {
+    return conf as Record<string, unknown>;
+  }
+  return null;
+}
+
 function parseErrorText(body: unknown): string {
   if (!body || typeof body !== "object") return "Google Calendar API 오류";
   const rec = body as Record<string, unknown>;
@@ -836,6 +846,7 @@ function buildEventPayload(args: {
   teacher: Teacher | null;
   includeMeetCreateRequest: boolean;
   meta?: SessionMeta;
+  conferenceDataToReuse?: Record<string, unknown> | null;
 }): Record<string, unknown> | null {
   const startIso = safeIso(args.session.displayAt);
   if (!startIso) return null;
@@ -849,7 +860,7 @@ function buildEventPayload(args: {
   const endKst = formatKstRfc3339(endIso) ?? endIso;
 
   const summary = `${args.student.name} ${args.session.index}회차 수업`;
-  const effectiveMeetUrl = text(args.session.googleMeetUrl) || text(args.student.permanentMeetUrl);
+  const effectiveMeetUrl = text(args.student.permanentMeetUrl) || text(args.session.googleMeetUrl);
   const descriptionLines = [
     APP_EVENT_MARKER,
     `학생: ${args.student.name}`,
@@ -865,6 +876,7 @@ function buildEventPayload(args: {
   const payload: Record<string, unknown> = {
     summary,
     description: descriptionLines.join("\n"),
+    location: effectiveMeetUrl || undefined,
     status: "confirmed",
     start: {
       dateTime: startKst,
@@ -883,9 +895,9 @@ function buildEventPayload(args: {
     },
   };
 
-  // 학생 영구 Meet 링크가 이미 있으면 새 Meet 발급 없이 description에 링크만 포함
-  const existingMeetUrl = text(args.session.googleMeetUrl);
-  if (args.includeMeetCreateRequest && !existingMeetUrl) {
+  if (args.conferenceDataToReuse) {
+    payload.conferenceData = args.conferenceDataToReuse;
+  } else if (args.includeMeetCreateRequest && !effectiveMeetUrl) {
     payload.conferenceData = {
       createRequest: {
         requestId: `tutorweb-${args.session.id}-${Date.now()}`,
@@ -905,37 +917,63 @@ async function createEvent(args: {
   teacher: Teacher | null;
   meta?: SessionMeta;
   sendUpdates?: "all" | "none";
-}): Promise<{ eventId: string | null; meetUrl: string | null }> {
-  // 학생 영구 Meet 링크가 있으면 새 Meet 발급 안 함
-  const alreadyHasMeet = Boolean(text(args.session.googleMeetUrl));
+  conferenceDataToReuse?: Record<string, unknown> | null;
+}): Promise<{
+  eventId: string | null;
+  meetUrl: string | null;
+  conferenceData: Record<string, unknown> | null;
+}> {
+  const hasPermanent = Boolean(text(args.student.permanentMeetUrl) || text(args.session.googleMeetUrl));
   const payload = buildEventPayload({
     session: args.session,
     student: args.student,
     teacher: args.teacher,
     meta: args.meta,
-    includeMeetCreateRequest: !alreadyHasMeet,
+    includeMeetCreateRequest: !hasPermanent && !args.conferenceDataToReuse,
+    conferenceDataToReuse: args.conferenceDataToReuse,
   });
   if (!payload) {
-    return { eventId: null, meetUrl: null };
+    return { eventId: null, meetUrl: null, conferenceData: null };
   }
 
-  const body = await requestGoogle({
-    token: args.token,
-    method: "POST",
-    path: `/calendars/${encodeURIComponent(args.calendarId)}/events`,
-    query: {
-      conferenceDataVersion: "1",
-      sendUpdates: args.sendUpdates ?? "all",
-    },
-    body: payload,
-  });
+  let body: unknown;
+  try {
+    body = await requestGoogle({
+      token: args.token,
+      method: "POST",
+      path: `/calendars/${encodeURIComponent(args.calendarId)}/events`,
+      query: {
+        conferenceDataVersion: "1",
+        sendUpdates: args.sendUpdates ?? "all",
+      },
+      body: payload,
+    });
+  } catch (err) {
+    // conferenceDataToReuse 가 구글 API 정책상 거부된 경우 conferenceData 없이 안전하게 재시도
+    if (args.conferenceDataToReuse) {
+      delete payload.conferenceData;
+      body = await requestGoogle({
+        token: args.token,
+        method: "POST",
+        path: `/calendars/${encodeURIComponent(args.calendarId)}/events`,
+        query: {
+          conferenceDataVersion: "1",
+          sendUpdates: args.sendUpdates ?? "all",
+        },
+        body: payload,
+      });
+    } else {
+      throw err;
+    }
+  }
 
   const eventId =
     body && typeof body === "object" && typeof (body as Record<string, unknown>).id === "string"
       ? ((body as Record<string, unknown>).id as string)
       : null;
-  const meetUrl = extractMeetUrl(body);
-  return { eventId, meetUrl };
+  const meetUrl = extractMeetUrl(body) || text(args.student.permanentMeetUrl) || null;
+  const conferenceData = extractConferenceData(body);
+  return { eventId, meetUrl, conferenceData };
 }
 
 async function updateEvent(args: {
@@ -945,39 +983,68 @@ async function updateEvent(args: {
   student: Student;
   teacher: Teacher | null;
   meta?: SessionMeta;
-}): Promise<{ eventId: string | null; meetUrl: string | null }> {
+  conferenceDataToReuse?: Record<string, unknown> | null;
+}): Promise<{
+  eventId: string | null;
+  meetUrl: string | null;
+  conferenceData: Record<string, unknown> | null;
+}> {
   const eventId = text(args.session.googleCalendarEventId);
-  if (!eventId) return { eventId: null, meetUrl: null };
+  if (!eventId) return { eventId: null, meetUrl: null, conferenceData: null };
 
+  const hasPermanent = Boolean(text(args.student.permanentMeetUrl) || text(args.session.googleMeetUrl));
   const payload = buildEventPayload({
     session: args.session,
     student: args.student,
     teacher: args.teacher,
     meta: args.meta,
-    includeMeetCreateRequest: !text(args.session.googleMeetUrl),
+    includeMeetCreateRequest: !hasPermanent && !args.conferenceDataToReuse,
+    conferenceDataToReuse: args.conferenceDataToReuse,
   });
   if (!payload) {
-    return { eventId: null, meetUrl: null };
+    return { eventId: null, meetUrl: null, conferenceData: null };
   }
 
-  const body = await requestGoogle({
-    token: args.token,
-    method: "PATCH",
-    path: `/calendars/${encodeURIComponent(args.calendarId)}/events/${encodeURIComponent(eventId)}`,
-    query: {
-      conferenceDataVersion: "1",
-      sendUpdates: "all",
-    },
-    body: payload,
-  });
+  let body: unknown;
+  try {
+    body = await requestGoogle({
+      token: args.token,
+      method: "PATCH",
+      path: `/calendars/${encodeURIComponent(args.calendarId)}/events/${encodeURIComponent(eventId)}`,
+      query: {
+        conferenceDataVersion: "1",
+        sendUpdates: "all",
+      },
+      body: payload,
+    });
+  } catch (err) {
+    // conferenceDataToReuse 가 구글 API 정책상 거부된 경우 conferenceData 없이 안전하게 재시도
+    if (args.conferenceDataToReuse) {
+      delete payload.conferenceData;
+      body = await requestGoogle({
+        token: args.token,
+        method: "PATCH",
+        path: `/calendars/${encodeURIComponent(args.calendarId)}/events/${encodeURIComponent(eventId)}`,
+        query: {
+          conferenceDataVersion: "1",
+          sendUpdates: "all",
+        },
+        body: payload,
+      });
+    } else {
+      throw err;
+    }
+  }
 
   const nextEventId =
     body && typeof body === "object" && typeof (body as Record<string, unknown>).id === "string"
       ? ((body as Record<string, unknown>).id as string)
       : eventId;
-  const fallbackMeet = text(args.session.googleMeetUrl);
-  const meetUrl = extractMeetUrl(body) ?? (fallbackMeet || null);
-  return { eventId: nextEventId, meetUrl };
+  const fallbackMeet = text(args.student.permanentMeetUrl) || text(args.session.googleMeetUrl);
+  // 학생의 영구 Meet 링크가 이미 존재한다면, 구글 이벤트 기존 응답보다 영구 링크를 절대 우선 채택!
+  const meetUrl = fallbackMeet || extractMeetUrl(body) || null;
+  const conferenceData = extractConferenceData(body);
+  return { eventId: nextEventId, meetUrl, conferenceData };
 }
 
 async function deleteEvent(args: {
@@ -1227,6 +1294,9 @@ async function runTeacherCalendarRebuild(args: {
         return a.index - b.index;
       });
 
+      let studentPermanentMeet = text(student.permanentMeetUrl);
+      let reusableConferenceData: Record<string, unknown> | null = null;
+
       for (const session of orderedSessions) {
         try {
           const meta = effectiveMetaMap[session.index];
@@ -1239,11 +1309,11 @@ async function runTeacherCalendarRebuild(args: {
             student,
           });
 
-          const hasPermanentMeet = Boolean(text(student.permanentMeetUrl));
+          const hasPermanentMeet = Boolean(studentPermanentMeet);
           let sessionToCreateOrUpdate = {
             ...session,
             // [방향 B]: 학생에게 이미 영구 링크가 있으면 그것을 쓰고, 없으면 과거 세션의 개별 링크를 비워 신규 발급 유도
-            googleMeetUrl: hasPermanentMeet ? student.permanentMeetUrl : undefined,
+            googleMeetUrl: hasPermanentMeet ? studentPermanentMeet : undefined,
           };
           if (allSessionEvents.length > 0) {
             await delay(100);
@@ -1258,8 +1328,8 @@ async function runTeacherCalendarRebuild(args: {
             sessionToCreateOrUpdate = {
               ...sessionToCreateOrUpdate,
               googleCalendarEventId: canonicalId ?? undefined,
-              // [방향 B]: 과거 캘린더 일정(canonicalEvent)의 meetUrl을 절대 입양하지 않음
-              googleMeetUrl: hasPermanentMeet ? student.permanentMeetUrl : undefined,
+              // [방향 B]: 과거 캘린더 일정(canonicalEvent)의 meetUrl을 절대 입양하지 않고 학생 영구 링크로 고정
+              googleMeetUrl: hasPermanentMeet ? studentPermanentMeet : undefined,
             };
 
             // 기준 외의 모든 유령 삭제
@@ -1278,7 +1348,11 @@ async function runTeacherCalendarRebuild(args: {
             }
           }
 
-          let result: { eventId: string | null; meetUrl: string | null };
+          let result: {
+            eventId: string | null;
+            meetUrl: string | null;
+            conferenceData: Record<string, unknown> | null;
+          };
           if (sessionToCreateOrUpdate.googleCalendarEventId) {
             result = await updateEvent({
               token: providerToken,
@@ -1287,34 +1361,42 @@ async function runTeacherCalendarRebuild(args: {
               student,
               teacher,
               meta,
+              conferenceDataToReuse: reusableConferenceData,
             });
           } else {
-            // 학생에게 이미 영구 Meet 링크가 있으면 새로 발급하지 않음
-            const hasPermanentMeet = Boolean(text(student.permanentMeetUrl));
             result = await createEvent({
               token: providerToken,
               calendarId,
               session: {
                 ...sessionToCreateOrUpdate,
                 googleCalendarEventId: undefined,
-                googleMeetUrl: hasPermanentMeet ? student.permanentMeetUrl : undefined,
+                googleMeetUrl: hasPermanentMeet ? studentPermanentMeet : undefined,
               },
               student,
               teacher,
               meta,
               sendUpdates: "none",
+              conferenceDataToReuse: reusableConferenceData,
             });
           }
           if (!result.eventId) {
             throw new Error("유효한 수업 시간이 없어 캘린더 일정을 만들지 못했습니다.");
           }
-          // 새로 발급된 Meet 링크를 student.permanentMeetUrl에 저장 (최초 1회)
-          const finalMeetUrl = (result.meetUrl ?? text(student.permanentMeetUrl)) || undefined;
-          if (result.meetUrl && !text(student.permanentMeetUrl) && args.applyStudentPatch) {
-            args.applyStudentPatch([{ id: student.id, patch: { permanentMeetUrl: result.meetUrl } }]);
-            // 인메모리 student 객체도 즉시 반영하여 같은 루프 내 다음 회차가 재사용 가능하게 함
+
+          // 새로 발급된 Meet 링크를 student.permanentMeetUrl에 저장 및 다음 회차에서 재사용 (최초 1회)
+          if (result.meetUrl && !studentPermanentMeet) {
+            studentPermanentMeet = result.meetUrl;
             (student as import("@/lib/types/index").Student).permanentMeetUrl = result.meetUrl;
+            if (result.conferenceData) {
+              reusableConferenceData = result.conferenceData;
+            }
+            if (args.applyStudentPatch) {
+              args.applyStudentPatch([{ id: student.id, patch: { permanentMeetUrl: result.meetUrl } }]);
+            }
           }
+
+          // 학생의 영구 Meet 링크가 결정되면 모든 회차는 무조건 그 링크로 통일!
+          const finalMeetUrl = studentPermanentMeet || result.meetUrl || undefined;
           patches.push({
             id: session.id,
             patch: {
@@ -1462,8 +1544,12 @@ async function runSync(args: SyncArgs): Promise<void> {
     const savedOwnerEmail = normalizeEmail(next.googleCalendarOwnerEmail);
     const ownerDrift = Boolean(expectedOwnerEmail) && expectedOwnerEmail !== savedOwnerEmail;
 
-    if (!statusDriven && !diffDriven && !ownerDrift) return false;
-    if (!next.googleCalendarEventId && !shouldCreateFor(next) && !statusDriven && !ownerDrift) return false;
+    const permanentMeet = text(student?.permanentMeetUrl);
+    const sessionMeet = text(next.googleMeetUrl);
+    const meetDrift = Boolean(permanentMeet) && permanentMeet !== sessionMeet;
+
+    if (!statusDriven && !diffDriven && !ownerDrift && !meetDrift) return false;
+    if (!next.googleCalendarEventId && !shouldCreateFor(next) && !statusDriven && !ownerDrift && !meetDrift) return false;
     return true;
   });
 
@@ -1506,6 +1592,9 @@ async function runSync(args: SyncArgs): Promise<void> {
     if (Number.isFinite(ta) && Number.isFinite(tb) && ta !== tb) return ta - tb;
     return a.index - b.index;
   });
+
+  const studentPermanentMeetMap = new Map<string, string>();
+  const studentConferenceDataMap = new Map<string, Record<string, unknown>>();
 
   for (const next of orderedTargets) {
     const prev = previousById.get(next.id);
@@ -1563,9 +1652,11 @@ async function runSync(args: SyncArgs): Promise<void> {
       const hasReadyMeet =
         Boolean(text(next.googleCalendarEventId)) && Boolean(text(next.googleMeetUrl));
       const isSyncedStatus = text(next.googleCalendarStatus) === "synced";
-      // 비소유자 계정에서도 "변경 없음 + 이미 동기화 완료"인 경우만 그대로 둡니다.
-      // 일정이 바뀌었으면 반드시 pending으로 내려서 담당 선생님 재동기화를 유도합니다.
-      if (!ownerMismatch && hasReadyMeet && isSyncedStatus && !scheduleChanged) {
+      const permanentMeet = text(student.permanentMeetUrl);
+      const meetMatchesPermanent = !permanentMeet || text(next.googleMeetUrl) === permanentMeet;
+      // 비소유자 계정에서도 "변경 없음 + 이미 동기화 완료 + 영구 링크 일치"인 경우만 그대로 둡니다.
+      // 일정이 바뀌었거나 Meet 링크가 영구 링크와 다르면 반드시 pending으로 내려서 담당 선생님 재동기화를 유도합니다.
+      if (!ownerMismatch && hasReadyMeet && isSyncedStatus && !scheduleChanged && meetMatchesPermanent) {
         continue;
       }
 
@@ -1589,18 +1680,22 @@ async function runSync(args: SyncArgs): Promise<void> {
         ownerEmail,
       });
 
-      const hasStudentPermanentMeet = Boolean(text(student.permanentMeetUrl));
+      const permanentFromStudent = text(student.permanentMeetUrl);
+      let effectivePermanentMeet = studentPermanentMeetMap.get(student.id) || permanentFromStudent;
+      const reusableConferenceData = studentConferenceDataMap.get(student.id) || null;
+      const hasStudentPermanentMeet = Boolean(effectivePermanentMeet);
+
       let sessionForOwner: Session = ownerMismatch
         ? {
           ...next,
           googleCalendarId: targetCalendarId,
           googleCalendarEventId: undefined,
-          googleMeetUrl: hasStudentPermanentMeet ? student.permanentMeetUrl : undefined,
+          googleMeetUrl: hasStudentPermanentMeet ? effectivePermanentMeet : undefined,
         }
         : {
           ...next,
-          // [방향 B]: 학생에게 영구 링크가 없다면 과거 회차 링크(next.googleMeetUrl)를 상속하지 않고 비움
-          googleMeetUrl: hasStudentPermanentMeet ? student.permanentMeetUrl : undefined,
+          // [방향 B]: 학생 영구 링크가 있으면 그것으로 통일, 없으면 과거 회차 링크를 비워 신규 발급 유도
+          googleMeetUrl: hasStudentPermanentMeet ? effectivePermanentMeet : undefined,
         };
       let sessionCalendarId = calendarIdOf(sessionForOwner);
 
@@ -1706,8 +1801,8 @@ async function runSync(args: SyncArgs): Promise<void> {
           sessionForOwner = {
             ...sessionForOwner,
             googleCalendarEventId: canonicalId ?? undefined,
-            // [방향 B]: 과거 일정의 meetUrl을 입양하지 않음 (영구 링크가 있으면 유지, 없으면 비워둠)
-            googleMeetUrl: hasStudentPermanentMeet ? student.permanentMeetUrl : undefined,
+            // [방향 B]: 과거 일정의 meetUrl을 입양하지 않고 학생 영구 링크를 사용
+            googleMeetUrl: hasStudentPermanentMeet ? effectivePermanentMeet : undefined,
           };
         }
 
@@ -1731,7 +1826,11 @@ async function runSync(args: SyncArgs): Promise<void> {
       const studentMetaMap = getEffectiveMetaMap({ token: student.token, stateKv });
       const currentMeta = studentMetaMap[next.index];
 
-      let result: { eventId: string | null; meetUrl: string | null };
+      let result: {
+        eventId: string | null;
+        meetUrl: string | null;
+        conferenceData: Record<string, unknown> | null;
+      };
       if (sessionForOwner.googleCalendarEventId) {
         try {
           result = await updateEvent({
@@ -1741,41 +1840,41 @@ async function runSync(args: SyncArgs): Promise<void> {
             student,
             teacher,
             meta: currentMeta,
+            conferenceDataToReuse: reusableConferenceData,
           });
         } catch (err) {
           const message = err instanceof Error ? err.message : "Google Calendar 동기화 실패";
           if (isPermissionOrNotFound(message)) {
             // 과거 다른 계정에서 만든 eventId 또는 권한 변경으로 접근 불가면 새 이벤트로 복구
-            const hasPermanentMeetFallback = Boolean(text(student.permanentMeetUrl));
             result = await createEvent({
               token: providerToken,
               calendarId: sessionCalendarId,
               session: {
                 ...sessionForOwner,
                 googleCalendarEventId: undefined,
-                googleMeetUrl: hasPermanentMeetFallback ? student.permanentMeetUrl : undefined,
+                googleMeetUrl: hasStudentPermanentMeet ? effectivePermanentMeet : undefined,
               },
               student,
               teacher,
               meta: currentMeta,
+              conferenceDataToReuse: reusableConferenceData,
             });
           } else {
             throw err;
           }
         }
       } else {
-        // 학생에게 이미 영구 Meet 링크가 있으면 새로 발급하지 않음
-        const hasPermanentMeet = Boolean(text(student.permanentMeetUrl));
         result = await createEvent({
           token: providerToken,
           calendarId: sessionCalendarId,
           session: {
             ...sessionForOwner,
-            googleMeetUrl: hasPermanentMeet ? student.permanentMeetUrl : undefined,
+            googleMeetUrl: hasStudentPermanentMeet ? effectivePermanentMeet : undefined,
           },
           student,
           teacher,
           meta: currentMeta,
+          conferenceDataToReuse: reusableConferenceData,
         });
         if (result.eventId) {
           saveRecentCreatedEvent({
@@ -1790,13 +1889,21 @@ async function runSync(args: SyncArgs): Promise<void> {
         throw new Error("유효한 수업 시간이 없어 캘린더 일정을 만들지 못했습니다.");
       }
 
-      // 새로 발급된 Meet 링크를 student.permanentMeetUrl에 저장 (최초 1회)
-      const finalMeetUrl = (result.meetUrl ?? text(student.permanentMeetUrl)) || undefined;
-      if (result.meetUrl && !text(student.permanentMeetUrl) && args.applyStudentPatch) {
-        args.applyStudentPatch([{ id: student.id, patch: { permanentMeetUrl: result.meetUrl } }]);
-        // 인메모리 student 객체도 즉시 반영하여 같은 루프 내 다음 회차가 재사용 가능하게 함
+      // 새로 발급된 Meet 링크를 student.permanentMeetUrl에 저장 및 동일 학생 다른 회차에서 재사용 (최초 1회)
+      if (result.meetUrl && !effectivePermanentMeet) {
+        effectivePermanentMeet = result.meetUrl;
+        studentPermanentMeetMap.set(student.id, result.meetUrl);
         (student as import("@/lib/types/index").Student).permanentMeetUrl = result.meetUrl;
+        if (result.conferenceData) {
+          studentConferenceDataMap.set(student.id, result.conferenceData);
+        }
+        if (args.applyStudentPatch) {
+          args.applyStudentPatch([{ id: student.id, patch: { permanentMeetUrl: result.meetUrl } }]);
+        }
       }
+
+      // 학생의 영구 Meet 링크가 결정되면 모든 회차 세션은 무조건 그 링크로 통일!
+      const finalMeetUrl = effectivePermanentMeet || result.meetUrl || undefined;
 
       // 같은 회차가 target 캘린더 외의 앱 캘린더에 남아 있으면 정리
       const staleCalendarIds = new Set<string>();
