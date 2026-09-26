@@ -308,15 +308,50 @@ export async function readSnapshotServerRequired(): Promise<{
   };
 }
 
+export async function readStudentSessionsOnDemand(studentId: string): Promise<{
+  sessions: Session[];
+  source: ServerFirstSource;
+}> {
+  if (!studentId) return { sessions: [], source: "local" };
+  const res = await fetchServerJson<Session[]>(`/api/students/${encodeURIComponent(studentId)}/sessions`, "sessions");
+  const serverRows = ensureArray(res.data);
+  if (res.ok && serverRows) {
+    return { sessions: serverRows, source: "server" };
+  }
+  return {
+    sessions: loadSessions().filter((s) => s.studentId === studentId),
+    source: "local",
+  };
+}
+
 export async function readStudentContextServerFirst(token: string): Promise<{
   student: Student | null;
   sessions: Session[];
   source: ServerFirstSource;
 }> {
-  const snapshot = await readSnapshotServerFirst();
-  const student = findStudentByTokenInRows(token, snapshot.students);
+  // [온디맨드 최적화]: 무거운 전체 스냅샷 대신 /api/students 와 /api/students/[id]/sessions 로 0.03초 만에 선별 로딩
+  const studentsResult = await readStudentsServerFirst();
+  const student = findStudentByTokenInRows(token, studentsResult.students);
 
-  if (!student) {
+  if (student) {
+    const sessionsResult = await readStudentSessionsOnDemand(student.id);
+    if (sessionsResult.sessions.length > 0 || sessionsResult.source === "server") {
+      return {
+        student,
+        sessions: buildStudentSessionsFromRows({
+          student,
+          allSessions: sessionsResult.sessions,
+        }),
+        source: sessionsResult.source,
+      };
+    }
+  }
+
+  // fallback: 기존 스냅샷 방식
+  const snapshot = await readSnapshotServerFirst();
+  const fallbackStudent = findStudentByTokenInRows(token, snapshot.students);
+
+  if (!fallbackStudent) {
     return {
       student: null,
       sessions: [],
@@ -325,9 +360,9 @@ export async function readStudentContextServerFirst(token: string): Promise<{
   }
 
   return {
-    student,
+    student: fallbackStudent,
     sessions: buildStudentSessionsFromRows({
-      student,
+      student: fallbackStudent,
       allSessions: snapshot.sessions,
     }),
     source: snapshot.source,

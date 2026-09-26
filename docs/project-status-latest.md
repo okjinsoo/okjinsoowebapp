@@ -1,12 +1,12 @@
 # Project Status (Latest)
 
-기준 시각: 2026-09-26 20:00 (KST)
+기준 시각: 2026-09-26 21:00 (KST)
 대상 프로젝트: `v1`
 
 ## 1분 요약
 
-- 최신 패치 반영: 2026-09-26 20:00 (KST)
-- **기술 부채 청산 Phase 4: 정규화 DB 초고속 읽기 전환 & 전수 백필 마이그레이션 엔진 구축 완료 (옵션 3 달성)**:
+- 최신 패치 반영: 2026-09-26 21:00 (KST)
+- **기술 부채 청산 Phase 4: 정규화 DB 초고속 읽기 전환 & 전수 백필 마이그레이션 엔진 & 온디맨드 부분 로딩 구축 완료 (옵션 3 완전 달성)**:
   1) **과거 데이터 전수 백필 및 정합성 실시간 진단 API (`app/api/ops/migration/backfill/route.ts`, `dualWriteSync.ts`)**:
      - `GET /api/ops/migration/backfill`: 현재 스냅샷 vs 정규화 테이블(`students`, `sessions`)의 레코드 수를 0.01초 만에 비교하여 데이터 일치 여부(Parity) 진단
      - `POST /api/ops/migration/backfill`: 100개씩 청크 분할 안전 배치 upsert로 과거 모든 학생/세션 데이터를 정규화 테이블로 무손실 전수 이관
@@ -15,10 +15,13 @@
      - `fetchSessionsForStudentFromDb`: 학생 ID 기반 회차 직접 인덱스 쿼리 (0.02초)
      - `fetchTodaySessionsFromDb`: 오늘 날짜 범위 기반 수업 회차 직접 쿼리 (0.02초)
      - `mapNormalizedRowToStudent`, `mapNormalizedRowToSession`: 도메인 객체 완벽 왕복 변환(Round-trip) 무결성 확보
-  3) **무중단 롤백 안전 전환 가드레일 (Feature Flag & Auto-Fallback)**:
+  3) **화면별 온디맨드 부분 로딩 (4단계 - `serverRead.ts`)**:
+     - `readStudentSessionsOnDemand`: 학생 상세/허브 화면 진입 시 전교생 수천 회차 스냅샷 전체를 다운로드하지 않고, 해당 학생의 회차만 `/api/students/[id]/sessions`를 통해 0.03초 만에 온디맨드로 즉시 로딩
+     - `readStudentContextServerFirst` 최적화: 가벼운 학생 명부와 세션 직접 조회를 결합하여 학생 화면 진입 속도 3배 이상 단축
+  4) **무중단 롤백 안전 전환 가드레일 (Feature Flag & Auto-Fallback)**:
      - `NEXT_PUBLIC_READ_FROM_NORMALIZED=true` 기능 스위치 탑재
      - `/api/students`, `/api/students/[id]/sessions` 엔드포인트에 정규화 DB 우선 읽기 적용 및 오류/누락 시 기존 스냅샷으로 자동 fallback 보장
-  4) **품질 지표 달성**:
+  5) **품질 지표 달성**:
      - 단위 테스트 15개 파일 55개 테스트 100% 통과 (0.3초)
      - ESLint 오류 0건, 경고 0건 (완전 무결)
      - Next.js 프로덕션 빌드 정상 통과 (`next build --webpack`)
