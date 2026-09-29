@@ -58,6 +58,7 @@ export function buildSessionCardViewModel(args: BuildSessionCardViewArgs): Sessi
 
 export function normalizeDurationMin(value: number): number {
   const rounded = Math.round(Number(value) || 60);
+  if (rounded <= 45) return 30;
   if (rounded <= 75) return 60;
   if (rounded <= 105) return 90;
   if (rounded <= 135) return 120;

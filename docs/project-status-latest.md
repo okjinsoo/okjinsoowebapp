@@ -1,22 +1,22 @@
 # Project Status (Latest)
 
-기준 시각: 2026-09-29 12:43 (KST)
+기준 시각: 2026-09-29 12:49 (KST)
 대상 프로젝트: `v1`
 
 ## 1분 요약
 
-- 최신 패치 반영: 2026-09-29 12:43 (KST)
-- **회차 조정 모달 "수업 변경일 / 변경 시 / 변경 분 / 수업시간" 4단 입력 완벽 정합 및 0분 하드코딩 버그 해결 (`SessionTopBarCore.tsx`, `SessionQuickActions.tsx`)**:
-  1) **상단 바 회차 조정 모달 분(00분/30분) 선택 UI 탑재**:
-     - 기존 `SessionTopBarCore.tsx`의 3열(`수업 변경일`, `수업 변경 시간`, `수업 시간`) 구성을 `grid-cols-4`로 전면 개편
-     - `수업 변경일`, `변경 시(00시~23시)`, `변경 분(00분/30분)`, `수업 시간` 4개 입력칸을 명확히 제공
-  2) **0분 강제 저장(하드코딩) 버그 완벽 수정**:
-     - 저장 로직(`onSave`)에서 `overrideMinute: checkOverride ? 0 : null`로 0분이 강제 하드코딩되어 있던 치명적 결함을 `draftOverrideMinute ?? 0`으로 수정하여 30분 시작 수업이 0분으로 왜곡되던 문제 원천 차단
-     - 모달 오픈 시 기존 회차의 `meta.overrideMinute`를 정확히 읽어오도록 바인딩 (`draftOverrideMinute` state 및 초기화 동기화)
-  3) **수업 시간 30분(0.5시간) 옵션 지원 및 일관성 확보**:
-     - `SessionTopBarCore` 및 `SessionQuickActions`의 수업 시간 선택 드롭다운에 `[0.5(30분), 1, 1.5, 2, 2.5, 3]`을 일관되게 지원
-     - 30분 수업일 때 `overrideDurationMin` 및 시간 환산 로직(`h <= 0.75 -> 0.5`) 완벽 보장
-  4) **품질 지표 달성**:
+- 최신 패치 반영: 2026-09-29 12:49 (KST)
+- **전체 웹앱 내 "00분 강제 고정 및 60분 최소 고정 왜곡 로직" 전수 색출 및 30분(0.5시간) 완벽 수용 전면 개편 (`sessionCardFactory.ts`, `StudentScheduleChangeModal.tsx`, `StudentSessionAddModal.tsx`, `StudentPaymentPanel.tsx`, `index.ts`)**:
+  1) **`sessionCardFactory.ts` 60분 강제 올림 고정 해제**:
+     - 기존 `rounded <= 75`일 때 무조건 60분으로 처리하던 로직을 `rounded <= 45`일 때 30분으로 정확히 분기하도록 수정하여 30분(0.5시간) 수업이 60분으로 둔갑하던 버그 원천 차단
+  2) **스케줄 변경 모달(`StudentScheduleChangeModal.tsx`) 30분 수업 옵션 복원**:
+     - `normalizeSessionAddDurationHour`에서 0.5시간 미지원(1시간 강제 변환)을 제거하고, `0.5(30분)` 옵션 정규화 및 라벨 추가
+  3) **회차 추가 모달(`StudentSessionAddModal.tsx`) 30분 수업 옵션 복원**:
+     - `normalizeSessionAddDurationHour` 및 드롭다운 선택지에 `30분(0.5시간)` 옵션 추가 및 타입 동기화
+  4) **결제/이력 패널(`StudentPaymentPanel.tsx`) 및 공통 타입(`PaymentRecord`) 정합성 확보**:
+     - `normalizeDurationHour`의 1시간 강제 변환 제거 및 `30분(0.5시간)` 옵션 완벽 수용
+     - `PaymentRecord.sessionAddRules`의 `durationHour` 유니온 타입에 `0.5` 추가
+  5) **품질 지표 달성**:
      - 단위 테스트 15개 파일 55개 테스트 100% 통과 (0.3초)
      - ESLint 오류 0건, 경고 0건 (완전 무결)
      - Next.js 프로덕션 빌드 정상 통과 (`next build --webpack`)

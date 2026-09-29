@@ -46,7 +46,7 @@ type SessionAddRuleView = {
   weekday: number;
   hour: number;
   minute?: number;
-  durationHour: 1 | 1.5 | 2 | 2.5 | 3;
+  durationHour: 0.5 | 1 | 1.5 | 2 | 2.5 | 3;
 };
 
 const DEFAULT_RULE: SessionAddRuleView = {
@@ -71,8 +71,9 @@ function normalizeWeeklyCount(value: number): number {
   return Math.max(1, Math.min(7, Math.floor(value)));
 }
 
-function normalizeDurationHour(value: number): 1 | 1.5 | 2 | 2.5 | 3 {
+function normalizeDurationHour(value: number): 0.5 | 1 | 1.5 | 2 | 2.5 | 3 {
   if (!Number.isFinite(value)) return 1;
+  if (value <= 0.75) return 0.5;
   if (value <= 1.25) return 1;
   if (value <= 1.75) return 1.5;
   if (value <= 2.25) return 2;
@@ -81,6 +82,7 @@ function normalizeDurationHour(value: number): 1 | 1.5 | 2 | 2.5 | 3 {
 }
 
 function formatDurationHourLabel(durationHour: number): string {
+  if (durationHour === 0.5) return "30분";
   if (durationHour === 1.5) return "1시간 30분";
   if (durationHour === 2.5) return "2시간 30분";
   return `${durationHour}시간`;
@@ -636,11 +638,11 @@ export function StudentPaymentPanel({
                       <select
                         value={rule.durationHour}
                         onChange={(e) =>
-                          updateRule(index, { durationHour: Number(e.target.value) as 1 | 1.5 | 2 | 2.5 | 3 })
+                          updateRule(index, { durationHour: Number(e.target.value) as 0.5 | 1 | 1.5 | 2 | 2.5 | 3 })
                         }
                         style={{ ...selectStyle, width: "100%" }}
                       >
-                        {([1, 1.5, 2, 2.5, 3] as const).map((duration) => (
+                        {([0.5, 1, 1.5, 2, 2.5, 3] as const).map((duration) => (
                           <option key={`duration-${duration}`} value={duration}>
                             {formatDurationHourLabel(duration)}
                           </option>

@@ -146,14 +146,16 @@ describe("sessionCardFactory - 시간표 규칙 및 수업 시간 복원 엔진"
       expect(resolveDurationMinForSession("2026-03-02T16:00:00+09:00", [])).toBe(60); // 규칙이 비어있으면 기본 60분
     });
 
-    test("normalizeDurationMin 허용 수업 시간(60, 90, 120, 150, 180) 규격화 검증", () => {
+    test("normalizeDurationMin 허용 수업 시간(30, 60, 90, 120, 150, 180) 규격화 검증", () => {
+      expect(normalizeDurationMin(30)).toBe(30);
       expect(normalizeDurationMin(60)).toBe(60);
       expect(normalizeDurationMin(90)).toBe(90);
       expect(normalizeDurationMin(120)).toBe(120);
       expect(normalizeDurationMin(150)).toBe(150);
       expect(normalizeDurationMin(180)).toBe(180);
       // 허용 범위 밖의 임의 값은 가장 가까운 유효 범위로 제한
-      expect(normalizeDurationMin(45)).toBe(60);
+      expect(normalizeDurationMin(20)).toBe(30);
+      expect(normalizeDurationMin(45)).toBe(30);
       expect(normalizeDurationMin(240)).toBe(180);
     });
   });
