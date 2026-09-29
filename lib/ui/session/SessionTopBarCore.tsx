@@ -140,6 +140,7 @@ export default function SessionTopBarCore({ role, token, index }: Props) {
   // 변경(날짜 + 시간(시/분) - 시간은 “선택 전” 상태가 필요해서 null 허용)
   const [draftOverrideDate, setDraftOverrideDate] = useState<string>("");
   const [draftOverrideHour, setDraftOverrideHour] = useState<number | null>(null);
+  const [draftOverrideMinute, setDraftOverrideMinute] = useState<number | null>(0);
   const [draftOverrideDurationHour, setDraftOverrideDurationHour] = useState<number | null>(null);
   const overrideDateInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -359,12 +360,18 @@ export default function SessionTopBarCore({ role, token, index }: Props) {
     const durationHour = (() => {
       if (typeof meta.overrideDurationMin !== "number" || !Number.isFinite(meta.overrideDurationMin)) return null;
       const h = meta.overrideDurationMin / 60;
+      if (h <= 0.75) return 0.5;
       if (h <= 1.25) return 1;
       if (h <= 1.75) return 1.5;
-      return 2;
+      if (h <= 2.25) return 2;
+      if (h <= 2.75) return 2.5;
+      return 3;
     })();
 
     setDraftOverrideHour(typeof hh === "number" ? hh : null);
+    setDraftOverrideMinute(
+      typeof meta.overrideMinute === "number" ? (meta.overrideMinute >= 30 ? 30 : 0) : 0
+    );
     setDraftOverrideDurationHour(durationHour);
 
     const carryVal = meta.carry ?? 0;
@@ -407,6 +414,7 @@ export default function SessionTopBarCore({ role, token, index }: Props) {
     if (!next) {
       setDraftOverrideDate("");
       setDraftOverrideHour(null);
+      setDraftOverrideMinute(0);
       setDraftOverrideDurationHour(null);
       return;
     }
@@ -414,7 +422,8 @@ export default function SessionTopBarCore({ role, token, index }: Props) {
     // ✅ 켜는 순간: 날짜만 오늘로 세팅(없을 때만), 시간은 일부러 비워둠
     setDraftOverrideDate((prev) => (prev ? prev : todayYmdKST()));
     setDraftOverrideHour(null);
-    setDraftOverrideDurationHour((prev) => (prev && prev >= 1 ? prev : 1));
+    setDraftOverrideMinute(0);
+    setDraftOverrideDurationHour((prev) => (prev && prev >= 0.5 ? prev : 1));
   };
 
   const toggleCarry = (next: boolean) => {
@@ -427,6 +436,7 @@ export default function SessionTopBarCore({ role, token, index }: Props) {
     setCheckOverride(false);
     setDraftOverrideDate("");
     setDraftOverrideHour(null);
+    setDraftOverrideMinute(0);
     setDraftOverrideDurationHour(null);
   };
 
@@ -491,7 +501,7 @@ export default function SessionTopBarCore({ role, token, index }: Props) {
         carry: checkCarry ? Number(draftCarry) : 0,
         overrideDate: checkOverride ? draftOverrideDate : "",
         overrideHour: checkOverride ? h : null,
-        overrideMinute: checkOverride ? 0 : null,
+        overrideMinute: checkOverride ? (draftOverrideMinute ?? 0) : null,
         overrideDurationMin: durationMin,
         overrideSource: checkOverride ? "manual" : "",
         reason: needReasonUI ? draftReason : "",
@@ -713,13 +723,14 @@ export default function SessionTopBarCore({ role, token, index }: Props) {
 
                 {checkOverride && (
                   <div className="grid gap-2">
-                    <div className="grid grid-cols-3 gap-2">
+                    <div className="grid grid-cols-4 gap-2">
                       <div className="text-sm font-semibold">수업 변경일</div>
-                      <div className="text-sm font-semibold">수업 변경 시간</div>
+                      <div className="text-sm font-semibold">변경 시</div>
+                      <div className="text-sm font-semibold">변경 분</div>
                       <div className="text-sm font-semibold">수업 시간</div>
                     </div>
 
-                    <div className="grid grid-cols-3 gap-2">
+                    <div className="grid grid-cols-4 gap-2">
                       <div>
                         <input
                           ref={overrideDateInputRef}
@@ -740,6 +751,7 @@ export default function SessionTopBarCore({ role, token, index }: Props) {
                           const v = e.target.value;
                           setDraftOverrideHour(v === "" ? null : Number(v));
                         }}
+                        aria-label="수업 변경 시작 시"
                       >
                         <option value="">시 선택</option>
                         {Array.from({ length: 24 }, (_, h) => (
@@ -752,20 +764,34 @@ export default function SessionTopBarCore({ role, token, index }: Props) {
                       <select
                         className="rounded border border-neutral-300 px-2 py-1"
                         style={{ borderColor: "var(--control-border)" }}
+                        value={draftOverrideMinute === null ? 0 : draftOverrideMinute}
+                        onChange={(e) => setDraftOverrideMinute(Number(e.target.value) >= 30 ? 30 : 0)}
+                        aria-label="수업 변경 시작 분"
+                      >
+                        <option value={0}>00분</option>
+                        <option value={30}>30분</option>
+                      </select>
+
+                      <select
+                        className="rounded border border-neutral-300 px-2 py-1"
+                        style={{ borderColor: "var(--control-border)" }}
                         value={draftOverrideDurationHour === null ? "" : draftOverrideDurationHour}
                         onChange={(e) => {
                           const v = e.target.value;
-                          setDraftOverrideDurationHour(v === "" ? null : Math.max(1, Number(v)));
+                          setDraftOverrideDurationHour(v === "" ? null : Math.max(0.5, Number(v)));
                         }}
+                        aria-label="수업 변경 수업 시간"
                       >
                         <option value="">시간 선택</option>
-                        {([1, 1.5, 2, 2.5, 3] as const).map((hours) => (
+                        {([0.5, 1, 1.5, 2, 2.5, 3] as const).map((hours) => (
                           <option key={hours} value={hours}>
-                            {hours === 1.5
-                              ? "1시간 30분"
-                              : hours === 2.5
-                                ? "2시간 30분"
-                                : `${hours}시간`}
+                            {hours === 0.5
+                              ? "30분"
+                              : hours === 1.5
+                                ? "1시간 30분"
+                                : hours === 2.5
+                                  ? "2시간 30분"
+                                  : `${hours}시간`}
                           </option>
                         ))}
                       </select>

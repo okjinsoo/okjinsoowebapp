@@ -1,13 +1,25 @@
 # Project Status (Latest)
 
-기준 시각: 2026-09-27 02:55 (KST)
+기준 시각: 2026-09-29 12:43 (KST)
 대상 프로젝트: `v1`
 
 ## 1분 요약
 
-- 최신 패치 반영: 2026-09-27 02:55 (KST)
-- **tmain 학생 리스트 영역 '미트 링크 일괄 초기화' 원클릭 기능 탑재 (`TeacherMainClient.tsx`, `TeacherStudentListCard.tsx`, `sessions.ts`)**:
-  1) **원클릭 미트 링크 일괄 초기화 버튼 탑재**:
+- 최신 패치 반영: 2026-09-29 12:43 (KST)
+- **회차 조정 모달 "수업 변경일 / 변경 시 / 변경 분 / 수업시간" 4단 입력 완벽 정합 및 0분 하드코딩 버그 해결 (`SessionTopBarCore.tsx`, `SessionQuickActions.tsx`)**:
+  1) **상단 바 회차 조정 모달 분(00분/30분) 선택 UI 탑재**:
+     - 기존 `SessionTopBarCore.tsx`의 3열(`수업 변경일`, `수업 변경 시간`, `수업 시간`) 구성을 `grid-cols-4`로 전면 개편
+     - `수업 변경일`, `변경 시(00시~23시)`, `변경 분(00분/30분)`, `수업 시간` 4개 입력칸을 명확히 제공
+  2) **0분 강제 저장(하드코딩) 버그 완벽 수정**:
+     - 저장 로직(`onSave`)에서 `overrideMinute: checkOverride ? 0 : null`로 0분이 강제 하드코딩되어 있던 치명적 결함을 `draftOverrideMinute ?? 0`으로 수정하여 30분 시작 수업이 0분으로 왜곡되던 문제 원천 차단
+     - 모달 오픈 시 기존 회차의 `meta.overrideMinute`를 정확히 읽어오도록 바인딩 (`draftOverrideMinute` state 및 초기화 동기화)
+  3) **수업 시간 30분(0.5시간) 옵션 지원 및 일관성 확보**:
+     - `SessionTopBarCore` 및 `SessionQuickActions`의 수업 시간 선택 드롭다운에 `[0.5(30분), 1, 1.5, 2, 2.5, 3]`을 일관되게 지원
+     - 30분 수업일 때 `overrideDurationMin` 및 시간 환산 로직(`h <= 0.75 -> 0.5`) 완벽 보장
+  4) **품질 지표 달성**:
+     - 단위 테스트 15개 파일 55개 테스트 100% 통과 (0.3초)
+     - ESLint 오류 0건, 경고 0건 (완전 무결)
+     - Next.js 프로덕션 빌드 정상 통과 (`next build --webpack`)
      - `tmain` 및 `a/tmain` 학생 리스트 상단 액션 바에 `[미트 링크 일괄 초기화]` 버튼 추가
      - 담당 학생 전체의 고유 미트 링크(`permanentMeetUrl`) 및 모든 회차 세션의 `googleMeetUrl`을 1클릭으로 안전하게 초기화
   2) **신규 미트 자동 발급 및 전체 회차 즉시 단일화 파이프라인 연계**:

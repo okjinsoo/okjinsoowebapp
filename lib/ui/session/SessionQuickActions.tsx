@@ -278,9 +278,12 @@ function AdjustmentModalContent({
   const [draftOverrideDurationHour, setDraftOverrideDurationHour] = useState<number | null>(() => {
     if (typeof meta.overrideDurationMin !== "number" || !Number.isFinite(meta.overrideDurationMin)) return null;
     const h = meta.overrideDurationMin / 60;
+    if (h <= 0.75) return 0.5;
     if (h <= 1.25) return 1;
     if (h <= 1.75) return 1.5;
-    return 2;
+    if (h <= 2.25) return 2;
+    if (h <= 2.75) return 2.5;
+    return 3;
   });
   const [draftReason, setDraftReason] = useState<string>(meta.reason ?? "");
   const [draftRecord, setDraftRecord] = useState<string>(meta.record ?? "");
@@ -327,7 +330,7 @@ function AdjustmentModalContent({
       return;
     }
     setDraftOverrideDate((prev) => (prev ? prev : ymdTodayLocal()));
-    setDraftOverrideDurationHour((prev) => (prev && prev >= 1 ? prev : 1));
+    setDraftOverrideDurationHour((prev) => (prev && prev >= 0.5 ? prev : 1));
   };
 
   const toggleCarry = (next: boolean) => {
@@ -526,13 +529,15 @@ function AdjustmentModalContent({
                       aria-label="수업 변경 수업 시간"
                     >
                       <option value="">시간 선택</option>
-                      {([1, 1.5, 2, 2.5, 3] as const).map((hours) => (
+                      {([0.5, 1, 1.5, 2, 2.5, 3] as const).map((hours) => (
                         <option key={hours} value={hours}>
-                          {hours === 1.5
-                            ? "1시간 30분"
-                            : hours === 2.5
-                              ? "2시간 30분"
-                              : `${hours}시간`}
+                          {hours === 0.5
+                            ? "30분"
+                            : hours === 1.5
+                              ? "1시간 30분"
+                              : hours === 2.5
+                                ? "2시간 30분"
+                                : `${hours}시간`}
                         </option>
                       ))}
                     </select>
