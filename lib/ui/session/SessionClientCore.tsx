@@ -352,12 +352,37 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
     return findLeafById(tree, leafId);
   }
 
-  function updateProgress(leafId: string, patch: Partial<LeafProgress>) {
-    if (!canEditProgress) return;
-    setProgressByLeafId((prev) => {
-      const cur = prev[leafId] ?? defaultProgress();
-      return { ...prev, [leafId]: { ...cur, ...patch } };
-    });
+  async function resetProgress(leafId: string, patch: Partial<LeafProgress>, label: string) {
+    if (!canEditProgress || isSaving || isHydrating) return;
+    setSavingActionName(`${label} 중...`);
+    setIsSaving(true);
+    try {
+      const cur = progressByLeafId[leafId] ?? defaultProgress();
+      const nextProg: ProgressByLeafId = {
+        ...progressByLeafId,
+        [leafId]: { ...cur, ...patch },
+      };
+
+      const syncResult = await pushSharedSnapshot({
+        stateKv: {
+          [keyProgress(token, sessionIndex)]: JSON.stringify(nextProg),
+        },
+      });
+
+      if (!syncResult.stateKvSynced) {
+        throw new Error("서버 동기화(stateKv)에 실패했습니다.");
+      }
+
+      localWriteTimestampRef.current = Date.now();
+      browserStorage.setItem(keyProgress(token, sessionIndex), JSON.stringify(nextProg));
+      setProgressByLeafId(nextProg);
+    } catch (err) {
+      console.error(`${label} 실패:`, err);
+      window.alert(`${label}에 실패했습니다. 다시 시도해 주세요.`);
+    } finally {
+      setIsSaving(false);
+      setSavingActionName("");
+    }
   }
 
   function moveLeaf(idx: number, direction: "up" | "down") {
@@ -999,10 +1024,20 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
                             <button
                               onClick={() => {
                                 if (window.confirm("이 학생의 오답 노트 제출을 초기화하고 다시 제출하게 할까요?")) {
-                                  updateProgress(leafId, { wrongNoteDone: false, wrongNoteLink: "" });
+                                  void resetProgress(leafId, { wrongNoteDone: false, wrongNoteLink: "" }, "오답 노트 초기화");
                                 }
                               }}
-                              style={{ padding: "6px 12px", borderRadius: 8, background: "#fee2e2", border: "1px solid #fecaca", color: "#dc2626", fontSize: 12, fontWeight: 700, cursor: "pointer" }}
+                              disabled={isHydrating || isSaving}
+                              style={{
+                                padding: "6px 12px",
+                                borderRadius: 8,
+                                background: isSaving ? "#f3f4f6" : "#fee2e2",
+                                border: "1px solid #fecaca",
+                                color: isSaving ? "#9ca3af" : "#dc2626",
+                                fontSize: 12,
+                                fontWeight: 700,
+                                cursor: isSaving ? "not-allowed" : "pointer",
+                              }}
                             >
                               오답 노트 초기화
                             </button>
@@ -1021,10 +1056,20 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
                             <button
                               onClick={() => {
                                 if (window.confirm("이 학생의 필기 제출을 초기화하고 다시 제출하게 할까요?")) {
-                                  updateProgress(leafId, { noteDone: false, noteLink: "" });
+                                  void resetProgress(leafId, { noteDone: false, noteLink: "" }, "필기 초기화");
                                 }
                               }}
-                              style={{ padding: "6px 12px", borderRadius: 8, background: "#fee2e2", border: "1px solid #fecaca", color: "#dc2626", fontSize: 12, fontWeight: 700, cursor: "pointer" }}
+                              disabled={isHydrating || isSaving}
+                              style={{
+                                padding: "6px 12px",
+                                borderRadius: 8,
+                                background: isSaving ? "#f3f4f6" : "#fee2e2",
+                                border: "1px solid #fecaca",
+                                color: isSaving ? "#9ca3af" : "#dc2626",
+                                fontSize: 12,
+                                fontWeight: 700,
+                                cursor: isSaving ? "not-allowed" : "pointer",
+                              }}
                             >
                               필기 초기화
                             </button>
@@ -1043,10 +1088,20 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
                             <button
                               onClick={() => {
                                 if (window.confirm("이 학생의 풀이 제출을 초기화하고 다시 제출하게 할까요?")) {
-                                  updateProgress(leafId, { solveDone: false, solveLink: "" });
+                                  void resetProgress(leafId, { solveDone: false, solveLink: "" }, "풀이 초기화");
                                 }
                               }}
-                              style={{ padding: "6px 12px", borderRadius: 8, background: "#fee2e2", border: "1px solid #fecaca", color: "#dc2626", fontSize: 12, fontWeight: 700, cursor: "pointer" }}
+                              disabled={isHydrating || isSaving}
+                              style={{
+                                padding: "6px 12px",
+                                borderRadius: 8,
+                                background: isSaving ? "#f3f4f6" : "#fee2e2",
+                                border: "1px solid #fecaca",
+                                color: isSaving ? "#9ca3af" : "#dc2626",
+                                fontSize: 12,
+                                fontWeight: 700,
+                                cursor: isSaving ? "not-allowed" : "pointer",
+                              }}
                             >
                               풀이 초기화
                             </button>

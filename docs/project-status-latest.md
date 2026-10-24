@@ -1,11 +1,21 @@
 # Project Status (Latest)
 
-기준 시각: 2026-09-29 12:49 (KST)
+기준 시각: 2026-10-24 22:15 (KST)
 대상 프로젝트: `v1`
 
 ## 1분 요약
 
-- 최신 패치 반영: 2026-09-29 12:49 (KST)
+- 최신 패치 반영: 2026-10-24 22:15 (KST)
+- **학생 회차 강의 카드 제출 초기화(필기/풀이/오답 노트) 서버 비동기 영구 저장 및 피드백 반영 (`SessionClientCore.tsx`)**:
+  1) **서버 영구 저장(`pushSharedSnapshot`) 연동**:
+     - 기존에 로컬 화면 메모리(`state`) 및 `localStorage`에만 임시 반영되어 새로고침 시 원래대로 되돌아가던 버그 원천 수정
+     - `resetProgress` 함수를 구축하여 `pushSharedSnapshot`을 통해 서버 원격 저장소 및 로컬 스토리지에 즉각 비동기 동시 반영
+  2) **중복 클릭 방지 및 실시간 저장 오버레이 피드백 탑재**:
+     - 초기화 진행 중 버튼 `disabled` 처리 및 상단 "필기/풀이/오답 노트 초기화 중..." 배너 인디케이터 노출
+  3) **품질 지표 달성**:
+     - 단위 테스트 15개 파일 55개 테스트 100% 통과 (0.4초)
+     - ESLint 오류 0건, 경고 0건 (완전 무결)
+     - Next.js 프로덕션 빌드 정상 통과 (`next build --webpack`)
 - **전체 웹앱 내 "00분 강제 고정 및 60분 최소 고정 왜곡 로직" 전수 색출 및 30분(0.5시간) 완벽 수용 전면 개편 (`sessionCardFactory.ts`, `StudentScheduleChangeModal.tsx`, `StudentSessionAddModal.tsx`, `StudentPaymentPanel.tsx`, `index.ts`)**:
   1) **`sessionCardFactory.ts` 60분 강제 올림 고정 해제**:
      - 기존 `rounded <= 75`일 때 무조건 60분으로 처리하던 로직을 `rounded <= 45`일 때 30분으로 정확히 분기하도록 수정하여 30분(0.5시간) 수업이 60분으로 둔갑하던 버그 원천 차단
@@ -162,7 +172,7 @@
   3) **방안 C (구글 토큰 만료 사전 체크 & 401 헛걸음 차단)**: `SharedSnapshotAgent` 및 `googleCalendarSync.ts`(`runSync`, `runTeacherCalendarRebuild`)에 `isProviderTokenExpired` 사전 가드를 추가하여 만료된 구글 토큰으로 구글 API를 호출하며 발생하는 401 에러 연발 및 재시도 루프 차단
 - 홈화면/로그인 화면 푸터 노출 구조 개선: `app/page.tsx` 및 공통 가드 페이지들의 `minHeight: calc(100vh - 56px)` 고정 높이를 `flex: 1` 유연 레이아웃으로 변경하여, 홈화면 접속 시 스크롤 없이도 하단 사업자 정보 푸터(`AppFooter.tsx`)가 화면 하단에 바로 상시 노출되도록 개선
 - 학생 상태 판정 조건 개선: '연장필요' 기준을 기존 잔여 회차(3회 이하) 기준에서 '마지막 수업일로부터 9일 전(D-9)' 기준으로 개편 (`studentStatusFactory.ts`, `useStudentRegistry.ts`, `StudentHubCore.tsx`)
-- 최신 운영 반영본: 2026-08-20 00:20 (KST)
+- 최신 운영 반영본: 2026-10-24 22:15 (KST)
 - 운영 주소: `https://okjinsoowebapp.vercel.app`
 - 하단 푸터 통신판매업신고번호 등록: `2026-서울마포-2150` 등록 완료 (`AppFooter.tsx`)
 - 중복 프로세스 제거 및 안전 캐싱 패치 (방안 A): `useRoleScopedSelection` 쌍둥이 `useEffect` 2중 호출 단일화, `PageTitleAgent` 로컬 스냅샷 직결로 `/api/students` 독립 네트워크 호출 제거, `useAdminStudentsPageData`의 3중 조회 제거 및 `useStudentRegistry` 데이터 직결, `serverRead.ts` 5초 캐시 + 이벤트(`studentsUpdated`/`sessionsUpdated`/`teachersUpdated`/`AUTH_EVENT`/`storage`) 기반 즉시 캐시 무효화 적용
@@ -207,6 +217,7 @@
 
 ## 최근 변경(운영 영향 큰 항목)
 
+- 2026-10-24 22:15: 학생 회차 강의 카드 제출 초기화(필기/풀이/오답 노트) 서버 영구 저장(`pushSharedSnapshot`) 연동 및 새로고침 복원 버그 원천 수정, stateKvSynced 동기화 확인 가드 및 단위 테스트 탑재 (`SessionClientCore.tsx`, `progressResetFlow.test.ts`)
 - 2026-09-16 18:00: 회차 추가 수정 모달에서 30분 선택 즉시 00분으로 튕기는 버그 수정 (`StudentPaymentPanel.tsx` updateRule minute 패치 및 scheduleChangeEvents 동기화 보강)
 - 2026-09-16 02:15: 회차 추가 시 30분 시작 시간 미반영 버그 수정 (`StudentHubCore.tsx`, `sessionCardFactory.ts`) + 1:1 맞춤 과외 설명 주 3시간/총 12시간 정정 (`ProgramsCheckoutClient.tsx`)
 - 2026-09-10 17:33: 토스페이먼츠 전자결제 및 카드사 심사용 결제창 연동 완료 (`/programs` 수강 신청 주문서 모달 + 토스 테스트 결제창 팝업 연동 + 성공/실패 콜백 페이지 구축)

@@ -32,8 +32,9 @@ describe("normalizedDbApi", () => {
       permanentMeetUrl: "https://meet.google.com/xyz-uvw-rst",
       scheduleRules: [
         {
-          dayOfWeek: "mon",
-          time: "15:00",
+          weekday: 1,
+          hour: 15,
+          minute: 0,
           durationMin: 90,
         },
       ],
