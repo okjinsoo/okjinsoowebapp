@@ -221,6 +221,7 @@
 
 ## 최근 변경(운영 영향 큰 항목)
 
+- 2026-10-26 09:27: 프로덕션 배포 커밋 `54cbe73` (운영 주소: `https://okjinsoowebapp.vercel.app`, 회차 추가 모달 경량화 및 시간표 관리 [시간 변경] 창구 일원화 패치)
 - 2026-10-26 09:27: 회차 추가 모달 경량화(시작일/추가횟수 단일화) 및 시간표 관리 창구 [시간 변경] 일원화, 스케줄 전파 차단 푯말 간섭 해소 및 단위 테스트 보강 (`StudentSessionAddModal.tsx`, `StudentHubCore.tsx`, `sessionEffective.ts`, `sessionCardFactory.ts`, `StudentPaymentPanel.tsx`)
 - 2026-10-24 22:15: 학생 회차 강의 카드 제출 초기화(필기/풀이/오답 노트) 서버 영구 저장(`pushSharedSnapshot`) 연동 및 새로고침 복원 버그 원천 수정, stateKvSynced 동기화 확인 가드 및 단위 테스트 탑재 (`SessionClientCore.tsx`, `progressResetFlow.test.ts`)
 - 2026-09-16 18:00: 회차 추가 수정 모달에서 30분 선택 즉시 00분으로 튕기는 버그 수정 (`StudentPaymentPanel.tsx` updateRule minute 패치 및 scheduleChangeEvents 동기화 보강)
