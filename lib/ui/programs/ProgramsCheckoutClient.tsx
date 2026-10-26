@@ -52,10 +52,10 @@ const PROGRAMS: ProgramItem[] = [
   },
 ];
 
-// Toss Payments standard test client key
+// Toss Payments standard client key (Production Live)
 const TOSS_CLIENT_KEY =
   process.env.NEXT_PUBLIC_TOSS_CLIENT_KEY ||
-  "test_ck_D5GePWvyJnrK0W0k6q8gLzN97Eoq";
+  "live_ck_GePWvyJnrKQZwOZZEGLe3gLzN97E";
 
 export default function ProgramsCheckoutClient() {
   const [selectedProgram, setSelectedProgram] = useState<ProgramItem | null>(null);
