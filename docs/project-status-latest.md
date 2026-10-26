@@ -234,7 +234,7 @@
 - 관리자 계정이 비소유자면 직접 생성 대신 `pending` 요청 저장
 ## 최근 변경(운영 영향 큰 항목)
 
-- 2026-10-26 17:00: 결제 버튼 텍스트 수직 중앙 정렬(`programs-action-btn`, `programs-modal-btn`, `programs-tab-btn`) 및 모바일 하단 푸터 가로 드래그/스크롤 차단(`app-footer-inner 100% max-width 980px`, `overflow-x: hidden`: `app/globals.css`, `ProgramsCheckoutClient.tsx`)
+- 2026-10-26 17:00: 프로덕션 배포 커밋 `4691d4f` (운영 주소: `https://okjinsoowebapp.vercel.app`, 결제 버튼 텍스트 수직 중앙 정렬(`programs-action-btn`, `programs-modal-btn`, `programs-tab-btn`) 및 모바일 하단 푸터 가로 드래그/스크롤 차단(`app-footer-inner 100% max-width 980px`, `overflow-x: hidden`: `app/globals.css`, `ProgramsCheckoutClient.tsx`))
 - 2026-10-26 16:50: 프로덕션 배포 커밋 `3eedbe7` (운영 주소: `https://okjinsoowebapp.vercel.app`, 수강 프로그램 페이지 `/programs` 모바일 실해상도 맞춤(device-width 뷰포트 및 100% 유연 너비 전환) 패치: `app/programs/layout.tsx`, `app/globals.css`, `app/programs/page.tsx`)
 - 2026-10-26 16:38: 프로덕션 배포 커밋 `5f132ea` (운영 주소: `https://okjinsoowebapp.vercel.app`, 수강 프로그램 안내 페이지 `/programs` 모바일/PC 반응형 프리미엄 전면 개편: 모바일 세그먼트 탭, 바텀 시트 모달, 4단계 절차 2x2 그리드, 환불 규정 모바일 카드화: `ProgramsCheckoutClient.tsx`, `app/programs/page.tsx`)
 - 2026-10-26 16:12: 프로덕션 배포 커밋 `5103a96` (운영 주소: `https://okjinsoowebapp.vercel.app`, 토스페이먼츠 최종 결제 승인 Confirm 백엔드 API 신설 및 실결제 완결 패치: `/api/payments/confirm`, `ProgramsSuccessClient.tsx`, `page.tsx`)
