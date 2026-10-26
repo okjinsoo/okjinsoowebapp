@@ -1,22 +1,16 @@
 # Project Status (Latest)
 
-기준 시각: 2026-10-26 16:12 (KST)
+기준 시각: 2026-10-26 16:38 (KST)
 대상 프로젝트: `v1`
 
 ## 1분 요약
 
-- 최신 패치 반영: 2026-10-26 16:12 (KST)
-- **토스페이먼츠 2단계 최종 결제 승인(Confirm) 백엔드 엔진 구축 및 실결제 완결 패치 (`app/api/payments/confirm/route.ts`, `ProgramsSuccessClient.tsx`, `page.tsx`)**:
-  1) **결제 최종 승인(Confirm) 백엔드 API 신설 (`/api/payments/confirm`)**:
-     - 토스페이먼츠 공식 시크릿 키(`live_sk_d46qopOB892elGwN5abO3ZmM75y0`)를 안전하게 활용하여 카드사 인증 완료 후 토스 본사 승인 API(`https://api.tosspayments.com/v1/payments/confirm`)를 서버 측에서 직접 호출
-     - 인증만 되고 실제 대금 결제가 이루어지지 않던(미승인) 문제를 원천 해결하여 실제 카드 청구 및 영수증 발행 완결
-  2) **수강 신청 결제 완료 화면 지능화 (`ProgramsSuccessClient.tsx`)**:
-     - 리다이렉트 시 넘어온 `paymentKey`, `orderId`, `amount`를 즉시 검증하고 실시간 최종 승인 통신 진행 (로딩 스피너 및 에러 핸들링 탑재)
-     - 승인 완료 시 결제 금액, 주문 번호, 토스 공식 매출 전표(영수증) 링크 제공
-  3) **품질 지표 달성**:
-     - 단위 테스트 16개 파일 59개 전수 100% 통과
-     - ESLint 오류 0건, 경고 0건
-     - Next.js 프로덕션 빌드 정상 통과 (`next build --webpack`, 30개 라우트 정상 생성)
+- 최신 패치 반영: 2026-10-26 16:38 (KST)
+- **수강 프로그램 안내 페이지(`/programs`) 모바일/PC 반응형 프리미엄 전면 개편 (`ProgramsCheckoutClient.tsx`, `app/programs/page.tsx`)**:
+  1) **모바일 전용 세그먼트 탭 전환기 탑재 (`sm:hidden`)**: 스마트폰 화면에서 스크롤 부담 없이 [그룹 수업 (270분)]과 [개별 피드백 (180분)]을 상단 터치 탭으로 전환해 1개 카드씩 집중해서 시원하게 열람 (PC는 2열 나란히 뷰 유지)
+  2) **모바일 바텀 시트(Bottom Sheet) 결제 모달 전환**: PC 센터 팝업에서 모바일 시 화면 하단에서 슥 올라오는 서랍형 바텀 시트로 자동 변환, 상단 드래그 핸들 및 iOS 사파리 줌 방지 16px 인풋 탑재
+  3) **4단계 수강 절차 & 환불 규정 모바일 최적화**: 4단계 절차를 모바일 2x2 그리드로 압축하고, 환불 규정 표를 모바일 전용 카드 리스트로 자동 변환하여 가로 스크롤 잘림 원천 차단
+  4) **품질 지표 달성**: 단위 테스트 16개 파일 59개 전수 100% 통과, ESLint 0건, Next.js 프로덕션 빌드 정상 통과
   1) **학생 정보 '수업 시간' 전환 시점 지능화 (`resolveActiveScheduleRules`)**:
      - 기존에 오늘 날짜와 단순 비교(`ch.startDate > today`)하여 미래 날짜 지정 시 시간표 텍스트가 갱신되지 않던 모순 원천 해결
      - 새로운 시간표가 적용되는 회차(`startIndex`)의 직전 회차(`startIndex - 1`) 수업일 익일(다음날 00시)부터 새 시간표로 자동 전환되도록 개편
@@ -240,6 +234,7 @@
 - 관리자 계정이 비소유자면 직접 생성 대신 `pending` 요청 저장
 ## 최근 변경(운영 영향 큰 항목)
 
+- 2026-10-26 16:38: 수강 프로그램 안내 페이지(`/programs`) 모바일/PC 반응형 프리미엄 전면 개편 (모바일 세그먼트 탭, 바텀 시트 모달, 4단계 절차 2x2 그리드, 환불 규정 모바일 카드화: `ProgramsCheckoutClient.tsx`, `app/programs/page.tsx`)
 - 2026-10-26 16:12: 프로덕션 배포 커밋 `5103a96` (운영 주소: `https://okjinsoowebapp.vercel.app`, 토스페이먼츠 최종 결제 승인 Confirm 백엔드 API 신설 및 실결제 완결 패치: `/api/payments/confirm`, `ProgramsSuccessClient.tsx`, `page.tsx`)
 - 2026-10-26 11:58: 프로덕션 배포 커밋 `ffb70de` (운영 주소: `https://okjinsoowebapp.vercel.app`, 토스페이먼츠 카드사 승인 완료 정식 라이브 클라이언트 키 `live_ck_GePWvyJnrKQZwOZZEGLe3gLzN97E` 전면 적용)
 - 2026-10-26 11:43: 프로덕션 배포 커밋 `820127c` (운영 주소: `https://okjinsoowebapp.vercel.app`, 수강 프로그램 안내 상품 2종 개편 및 신청 주문서 UX 개선)

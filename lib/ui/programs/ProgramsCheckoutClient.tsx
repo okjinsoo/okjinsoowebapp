@@ -58,6 +58,7 @@ const TOSS_CLIENT_KEY =
   "live_ck_GePWvyJnrKQZwOZZEGLe3gLzN97E";
 
 export default function ProgramsCheckoutClient() {
+  const [activeTabId, setActiveTabId] = useState<string>("group-lesson");
   const [selectedProgram, setSelectedProgram] = useState<ProgramItem | null>(null);
   const [buyerName, setBuyerName] = useState("");
   const [buyerPhone, setBuyerPhone] = useState("");
@@ -154,14 +155,39 @@ export default function ProgramsCheckoutClient() {
 
   return (
     <>
-      {/* Program Cards Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      {/* Mobile Segmented Tab Selector (모바일 전용 탭 전환) */}
+      <div className="sm:hidden mb-4 p-1 rounded-xl bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 flex gap-1">
+        {PROGRAMS.map((prog) => {
+          const isActive = activeTabId === prog.id;
+          return (
+            <button
+              key={prog.id}
+              type="button"
+              onClick={() => setActiveTabId(prog.id)}
+              className={`flex-1 py-2 px-2.5 rounded-lg text-xs font-bold transition-all text-center ${
+                isActive
+                  ? "bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 shadow-xs"
+                  : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
+              }`}
+            >
+              {prog.id === "group-lesson" ? "그룹 수업 (270분)" : "개별 피드백 (180분)"}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Program Cards Grid (PC: 2열 나란히 / 모바일: 선택된 탭 1개 집중 표시) */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
         {PROGRAMS.map((prog) => {
           const isBlue = prog.badgeColor === "blue";
+          const isHiddenOnMobile = activeTabId !== prog.id;
+
           return (
             <div
               key={prog.id}
-              className={`rounded-xl border p-6 bg-white dark:bg-slate-800 shadow-sm flex flex-col justify-between transition-all ${
+              className={`rounded-2xl border p-5 sm:p-6 bg-white dark:bg-slate-800 shadow-sm flex flex-col justify-between transition-all ${
+                isHiddenOnMobile ? "hidden sm:flex" : "flex"
+              } ${
                 isBlue
                   ? "border-slate-200 dark:border-slate-700 hover:border-blue-400"
                   : "border-slate-200 dark:border-slate-700 hover:border-emerald-400"
@@ -170,7 +196,7 @@ export default function ProgramsCheckoutClient() {
               <div>
                 <div className="flex justify-between items-start mb-3">
                   <span
-                    className={`px-2.5 py-1 text-xs font-bold rounded ${
+                    className={`px-2.5 py-1 text-xs font-bold rounded-lg ${
                       isBlue
                         ? "bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200"
                         : "bg-emerald-100 dark:bg-emerald-900 text-emerald-800 dark:text-emerald-200"
@@ -183,15 +209,15 @@ export default function ProgramsCheckoutClient() {
                   </span>
                 </div>
 
-                <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100 mb-2">
+                <h3 className="text-lg sm:text-xl font-bold text-slate-900 dark:text-slate-100 mb-2">
                   {prog.name}
                 </h3>
 
-                <p className="text-sm text-slate-600 dark:text-slate-400 mb-4 whitespace-pre-line">
+                <p className="text-sm text-slate-600 dark:text-slate-400 mb-4 whitespace-pre-line leading-relaxed">
                   {prog.description}
                 </p>
 
-                <ul className="text-sm text-slate-600 dark:text-slate-300 space-y-2 mb-6 bg-slate-50 dark:bg-slate-900/50 p-3.5 rounded-lg border border-slate-100 dark:border-slate-800">
+                <ul className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 space-y-2 mb-6 bg-slate-50 dark:bg-slate-900/50 p-3.5 rounded-xl border border-slate-100 dark:border-slate-800">
                   {prog.features.map((feat, idx) => (
                     <li key={idx} className="flex items-center gap-2">
                       <span
@@ -207,9 +233,9 @@ export default function ProgramsCheckoutClient() {
                 </ul>
               </div>
 
-              <div className="pt-4 border-t border-slate-100 dark:border-slate-700 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-                <div>
-                  <span className="text-xs text-slate-500 font-medium block">
+              <div className="pt-4 border-t border-slate-100 dark:border-slate-700 flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3">
+                <div className="flex items-baseline justify-between sm:block">
+                  <span className="text-xs text-slate-500 font-medium sm:block">
                     수강료
                   </span>
                   <span
@@ -220,7 +246,7 @@ export default function ProgramsCheckoutClient() {
                     }`}
                   >
                     {prog.priceFormatted}
-                    <span className="text-sm font-normal text-slate-600 dark:text-slate-400">
+                    <span className="text-sm font-normal text-slate-600 dark:text-slate-400 ml-0.5">
                       원
                     </span>
                   </span>
@@ -229,7 +255,7 @@ export default function ProgramsCheckoutClient() {
                 <button
                   type="button"
                   onClick={() => handleOpenModal(prog)}
-                  className={`w-full sm:w-auto px-5 py-2.5 rounded-lg font-bold text-sm text-white shadow-sm transition-colors cursor-pointer flex items-center justify-center gap-1.5 ${
+                  className={`w-full sm:w-auto px-5 py-3 sm:py-2.5 rounded-xl font-bold text-sm text-white shadow-sm transition-all active:scale-[0.98] cursor-pointer flex items-center justify-center gap-1.5 ${
                     isBlue
                       ? "bg-blue-600 hover:bg-blue-700"
                       : "bg-emerald-600 hover:bg-emerald-700"
@@ -244,18 +270,21 @@ export default function ProgramsCheckoutClient() {
         })}
       </div>
 
-      {/* Checkout Modal */}
+      {/* Checkout Modal (PC: 센터 팝업 / 모바일: 바텀 시트) */}
       {selectedProgram && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150"
+          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150"
           onClick={handleCloseModal}
         >
           <div
-            className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 max-w-lg w-full p-6 sm:p-7 relative overflow-hidden"
+            className="bg-white dark:bg-slate-900 rounded-t-3xl sm:rounded-2xl shadow-2xl border-t sm:border border-slate-200 dark:border-slate-800 max-w-lg w-full p-5 sm:p-7 relative max-h-[92vh] sm:max-h-[90vh] flex flex-col overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
+            {/* Mobile Drag Handle (모바일 상단 핸들 바) */}
+            <div className="w-12 h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full mx-auto mb-2 sm:hidden shrink-0" />
+
             {/* Modal Header */}
-            <div className="flex justify-between items-start pb-4 border-b border-slate-100 dark:border-slate-800">
+            <div className="flex justify-between items-start pb-3 sm:pb-4 border-b border-slate-100 dark:border-slate-800 shrink-0">
               <div>
                 <span className="text-xs font-bold text-blue-600 dark:text-blue-400 uppercase tracking-wider">
                   Toss Payments 연동
@@ -275,11 +304,11 @@ export default function ProgramsCheckoutClient() {
             </div>
 
             {/* Modal Body */}
-            <div className="py-4 space-y-4">
+            <div className="py-3 sm:py-4 space-y-3 sm:space-y-4 overflow-y-auto pr-0.5">
               {/* Product Info Box */}
               <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-100 dark:border-slate-700/80 space-y-1.5">
                 <div className="text-xs text-slate-500 font-medium">선택한 프로그램</div>
-                <div className="font-bold text-slate-900 dark:text-slate-100 text-base">
+                <div className="font-bold text-slate-900 dark:text-slate-100 text-sm sm:text-base">
                   {selectedProgram.name}
                 </div>
                 <div className="text-xs text-slate-600 dark:text-slate-400 flex items-center justify-between pt-1">
@@ -301,7 +330,7 @@ export default function ProgramsCheckoutClient() {
                     value={buyerName}
                     onChange={(e) => setBuyerName(e.target.value)}
                     placeholder="홍길동"
-                    className="w-full px-3.5 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-3.5 py-3 sm:py-2 text-base sm:text-sm rounded-xl sm:rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
 
@@ -314,7 +343,7 @@ export default function ProgramsCheckoutClient() {
                     value={buyerPhone}
                     onChange={(e) => setBuyerPhone(e.target.value)}
                     placeholder="010-1234-5678"
-                    className="w-full px-3.5 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-3.5 py-3 sm:py-2 text-base sm:text-sm rounded-xl sm:rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
 
@@ -327,7 +356,7 @@ export default function ProgramsCheckoutClient() {
                     value={studentName}
                     onChange={(e) => setStudentName(e.target.value)}
                     placeholder="예: 김철수 (선택 사항)"
-                    className="w-full px-3.5 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-3.5 py-3 sm:py-2 text-base sm:text-sm rounded-xl sm:rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
 
@@ -338,9 +367,9 @@ export default function ProgramsCheckoutClient() {
                       type="checkbox"
                       checked={agreeTerms}
                       onChange={(e) => setAgreeTerms(e.target.checked)}
-                      className="mt-0.5 rounded text-blue-600 focus:ring-blue-500"
+                      className="mt-0.5 rounded text-blue-600 focus:ring-blue-500 w-4 h-4 shrink-0"
                     />
-                    <span>
+                    <span className="leading-tight">
                       [필수]{" "}
                       <Link
                         href="/policy"
@@ -370,11 +399,11 @@ export default function ProgramsCheckoutClient() {
             </div>
 
             {/* Modal Footer */}
-            <div className="pt-4 border-t border-slate-100 dark:border-slate-800 flex gap-2.5">
+            <div className="pt-3 sm:pt-4 border-t border-slate-100 dark:border-slate-800 flex gap-2 shrink-0">
               <button
                 type="button"
                 onClick={handleCloseModal}
-                className="flex-1 py-2.5 px-4 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 text-sm font-semibold hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                className="flex-1 py-3 sm:py-2.5 px-4 rounded-xl sm:rounded-lg border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 text-sm font-semibold hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors cursor-pointer"
               >
                 취소
               </button>
@@ -382,7 +411,7 @@ export default function ProgramsCheckoutClient() {
                 type="button"
                 onClick={handleRequestPayment}
                 disabled={isLoading}
-                className="flex-2 py-2.5 px-4 rounded-lg bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white text-sm font-bold shadow-md transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+                className="flex-2 py-3 sm:py-2.5 px-4 rounded-xl sm:rounded-lg bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white text-sm font-bold shadow-md transition-all active:scale-[0.98] cursor-pointer flex items-center justify-center gap-1.5"
               >
                 <span>{isLoading ? "결제창 호출 중..." : `💳 ${selectedProgram.priceFormatted}원 결제하기`}</span>
               </button>
