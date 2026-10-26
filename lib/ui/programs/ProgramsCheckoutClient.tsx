@@ -164,7 +164,7 @@ export default function ProgramsCheckoutClient() {
               key={prog.id}
               type="button"
               onClick={() => setActiveTabId(prog.id)}
-              className={`flex-1 py-2 px-2.5 rounded-lg text-xs font-bold transition-all text-center ${
+              className={`flex-1 programs-tab-btn transition-all text-center ${
                 isActive
                   ? "bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 shadow-xs"
                   : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
@@ -255,14 +255,14 @@ export default function ProgramsCheckoutClient() {
                 <button
                   type="button"
                   onClick={() => handleOpenModal(prog)}
-                  className={`w-full sm:w-auto px-5 py-3 sm:py-2.5 rounded-xl font-bold text-sm text-white shadow-sm transition-all active:scale-[0.98] cursor-pointer flex items-center justify-center gap-1.5 ${
+                  className={`w-full sm:w-auto programs-action-btn shadow-md transition-all active:scale-[0.98] cursor-pointer text-white flex items-center justify-center gap-2 ${
                     isBlue
                       ? "bg-blue-600 hover:bg-blue-700"
                       : "bg-emerald-600 hover:bg-emerald-700"
                   }`}
                 >
-                  <span>💳</span>
-                  <span>수강 신청 및 결제하기</span>
+                  <span className="text-base leading-none">💳</span>
+                  <span className="leading-none tracking-tight">수강 신청 및 결제하기</span>
                 </button>
               </div>
             </div>
@@ -403,7 +403,7 @@ export default function ProgramsCheckoutClient() {
               <button
                 type="button"
                 onClick={handleCloseModal}
-                className="flex-1 py-3 sm:py-2.5 px-4 rounded-xl sm:rounded-lg border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 text-sm font-semibold hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                className="flex-1 programs-modal-btn border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 font-semibold hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors cursor-pointer"
               >
                 취소
               </button>
@@ -411,9 +411,11 @@ export default function ProgramsCheckoutClient() {
                 type="button"
                 onClick={handleRequestPayment}
                 disabled={isLoading}
-                className="flex-2 py-3 sm:py-2.5 px-4 rounded-xl sm:rounded-lg bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white text-sm font-bold shadow-md transition-all active:scale-[0.98] cursor-pointer flex items-center justify-center gap-1.5"
+                className="flex-2 programs-modal-btn bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-bold shadow-md transition-all active:scale-[0.98] cursor-pointer flex items-center justify-center gap-2"
               >
-                <span>{isLoading ? "결제창 호출 중..." : `💳 ${selectedProgram.priceFormatted}원 결제하기`}</span>
+                <span className="leading-none text-center">
+                  {isLoading ? "결제창 호출 중..." : `💳 ${selectedProgram.priceFormatted}원 결제하기`}
+                </span>
               </button>
             </div>
           </div>
