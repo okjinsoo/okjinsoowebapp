@@ -138,4 +138,79 @@ describe("sessionEffective schedule change by date", () => {
     // 3회차: skip=1, baseIdx=3 → baseDatesISO[3] = 3월21일토
     expect(ymdOf(3)).toBe("2026-03-21"); // 土
   });
+
+  it("회차 추가 후 중간 회차(5회차)에서 시간표를 변경했을 때, 새로 추가된 회차(13~24회차)까지 변경된 시간표가 정상 전파되는지 검증", () => {
+    // 12회차 학생 (월/수 20:00)
+    // 13~24회차(12회) 회차 추가: paymentHistory에 등록 (sessionAddStartDate: 2026-04-01)
+    // 5회차부터 시간표 변경: 화/목 19:00 (startDate: 2026-03-03)
+    const student: Student = {
+      id: "stu-extend-chg",
+      token: "tok-extend-chg",
+      name: "시간변경전파테스트",
+      cohort: "2026_demo",
+      status: "active",
+      startDate: "2026-02-09", // 2026-02-09 = 월요일
+      planCount: 24,
+      googleEmail: "test@example.com",
+      studentPhone: "01000000000",
+      parentPhone: "01000000001",
+      school: "테스트중",
+      grade: "2",
+      scheduleRules: [
+        { weekday: 1, hour: 20, minute: 0 }, // 월 20:00
+        { weekday: 3, hour: 20, minute: 0 }, // 수 20:00
+      ],
+      paymentHistory: [
+        {
+          id: "pay_1",
+          paymentDate: "2026-04-01",
+          addedCount: 12,
+          startIndex: 13,
+          endIndex: 24,
+          sessionAddStartDate: "2026-04-01",
+        },
+      ],
+      scheduleChangeEvents: [
+        {
+          id: "chg_5",
+          startIndex: 5,
+          startDate: "2026-03-03", // 2026-03-03 = 화요일
+          newRules: [
+            { weekday: 2, hour: 19, minute: 0 }, // 화 19:00
+            { weekday: 4, hour: 19, minute: 0 }, // 목 19:00
+          ],
+        },
+      ],
+    };
+
+    const baseDatesISO = buildBaseDatesISO(student, 60);
+    const metaMap = {};
+
+    const getIsoAndYmd = (index: number) => {
+      const iso = computeEffectiveISO({
+        token: student.token,
+        index,
+        baseDatesISO,
+        metaMap,
+      }).effectiveISO;
+      const ymd = ymdFromISO_KST(iso ?? "");
+      return { iso, ymd };
+    };
+
+    // 1~4회차: 기존 월/수 (2026-02-09 월, 2026-02-11 수, 2026-02-16 월, 2026-02-18 수)
+    expect(getIsoAndYmd(1).ymd).toBe("2026-02-09");
+    expect(getIsoAndYmd(2).ymd).toBe("2026-02-11");
+    expect(getIsoAndYmd(3).ymd).toBe("2026-02-16");
+    expect(getIsoAndYmd(4).ymd).toBe("2026-02-18");
+
+    // 5회차부터: 변경된 화/목 (2026-03-03 화요일부터)
+    expect(getIsoAndYmd(5).ymd).toBe("2026-03-03"); // 화
+    expect(getIsoAndYmd(6).ymd).toBe("2026-03-05"); // 목
+
+    // 핵심 검증: 13회차 이후(새로 추가된 회차)도 화/목 시간표가 그대로 전파됨!
+    // 2026-04-01(수) 이후 첫 화/목은 2026-04-02(목)
+    expect(getIsoAndYmd(13).ymd).toBe("2026-04-02"); // 목
+    expect(getIsoAndYmd(14).ymd).toBe("2026-04-07"); // 화
+    expect(getIsoAndYmd(15).ymd).toBe("2026-04-09"); // 목
+  });
 });

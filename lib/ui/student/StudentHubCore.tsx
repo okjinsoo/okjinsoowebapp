@@ -90,14 +90,6 @@ import {
 type Role = SessionRole;
 
 
-function normalizeSessionAddDurationHour(n: number): 1 | 1.5 | 2 | 2.5 | 3 {
-  if (!Number.isFinite(n)) return 1;
-  if (n <= 1.25) return 1;
-  if (n <= 1.75) return 1.5;
-  if (n <= 2.25) return 2;
-  if (n <= 2.75) return 2.5;
-  return 3;
-}
 
 function normalizeSessionAddCount(n: number): number {
   if (!Number.isFinite(n)) return 1;
@@ -993,7 +985,13 @@ export default function StudentHubCore({
       if (!ok) return false;
     }
 
-    const nextEvents = (student?.scheduleChangeEvents ?? []).filter((e) => e.startIndex !== startIndex);
+    const paymentStartIndices = new Set(
+      (student?.paymentHistory ?? []).map((p) => p.startIndex).filter((idx): idx is number => Number.isFinite(idx) && idx > 0)
+    );
+    // 동일 회차 이벤트 또는 이후에 회차 추가로 생성되었던 레거시 이벤트를 정리하여 새 시간표가 전파되도록 함
+    const nextEvents = (student?.scheduleChangeEvents ?? []).filter(
+      (e) => e.startIndex !== startIndex && !(e.startIndex > startIndex && paymentStartIndices.has(e.startIndex))
+    );
     const baseDates = buildBaseDatesISO(student, 120);
     const localMetaMap = readMetaMap(token);
     const { effectiveISO } = computeEffectiveISO({
@@ -1022,7 +1020,7 @@ export default function StudentHubCore({
     return true;
   }
 
-  async function saveSessionAdd(params: { startDate: string; addedCount: number; rules: ScheduleRule[] }): Promise<boolean> {
+  async function saveSessionAdd(params: { startDate: string; addedCount: number }): Promise<boolean> {
     if (!student || sessionAddSaving) return false;
 
     const startDate = (params.startDate ?? "").trim();
@@ -1031,11 +1029,6 @@ export default function StudentHubCore({
     }
     const startDateMs = new Date(`${startDate}T00:00:00+09:00`).getTime();
     if (!Number.isFinite(startDateMs)) {
-      return false;
-    }
-
-    const rules = params.rules;
-    if (!rules || rules.length < 1) {
       return false;
     }
 
@@ -1069,14 +1062,7 @@ export default function StudentHubCore({
       startIndex: 0,
       endIndex: 0,
       sessionAddStartDate: startDate,
-      sessionAddWeeklyCount: rules.length,
-      sessionAddRules: rules.map((rule) => ({
-        weekday: rule.weekday,
-        hour: rule.hour,
-        minute: rule.minute ?? 0,
-        durationHour: normalizeSessionAddDurationHour((rule.durationMin ?? 60) / 60),
-      })),
-      memo: `회차 추가(${addedCount}회, 주 ${rules.length}회 패턴)`,
+      memo: `회차 추가(${addedCount}회)`,
       createdAt: nowIso(),
     };
     const nextHistory = [...history, paymentRecord];
@@ -1087,21 +1073,8 @@ export default function StudentHubCore({
       return false;
     }
 
-    const existingEvent = (student.scheduleChangeEvents ?? []).find((e) => e.startIndex === startIndex);
-    if (existingEvent) {
-      const ok = confirm(`${startIndex}회차부터 적용되는 시간표가 이미 있어요. 새 값으로 바꿀까요?`);
-      if (!ok) return false;
-    }
-
+    // 회차 추가 시점에 불필요한 scheduleChangeEvent를 꽂지 않으며, 기존 잔여 푯말이 있다면 제거하여 현재 시간표가 자연스럽게 이어지도록 함
     const nextEvents = (student.scheduleChangeEvents ?? []).filter((e) => e.startIndex !== startIndex);
-    nextEvents.push({
-      id: makeId(),
-      startIndex,
-      startDate,
-      newRules: rules,
-      createdAt: nowIso(),
-    });
-    nextEvents.sort((a, b) => a.startIndex - b.startIndex);
 
     setSessionAddSaving(true);
     const ok = await applyHistory(nextHistory, { scheduleChangeEvents: nextEvents }, false);

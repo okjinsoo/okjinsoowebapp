@@ -407,6 +407,20 @@ function buildBaseDatesISOFromRules(student: Student, count: number): string[] {
   const rawChanges = Array.isArray(student.scheduleChangeEvents) ? student.scheduleChangeEvents : [];
   const localMetaMap = readMetaMap(student.token ?? "");
 
+  // 결제/회차 추가 이력(paymentHistory)의 시작 회차별 시작일 매핑
+  const rawPayments = Array.isArray(student.paymentHistory) ? student.paymentHistory : [];
+  const paymentStartMap = new Map<number, string>();
+  for (const p of rawPayments) {
+    if (Number.isFinite(p.startIndex) && p.startIndex >= 1) {
+      const carryOffset = carrySumUntil(localMetaMap, p.startIndex - 1);
+      const baseStart = p.startIndex + carryOffset;
+      const startYmd = normalizeYmd(p.sessionAddStartDate || p.paymentDate);
+      if (startYmd) {
+        paymentStartMap.set(baseStart, startYmd);
+      }
+    }
+  }
+
   // 규칙 조회를 위한 도우미 함수 (특정 베이스 인덱스가 어떤 규칙을 따르는지 결정)
   const getRulesForBaseIdx = (baseIdx: number) => {
     // 1. 역순으로 변화 이벤트를 확인하여 해당 인덱스에 걸리는 최신 규칙을 찾음
@@ -429,12 +443,14 @@ function buildBaseDatesISOFromRules(student: Student, count: number): string[] {
       })
       .sort((a, b) => b.baseStartIndex - a.baseStartIndex); // 큰 인덱스 우선
 
+    const paymentMinYMD = paymentStartMap.get(baseIdx + 1) ?? null;
+
     for (const ch of changes) {
       if (baseIdx + 1 >= ch.baseStartIndex) {
-        return { rules: ch.rules, minStartYMD: normalizeYmd(ch.startDate) };
+        return { rules: ch.rules, minStartYMD: paymentMinYMD || normalizeYmd(ch.startDate) };
       }
     }
-    return { rules: normalizeRules(student.scheduleRules ?? []), minStartYMD: null };
+    return { rules: normalizeRules(student.scheduleRules ?? []), minStartYMD: paymentMinYMD };
   };
 
   const out: string[] = [];

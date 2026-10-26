@@ -100,19 +100,23 @@ export function resolveRulesForIndex(student: Student, index: number): ScheduleR
   }
 
   // paymentHistory에 sessionAddRules가 있는 경우 durationMin 보강
+  // 단, 해당 회차에 적용되는 명시적 시간표 변경(scheduleChangeEvents)이 있는 경우 최신 시간표 변경이 우선함
   const payments = [...(student.paymentHistory ?? [])].sort((a, b) => (a.startIndex || 0) - (b.startIndex || 0));
   for (const p of payments) {
     if (p.startIndex <= index && index <= p.endIndex && Array.isArray(p.sessionAddRules) && p.sessionAddRules.length > 0) {
-      const pRules = p.sessionAddRules;
-      rules = rules.map((r, i) => {
-        const pRule = pRules[i % pRules.length];
-        const pDurMin = pRule?.durationHour ? Math.round(pRule.durationHour * 60) : undefined;
-        return {
-          ...r,
-          minute: typeof pRule?.minute === "number" ? pRule.minute : r.minute,
-          durationMin: pDurMin || r.durationMin || 60,
-        };
-      });
+      const hasExplicitChangeAfterPayment = events.some((e) => e.startIndex <= index && e.startIndex >= (p.startIndex || 0));
+      if (!hasExplicitChangeAfterPayment) {
+        const pRules = p.sessionAddRules;
+        rules = rules.map((r, i) => {
+          const pRule = pRules[i % pRules.length];
+          const pDurMin = pRule?.durationHour ? Math.round(pRule.durationHour * 60) : undefined;
+          return {
+            ...r,
+            minute: typeof pRule?.minute === "number" ? pRule.minute : r.minute,
+            durationMin: pDurMin || r.durationMin || 60,
+          };
+        });
+      }
     }
   }
 

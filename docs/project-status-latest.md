@@ -1,19 +1,23 @@
 # Project Status (Latest)
 
-기준 시각: 2026-10-24 22:15 (KST)
+기준 시각: 2026-10-26 09:25 (KST)
 대상 프로젝트: `v1`
 
 ## 1분 요약
 
-- 최신 패치 반영: 2026-10-24 22:15 (KST)
-- **학생 회차 강의 카드 제출 초기화(필기/풀이/오답 노트) 서버 비동기 영구 저장 및 피드백 반영 (`SessionClientCore.tsx`)**:
-  1) **서버 영구 저장(`pushSharedSnapshot`) 연동**:
-     - 기존에 로컬 화면 메모리(`state`) 및 `localStorage`에만 임시 반영되어 새로고침 시 원래대로 되돌아가던 버그 원천 수정
-     - `resetProgress` 함수를 구축하여 `pushSharedSnapshot`을 통해 서버 원격 저장소 및 로컬 스토리지에 즉각 비동기 동시 반영
-  2) **중복 클릭 방지 및 실시간 저장 오버레이 피드백 탑재**:
-     - 초기화 진행 중 버튼 `disabled` 처리 및 상단 "필기/풀이/오답 노트 초기화 중..." 배너 인디케이터 노출
-  3) **품질 지표 달성**:
-     - 단위 테스트 15개 파일 55개 테스트 100% 통과 (0.4초)
+- 최신 패치 반영: 2026-10-26 09:25 (KST)
+- **회차 추가 모달 경량화(시작일/추가횟수 단일화) 및 시간표 관리 창구 일원화 패치 (`StudentSessionAddModal.tsx`, `StudentHubCore.tsx`, `sessionEffective.ts`, `sessionCardFactory.ts`, `StudentPaymentPanel.tsx`)**:
+  1) **기획 의도 기반 UX 경량화 & 입력 단일화**:
+     - 기존의 복잡했던 주당 횟수 및 요일/시간/수업시간 선택 박스(~420줄)를 전면 걷어내고, 시작일(`startDate`)과 추가 횟수(`addedCount`)만 직관적으로 입력받도록 모달 경량화 (~200줄)
+     - 모달 내에 현재 적용 중인 정규 시간표 요약 및 "시간/요일 변경은 [시간 변경] 버튼에서 한 번에 수정할 수 있습니다"라는 명확한 교육적 길잡이 안내 제공
+  2) **스케줄 전파 차단 버그 원천 차단 (시간표 푯말 간섭 해소)**:
+     - 회차 추가 시 `scheduleChangeEvents`에 강제로 새 푯말을 꽂아 뒤쪽 회차를 가두던 불필요한 고정 로직 제거
+     - `[시간 변경]` 실행 시 변경 시작 회차 이후에 과거 회차 추가로 인해 남아있던 레거시 푯말(`paymentStartIndices`)을 자동 정리하여 새로 바꾼 시간표가 추가된 회차까지 끝까지 일괄 전파되도록 개선
+  3) **계산 엔진 상속 로직 정돈 (`sessionEffective.ts`, `sessionCardFactory.ts`)**:
+     - 회차 추가 구간(`paymentHistory`)의 시작일은 그대로 존중하면서, 요일/시간 규칙은 학생의 최신 시간표(Law)를 상속받도록 연동
+     - `resolveRulesForIndex`에서 시간표 변경(`scheduleChangeEvents`)이 결제 이력의 옛날 규칙보다 최우선하도록 우선순위 확립
+  4) **품질 지표 달성**:
+     - 단위 테스트 16개 파일 58개 테스트 100% 통과 (신규 회차 추가 후 시간표 변경 전파 테스트 포함)
      - ESLint 오류 0건, 경고 0건 (완전 무결)
      - Next.js 프로덕션 빌드 정상 통과 (`next build --webpack`)
 - **전체 웹앱 내 "00분 강제 고정 및 60분 최소 고정 왜곡 로직" 전수 색출 및 30분(0.5시간) 완벽 수용 전면 개편 (`sessionCardFactory.ts`, `StudentScheduleChangeModal.tsx`, `StudentSessionAddModal.tsx`, `StudentPaymentPanel.tsx`, `index.ts`)**:
@@ -217,6 +221,7 @@
 
 ## 최근 변경(운영 영향 큰 항목)
 
+- 2026-10-26 09:27: 회차 추가 모달 경량화(시작일/추가횟수 단일화) 및 시간표 관리 창구 [시간 변경] 일원화, 스케줄 전파 차단 푯말 간섭 해소 및 단위 테스트 보강 (`StudentSessionAddModal.tsx`, `StudentHubCore.tsx`, `sessionEffective.ts`, `sessionCardFactory.ts`, `StudentPaymentPanel.tsx`)
 - 2026-10-24 22:15: 학생 회차 강의 카드 제출 초기화(필기/풀이/오답 노트) 서버 영구 저장(`pushSharedSnapshot`) 연동 및 새로고침 복원 버그 원천 수정, stateKvSynced 동기화 확인 가드 및 단위 테스트 탑재 (`SessionClientCore.tsx`, `progressResetFlow.test.ts`)
 - 2026-09-16 18:00: 회차 추가 수정 모달에서 30분 선택 즉시 00분으로 튕기는 버그 수정 (`StudentPaymentPanel.tsx` updateRule minute 패치 및 scheduleChangeEvents 동기화 보강)
 - 2026-09-16 02:15: 회차 추가 시 30분 시작 시간 미반영 버그 수정 (`StudentHubCore.tsx`, `sessionCardFactory.ts`) + 1:1 맞춤 과외 설명 주 3시간/총 12시간 정정 (`ProgramsCheckoutClient.tsx`)

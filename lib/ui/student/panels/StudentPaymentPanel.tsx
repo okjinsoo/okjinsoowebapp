@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import type { PaymentRecord, ScheduleRule, Student, Weekday } from "@/lib/types/index";
+import type { PaymentRecord, Student } from "@/lib/types/index";
 import { buildDisplayRecords, normalizePaymentHistoryRanges } from "@/lib/factories/lessonStatusFactory";
 import { SERVER_SAVE_RETRY_MESSAGE } from "@/lib/messages/serverMessages";
 import { makeId } from "@/lib/utils/id";
@@ -13,16 +13,6 @@ const inputStyle = {
   background: "var(--background)",
   color: "var(--foreground)",
   fontFamily: "inherit",
-};
-
-const selectStyle = {
-  border: "1px solid var(--control-border)",
-  background: "var(--surface-bg)",
-  color: "var(--foreground)",
-  borderRadius: 8,
-  padding: 8,
-  width: "100%",
-  minWidth: 60,
 };
 
 const boxButton = {
@@ -81,31 +71,6 @@ function normalizeDurationHour(value: number): 0.5 | 1 | 1.5 | 2 | 2.5 | 3 {
   return 3;
 }
 
-function formatDurationHourLabel(durationHour: number): string {
-  if (durationHour === 0.5) return "30분";
-  if (durationHour === 1.5) return "1시간 30분";
-  if (durationHour === 2.5) return "2시간 30분";
-  return `${durationHour}시간`;
-}
-
-function weekdayLabel(weekday: number): string {
-  const map: Record<number, string> = {
-    0: "일요일",
-    1: "월요일",
-    2: "화요일",
-    3: "수요일",
-    4: "목요일",
-    5: "금요일",
-    6: "토요일",
-  };
-  return map[weekday] ?? "월요일";
-}
-
-function timeLabel(hour: number, minute?: number): string {
-  const hh = String(normalizeHour(hour)).padStart(2, "0");
-  const mm = normalizeMinute(minute) >= 30 ? "30" : "00";
-  return `${hh}시 ${mm}분`;
-}
 
 function readRulesFromRecord(record: PaymentRecord): SessionAddRuleView[] {
   const raw = Array.isArray(record.sessionAddRules) ? record.sessionAddRules : [];
@@ -345,25 +310,6 @@ export function StudentPaymentPanel({
     setEditOpen(true);
   }
 
-  function updateWeeklyCount(nextRawCount: number) {
-    const nextCount = normalizeWeeklyCount(nextRawCount);
-    setEditWeeklyCount(nextCount);
-    setEditRules((prev) => buildRulesByCount(nextCount, prev));
-  }
-
-  function updateRule(index: number, patch: Partial<SessionAddRuleView>) {
-    setEditRules((prev) =>
-      prev.map((rule, i) => {
-        if (i !== index) return rule;
-        return normalizeRule({
-          weekday: patch.weekday === undefined ? rule.weekday : patch.weekday,
-          hour: patch.hour === undefined ? rule.hour : patch.hour,
-          minute: patch.minute === undefined ? rule.minute : patch.minute,
-          durationHour: patch.durationHour === undefined ? rule.durationHour : patch.durationHour,
-        });
-      })
-    );
-  }
 
   async function onApplyEdit() {
     if (!editingRecordId) return;
@@ -378,8 +324,6 @@ export function StudentPaymentPanel({
       return;
     }
 
-    const weeklyCount = normalizeWeeklyCount(editWeeklyCount);
-    const nextRules = editRules.slice(0, weeklyCount).map((rule) => normalizeRule(rule));
     const previous = history.find((record) => record.id === editingRecordId);
     if (!previous) {
       setEditError("수정할 기록을 찾지 못했습니다.");
@@ -393,30 +337,12 @@ export function StudentPaymentPanel({
       startIndex: 0,
       endIndex: 0,
       sessionAddStartDate: editStartDate,
-      sessionAddWeeklyCount: weeklyCount,
-      sessionAddRules: nextRules,
+      memo: `회차 추가(${nextCount}회)`,
     };
     const nextHistory = history.map((record) => (record.id === editingRecordId ? updated : record));
 
-    const scheduleRules: ScheduleRule[] = nextRules.map((r) => ({
-      weekday: r.weekday as Weekday,
-      hour: r.hour,
-      minute: r.minute ?? 0,
-      durationMin: Math.round(r.durationHour * 60),
-    }));
-    const nextEvents = (student.scheduleChangeEvents ?? []).map((e) => {
-      if (previous.startIndex && e.startIndex === previous.startIndex) {
-        return {
-          ...e,
-          startDate: editStartDate,
-          newRules: scheduleRules,
-        };
-      }
-      return e;
-    });
-
     setEditSaving(true);
-    const ok = await applyHistory(nextHistory, { scheduleChangeEvents: nextEvents });
+    const ok = await applyHistory(nextHistory);
     setEditSaving(false);
     if (!ok) {
       setEditError(SERVER_SAVE_RETRY_MESSAGE);
@@ -559,101 +485,29 @@ export function StudentPaymentPanel({
               </div>
 
               <div style={{ display: "grid", gridTemplateColumns: "120px 1fr", gap: 10, alignItems: "center" }}>
-                <div style={{ fontWeight: 800 }}>주당 횟수</div>
+                <div style={{ fontWeight: 800 }}>회차수</div>
                 <input
                   type="number"
                   min={1}
-                  max={7}
-                  value={editWeeklyCount}
-                  onChange={(e) => updateWeeklyCount(Number(e.target.value))}
+                  value={editAddedCount}
+                  onChange={(e) => setEditAddedCount(Math.max(1, Math.floor(Number(e.target.value) || 1)))}
                   style={inputStyle}
                 />
               </div>
 
               <div
                 style={{
-                  display: "grid",
-                  gridAutoFlow: "column",
-                  gridAutoColumns: "minmax(240px, 1fr)",
-                  gap: 8,
-                  overflowX: "auto",
-                  paddingBottom: 2,
+                  padding: 10,
+                  borderRadius: 8,
+                  background: "var(--background)",
+                  border: "1px solid var(--surface-border)",
+                  fontSize: "0.85rem",
+                  color: "#2563eb",
+                  fontWeight: 500,
+                  marginTop: 2,
                 }}
               >
-                {editRules.slice(0, normalizeWeeklyCount(editWeeklyCount)).map((rule, index) => (
-                  <div
-                    key={`edit-rule-${index}`}
-                    style={{
-                      border: "1px solid var(--surface-border)",
-                      borderRadius: 8,
-                      background: "var(--surface-bg)",
-                      padding: 10,
-                      display: "grid",
-                      gap: 10,
-                    }}
-                  >
-                    <div style={{ fontWeight: 800 }}>{index + 1}번째 수업 박스</div>
-                    <div style={{ display: "grid", gap: 6 }}>
-                      <span style={{ fontWeight: 700 }}>요일</span>
-                      <select
-                        value={rule.weekday}
-                        onChange={(e) => updateRule(index, { weekday: Number(e.target.value) })}
-                        style={{ ...selectStyle, width: "100%" }}
-                      >
-                        {[1, 2, 3, 4, 5, 6, 0].map((weekday) => (
-                          <option key={`weekday-${weekday}`} value={weekday}>
-                            {weekdayLabel(weekday)}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <div style={{ display: "grid", gap: 6 }}>
-                      <span style={{ fontWeight: 700 }}>시작 시간</span>
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
-                        <select
-                          value={rule.hour}
-                          onChange={(e) => updateRule(index, { hour: Number(e.target.value) })}
-                          style={{ ...selectStyle, width: "100%" }}
-                          aria-label={`${index + 1}번째 시작 시`}
-                        >
-                          {Array.from({ length: 24 }, (_, hour) => (
-                            <option key={`hour-${hour}`} value={hour}>
-                              {String(hour).padStart(2, "0")}시
-                            </option>
-                          ))}
-                        </select>
-                        <select
-                          value={rule.minute ?? 0}
-                          onChange={(e) => updateRule(index, { minute: Number(e.target.value) as 0 | 30 })}
-                          style={{ ...selectStyle, width: "100%" }}
-                          aria-label={`${index + 1}번째 시작 분`}
-                        >
-                          <option value={0}>00분</option>
-                          <option value={30}>30분</option>
-                        </select>
-                      </div>
-                    </div>
-                    <div style={{ display: "grid", gap: 6 }}>
-                      <span style={{ fontWeight: 700 }}>수업시간</span>
-                      <select
-                        value={rule.durationHour}
-                        onChange={(e) =>
-                          updateRule(index, { durationHour: Number(e.target.value) as 0.5 | 1 | 1.5 | 2 | 2.5 | 3 })
-                        }
-                        style={{ ...selectStyle, width: "100%" }}
-                      >
-                        {([0.5, 1, 1.5, 2, 2.5, 3] as const).map((duration) => (
-                          <option key={`duration-${duration}`} value={duration}>
-                            {formatDurationHourLabel(duration)}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <div style={{ color: "var(--text-muted)" }}>
-                      {weekdayLabel(rule.weekday)} · {timeLabel(rule.hour, rule.minute)} 시작 · {formatDurationHourLabel(normalizeDurationHour(rule.durationHour))}
-                    </div>
-                  </div>
-                ))}
+                💡 수업 요일이나 시간을 변경하시려면 상단의 [시간 변경] 버튼을 이용해 주세요.
               </div>
 
               <div style={{ color: "var(--text-muted)" }}>생성 회차 범위 : {editingRangeLabel}</div>
