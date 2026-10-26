@@ -18,34 +18,36 @@ interface ProgramItem {
 const PROGRAMS: ProgramItem[] = [
   {
     id: "group-lesson",
-    name: "그룹 수업 + 1:1 개별 피드백 (4주)",
-    badge: "그룹 코칭 (주 5시간)",
+    name: "180분 그룹 수업 (4회) + 90분 개별 피드백 (4회)",
+    badge: "그룹 수업 + 개별 피드백 (주 270분)",
     badgeColor: "blue",
-    durationLabel: "4주 과정 (총 20시간)",
+    durationLabel: "4주 과정 (총 18시간)",
     price: 360000,
     priceFormatted: "360,000",
-    description: "매주 그룹 수업 3시간 + 1:1 개별 피드백 2시간(주 5시간)을 4주 동안 체계적으로 진행하는 종합 코칭 프로그램입니다.",
+    description:
+      "매주 [그룹 수업 180분 + 1:1 개인 피드백 90분]을\n4주 동안 진행하는 수업 프로그램입니다.",
     features: [
-      "주당 수업: 매주 5시간 (그룹수업 3시간 + 개별피드백 2시간)",
-      "총 교습 시수: 4주간 총 20시간 (그룹 12시간 + 피드백 8시간)",
+      "주당 수업: 매주 270분",
+      "총 교습 시간: 4주 동안 18시간 진행",
       "진행 방식: Google Meet 실시간 라이브 & 과제 첨삭",
-      "수강 주기: 4주 단위 등록 및 갱신",
+      "수강 주기: 4주",
     ],
   },
   {
     id: "private-lesson",
-    name: "1:1 맞춤형 개인 과외 (4주)",
-    badge: "1:1 맞춤 과외 (주 3시간)",
+    name: "90분 개별 피드백 (8회)",
+    badge: "개별 피드백 (주 180분)",
     badgeColor: "emerald",
     durationLabel: "4주 과정 (총 12시간)",
     price: 360000,
     priceFormatted: "360,000",
-    description: "매주 1:1 맞춤 개인 과외 3시간(주 3시간)을 4주 동안 집중적으로 진행하여 취약 단원을 단기간에 보완하는 밀착 관리 프로그램입니다.",
+    description:
+      "매주 [1:1 맞춤 개인 피드백 90분, 2회]을\n4주 동안 진행하는 수업 프로그램입니다.",
     features: [
-      "주당 수업: 매주 1:1 개인 과외 3시간",
-      "총 교습 시수: 4주간 총 12시간 (1:1 밀착 코칭)",
+      "주당 수업: 매주 90분, 2회",
+      "총 교습 시간: 4주 동안 12시간 진행",
       "진행 방식: Google Meet 전용 화상 수업 및 개별 진도",
-      "수강 주기: 4주 단위 등록 및 갱신",
+      "수강 주기: 4주",
     ],
   },
 ];
@@ -57,8 +59,8 @@ const TOSS_CLIENT_KEY =
 
 export default function ProgramsCheckoutClient() {
   const [selectedProgram, setSelectedProgram] = useState<ProgramItem | null>(null);
-  const [buyerName, setBuyerName] = useState("홍길동");
-  const [buyerPhone, setBuyerPhone] = useState("010-1234-5678");
+  const [buyerName, setBuyerName] = useState("");
+  const [buyerPhone, setBuyerPhone] = useState("");
   const [studentName, setStudentName] = useState("");
   const [agreeTerms, setAgreeTerms] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
@@ -185,7 +187,7 @@ export default function ProgramsCheckoutClient() {
                   {prog.name}
                 </h3>
 
-                <p className="text-sm text-slate-600 dark:text-slate-400 mb-4">
+                <p className="text-sm text-slate-600 dark:text-slate-400 mb-4 whitespace-pre-line">
                   {prog.description}
                 </p>
 
@@ -208,7 +210,7 @@ export default function ProgramsCheckoutClient() {
               <div className="pt-4 border-t border-slate-100 dark:border-slate-700 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
                 <div>
                   <span className="text-xs text-slate-500 font-medium block">
-                    수강료 (4주 과정)
+                    수강료
                   </span>
                   <span
                     className={`text-2xl font-black ${
@@ -324,7 +326,7 @@ export default function ProgramsCheckoutClient() {
                     type="text"
                     value={studentName}
                     onChange={(e) => setStudentName(e.target.value)}
-                    placeholder="예: 옥학생 (선택 사항)"
+                    placeholder="예: 김철수 (선택 사항)"
                     className="w-full px-3.5 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>

@@ -1,12 +1,23 @@
 # Project Status (Latest)
 
-기준 시각: 2026-10-26 10:06 (KST)
+기준 시각: 2026-10-26 11:42 (KST)
 대상 프로젝트: `v1`
 
 ## 1분 요약
 
-- 최신 패치 반영: 2026-10-26 10:06 (KST)
-- **학생 정보 영역 '수업 시간' 전환 기준 개편 (직전 회차 익일 바통 터치 연동) & 회차 추가 수정 모달 중복 필드 제거 (`sessionEffective.ts`, `sessionFactories.ts`, `StudentHubCore.tsx`, `StudentPaymentPanel.tsx`, `sessionEffective.test.ts`)**:
+- 최신 패치 반영: 2026-10-26 11:42 (KST)
+- **수강 프로그램 안내 상품 2종 개편 및 신청 주문서 UX 개선 (`ProgramsCheckoutClient.tsx`)**:
+  1) **수업 상품 2종 시수 및 설명 최신화**:
+     - 180분 그룹 수업 (4회) + 90분 개별 피드백 (4회): `그룹 수업 + 개별 피드백 (주 270분)`, 총 교습 시간 4주 동안 18시간 진행, 주당 270분
+     - 90분 개별 피드백 (8회): `개별 피드백 (주 180분)`, 총 교습 시간 4주 동안 12시간 진행, 주당 90분 2회
+     - 설명 문구 개행(`whitespace-pre-line`) 및 띄어쓰기 정돈
+  2) **수강 신청 결제 주문서 모달 UX 개선**:
+     - 신청자 성명, 연락처 기본 하드코딩값 제거 및 회색 예시 가이드(placeholder)화
+     - 수강생 이름 예시 문구 변경 (`옥학생` -> `김철수`)
+  3) **품질 지표 달성**:
+     - 단위 테스트 16개 파일 59개 테스트 100% 통과
+     - ESLint 오류 0건, 경고 0건
+     - Next.js 프로덕션 빌드 정상 통과 (`next build --webpack`)
   1) **학생 정보 '수업 시간' 전환 시점 지능화 (`resolveActiveScheduleRules`)**:
      - 기존에 오늘 날짜와 단순 비교(`ch.startDate > today`)하여 미래 날짜 지정 시 시간표 텍스트가 갱신되지 않던 모순 원천 해결
      - 새로운 시간표가 적용되는 회차(`startIndex`)의 직전 회차(`startIndex - 1`) 수업일 익일(다음날 00시)부터 새 시간표로 자동 전환되도록 개편
@@ -228,10 +239,9 @@
 3. 회차 동기화 정책
 - 회차/Meet 생성 소유자는 담당 선생님 이메일 기준
 - 관리자 계정이 비소유자면 직접 생성 대신 `pending` 요청 저장
-- `a/tmain`, `t/tmain`에서 `본인 학생 회차 동기화` 일괄 요청 가능
-
 ## 최근 변경(운영 영향 큰 항목)
 
+- 2026-10-26 11:42: 수강 프로그램 안내 상품 2종 개편 및 주문서 폼 개선 (`ProgramsCheckoutClient.tsx`: 180분 그룹+90분 피드백 4회 및 90분 개별 피드백 8회 최신화, 시수/문구/줄바꿈/회색 예시 placeholder 개선)
 - 2026-10-26 10:08: 프로덕션 배포 커밋 `47ff2bf` (운영 주소: `https://okjinsoowebapp.vercel.app`, 학생 정보 [수업 시간] 직전 회차 익일 바통 터치 연동 & 회차 추가 수정 모달 중복 회차수 필드 제거)
 - 2026-10-26 10:08: 학생 정보 영역 '수업 시간' 전환 기준 개편 (직전 회차 익일 바통 터치 연동) & 회차 추가 수정 모달 중복 회차수 필드 제거 (`sessionEffective.ts`, `sessionFactories.ts`, `StudentHubCore.tsx`, `StudentPaymentPanel.tsx`, `sessionEffective.test.ts`)
 - 2026-10-26 09:27: 프로덕션 배포 커밋 `54cbe73` (운영 주소: `https://okjinsoowebapp.vercel.app`, 회차 추가 모달 경량화 및 시간표 관리 [시간 변경] 창구 일원화 패치)
