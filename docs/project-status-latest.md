@@ -232,6 +232,7 @@
 
 ## 최근 변경(운영 영향 큰 항목)
 
+- 2026-10-26 10:08: 프로덕션 배포 커밋 `47ff2bf` (운영 주소: `https://okjinsoowebapp.vercel.app`, 학생 정보 [수업 시간] 직전 회차 익일 바통 터치 연동 & 회차 추가 수정 모달 중복 회차수 필드 제거)
 - 2026-10-26 10:08: 학생 정보 영역 '수업 시간' 전환 기준 개편 (직전 회차 익일 바통 터치 연동) & 회차 추가 수정 모달 중복 회차수 필드 제거 (`sessionEffective.ts`, `sessionFactories.ts`, `StudentHubCore.tsx`, `StudentPaymentPanel.tsx`, `sessionEffective.test.ts`)
 - 2026-10-26 09:27: 프로덕션 배포 커밋 `54cbe73` (운영 주소: `https://okjinsoowebapp.vercel.app`, 회차 추가 모달 경량화 및 시간표 관리 [시간 변경] 창구 일원화 패치)
 - 2026-10-26 09:27: 회차 추가 모달 경량화(시작일/추가횟수 단일화) 및 시간표 관리 창구 [시간 변경] 일원화, 스케줄 전파 차단 푯말 간섭 해소 및 단위 테스트 보강 (`StudentSessionAddModal.tsx`, `StudentHubCore.tsx`, `sessionEffective.ts`, `sessionCardFactory.ts`, `StudentPaymentPanel.tsx`)
