@@ -148,7 +148,9 @@ body {
 }
 
 .app-topbar-inner {
-  width: 980px;
+  width: 100%;
+  max-width: 980px;
+  box-sizing: border-box;
   margin: 0 auto;
   padding: 8px 16px;
   display: grid;
@@ -157,7 +159,9 @@ body {
 }
 
 .app-content {
-  width: 980px;
+  width: 100%;
+  max-width: 980px;
+  box-sizing: border-box;
   margin: 0 auto;
   padding: 12px 16px 24px;
   display: flex;
@@ -510,5 +514,48 @@ textarea::placeholder {
   font-size: 11px;
   color: var(--text-muted);
   margin: 0;
+}
+
+/* /programs 전용 반응형 스타일 리셋 (레거시 !important 덮어쓰기 방지) */
+.programs-container button {
+  font-size: inherit !important;
+  padding: inherit !important;
+  border-radius: inherit !important;
+  border: inherit !important;
+}
+
+.programs-container h1,
+.programs-container h2,
+.programs-container h3,
+.programs-container h4 {
+  font-size: inherit !important;
+}
+
+.programs-container .text-xs {
+  font-size: 0.75rem !important; /* 12px */
+}
+
+.programs-container .text-sm {
+  font-size: 0.875rem !important; /* 14px */
+}
+
+.programs-container .text-base {
+  font-size: 1rem !important; /* 16px */
+}
+
+.programs-container .text-lg {
+  font-size: 1.125rem !important; /* 18px */
+}
+
+.programs-container .text-xl {
+  font-size: 1.25rem !important; /* 20px */
+}
+
+.programs-container .text-2xl {
+  font-size: 1.5rem !important; /* 24px */
+}
+
+.programs-container .text-3xl {
+  font-size: 1.875rem !important; /* 30px */
 }
 

@@ -9,7 +9,7 @@ export const metadata: Metadata = {
 
 export default function ProgramsPage() {
   return (
-    <main className="py-6 px-4 sm:px-6" style={{ maxWidth: 860, margin: "0 auto" }}>
+    <main className="w-full max-w-4xl mx-auto py-6 px-3.5 sm:px-6">
       {/* 헤더 섹션 */}
       <section className="mb-6 sm:mb-8 text-center">
         <div className="inline-block px-3 py-1 mb-2.5 sm:mb-3 text-xs font-semibold rounded-full bg-blue-50 text-blue-700 border border-blue-200">
