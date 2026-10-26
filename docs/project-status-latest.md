@@ -244,7 +244,7 @@
 - 관리자 계정이 비소유자면 직접 생성 대신 `pending` 요청 저장
 ## 최근 변경(운영 영향 큰 항목)
 
-- 2026-10-26 11:58: 토스페이먼츠 정식 라이브 클라이언트 키 적용 완료 (카드사 승인 완료 실결제 모드 가동: `live_ck_GePWvyJnrKQZwOZZEGLe3gLzN97E`)
+- 2026-10-26 11:58: 프로덕션 배포 커밋 `ffb70de` (운영 주소: `https://okjinsoowebapp.vercel.app`, 토스페이먼츠 카드사 승인 완료 정식 라이브 클라이언트 키 `live_ck_GePWvyJnrKQZwOZZEGLe3gLzN97E` 전면 적용)
 - 2026-10-26 11:43: 프로덕션 배포 커밋 `820127c` (운영 주소: `https://okjinsoowebapp.vercel.app`, 수강 프로그램 안내 상품 2종 개편 및 신청 주문서 UX 개선)
 - 2026-10-26 11:42: 수강 프로그램 안내 상품 2종 개편 및 주문서 폼 개선 (`ProgramsCheckoutClient.tsx`: 180분 그룹+90분 피드백 4회 및 90분 개별 피드백 8회 최신화, 시수/문구/줄바꿈/회색 예시 placeholder 개선)
 - 2026-10-26 10:08: 프로덕션 배포 커밋 `47ff2bf` (운영 주소: `https://okjinsoowebapp.vercel.app`, 학생 정보 [수업 시간] 직전 회차 익일 바통 터치 연동 & 회차 추가 수정 모달 중복 회차수 필드 제거)
