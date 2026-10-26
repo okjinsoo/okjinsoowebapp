@@ -484,17 +484,6 @@ export function StudentPaymentPanel({
                 />
               </div>
 
-              <div style={{ display: "grid", gridTemplateColumns: "120px 1fr", gap: 10, alignItems: "center" }}>
-                <div style={{ fontWeight: 800 }}>회차수</div>
-                <input
-                  type="number"
-                  min={1}
-                  value={editAddedCount}
-                  onChange={(e) => setEditAddedCount(Math.max(1, Math.floor(Number(e.target.value) || 1)))}
-                  style={inputStyle}
-                />
-              </div>
-
               <div
                 style={{
                   padding: 10,

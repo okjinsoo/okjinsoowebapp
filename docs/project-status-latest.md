@@ -1,11 +1,22 @@
 # Project Status (Latest)
 
-기준 시각: 2026-10-26 09:25 (KST)
+기준 시각: 2026-10-26 10:06 (KST)
 대상 프로젝트: `v1`
 
 ## 1분 요약
 
-- 최신 패치 반영: 2026-10-26 09:25 (KST)
+- 최신 패치 반영: 2026-10-26 10:06 (KST)
+- **학생 정보 영역 '수업 시간' 전환 기준 개편 (직전 회차 익일 바통 터치 연동) & 회차 추가 수정 모달 중복 필드 제거 (`sessionEffective.ts`, `sessionFactories.ts`, `StudentHubCore.tsx`, `StudentPaymentPanel.tsx`, `sessionEffective.test.ts`)**:
+  1) **학생 정보 '수업 시간' 전환 시점 지능화 (`resolveActiveScheduleRules`)**:
+     - 기존에 오늘 날짜와 단순 비교(`ch.startDate > today`)하여 미래 날짜 지정 시 시간표 텍스트가 갱신되지 않던 모순 원천 해결
+     - 새로운 시간표가 적용되는 회차(`startIndex`)의 직전 회차(`startIndex - 1`) 수업일 익일(다음날 00시)부터 새 시간표로 자동 전환되도록 개편
+     - 직전 회차 당일까지는 기존 수업 일정 혼란 방지를 위해 이전 시간표 유지, 회차 완료 익일부터 새 시간표 자동 바통 터치
+  2) **수납/결제 패널 회차 추가 수정 모달 버그 수정**:
+     - `StudentPaymentPanel.tsx`에서 중복 렌더링되던 쌍둥이 `회차수` 입력창 1개 말끔히 제거
+  3) **시뮬레이션 전수 검증 및 품질 지표 달성**:
+     - 단위 테스트 16개 파일 59개 테스트 100% 통과 (시뮬레이션 시나리오 테스트 포함)
+     - ESLint 오류 0건, 경고 0건 (완전 무결)
+     - Next.js 프로덕션 빌드 정상 통과 (`next build --webpack`)
 - **회차 추가 모달 경량화(시작일/추가횟수 단일화) 및 시간표 관리 창구 일원화 패치 (`StudentSessionAddModal.tsx`, `StudentHubCore.tsx`, `sessionEffective.ts`, `sessionCardFactory.ts`, `StudentPaymentPanel.tsx`)**:
   1) **기획 의도 기반 UX 경량화 & 입력 단일화**:
      - 기존의 복잡했던 주당 횟수 및 요일/시간/수업시간 선택 박스(~420줄)를 전면 걷어내고, 시작일(`startDate`)과 추가 횟수(`addedCount`)만 직관적으로 입력받도록 모달 경량화 (~200줄)
@@ -221,6 +232,7 @@
 
 ## 최근 변경(운영 영향 큰 항목)
 
+- 2026-10-26 10:08: 학생 정보 영역 '수업 시간' 전환 기준 개편 (직전 회차 익일 바통 터치 연동) & 회차 추가 수정 모달 중복 회차수 필드 제거 (`sessionEffective.ts`, `sessionFactories.ts`, `StudentHubCore.tsx`, `StudentPaymentPanel.tsx`, `sessionEffective.test.ts`)
 - 2026-10-26 09:27: 프로덕션 배포 커밋 `54cbe73` (운영 주소: `https://okjinsoowebapp.vercel.app`, 회차 추가 모달 경량화 및 시간표 관리 [시간 변경] 창구 일원화 패치)
 - 2026-10-26 09:27: 회차 추가 모달 경량화(시작일/추가횟수 단일화) 및 시간표 관리 창구 [시간 변경] 일원화, 스케줄 전파 차단 푯말 간섭 해소 및 단위 테스트 보강 (`StudentSessionAddModal.tsx`, `StudentHubCore.tsx`, `sessionEffective.ts`, `sessionCardFactory.ts`, `StudentPaymentPanel.tsx`)
 - 2026-10-24 22:15: 학생 회차 강의 카드 제출 초기화(필기/풀이/오답 노트) 서버 영구 저장(`pushSharedSnapshot`) 연동 및 새로고침 복원 버그 원천 수정, stateKvSynced 동기화 확인 가드 및 단위 테스트 탑재 (`SessionClientCore.tsx`, `progressResetFlow.test.ts`)

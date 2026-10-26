@@ -20,6 +20,7 @@ import {
   getDdayMeta,
   metaMapKey,
   readMetaMap,
+  resolveActiveScheduleRules,
   useMetaMap,
 } from "@/lib/factories/sessionFactories";
 import {
@@ -371,18 +372,13 @@ export default function StudentHubCore({
   }, [student]);
   const currentScheduleText = useMemo(() => {
     if (!student) return scheduleText;
-    const changes = student?.scheduleChangeEvents ?? [];
-    if (changes.length === 0) return scheduleText;
-    const sorted = [...changes].sort((a, b) => a.startIndex - b.startIndex);
-    const today = todayYmdKST();
-    let activeRules = [...(student.scheduleRules ?? [])];
-    for (const ch of sorted) {
-      if (!Array.isArray(ch.newRules) || ch.newRules.length === 0) continue;
-      if (ch.startDate && ch.startDate > today) continue;
-      activeRules = [...ch.newRules];
-    }
+    const activeRules = resolveActiveScheduleRules({
+      student,
+      baseDatesISO,
+      metaMap,
+    });
     return activeRules.length ? formatSchedule(activeRules) : scheduleText;
-  }, [student, scheduleText]);
+  }, [student, baseDatesISO, metaMap, scheduleText]);
 
   const parentRoleLabel = useMemo(() => {
     const pr = student?.parentRole;

@@ -17,6 +17,7 @@ export {
   metaMapKey,
   parseMetaMapFromRaw,
   readMetaMap,
+  resolveActiveScheduleRules,
   upsertMeta,
   type SessionMeta,
   type SessionState,

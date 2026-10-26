@@ -2,7 +2,12 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import type { Student } from "@/lib/types/index";
 import { browserStorage } from "@/lib/storage/browserStorage";
 import { ymdFromISO_KST } from "@/lib/utils/date";
-import { buildBaseDatesISO, computeEffectiveISO, metaMapKey } from "@/lib/ui/session/sessionEffective";
+import {
+  buildBaseDatesISO,
+  computeEffectiveISO,
+  metaMapKey,
+  resolveActiveScheduleRules,
+} from "@/lib/ui/session/sessionEffective";
 
 function sampleStudent(): Student {
   return {
@@ -212,5 +217,81 @@ describe("sessionEffective schedule change by date", () => {
     expect(getIsoAndYmd(13).ymd).toBe("2026-04-02"); // 목
     expect(getIsoAndYmd(14).ymd).toBe("2026-04-07"); // 화
     expect(getIsoAndYmd(15).ymd).toBe("2026-04-09"); // 목
+  });
+
+  it("사용자 시나리오 검증: 5회차부터 17일(화) 화목 시간표로 변경 시, 4회차(12일 목) 익일인 13일(금)부터 새 시간표로 전환", () => {
+    // 기존) 월목 시간표:
+    // 2026-02-02(월) 시작:
+    // 1회차: 02-02(월), 2회차: 02-05(목), 3회차: 02-09(월), 4회차: 02-12(목)
+    // 5회차: 02-16(월) 예정이었음
+    //
+    // 변경) 시작 날짜: 2026-02-17(화), 시작 회차: 5회차, 변경 시간: 화목
+    const student: Student = {
+      id: "stu-sim",
+      token: "tok-sim",
+      name: "시뮬레이션학생",
+      cohort: "2026_demo",
+      status: "active",
+      startDate: "2026-02-02", // 2026-02-02 = 월요일
+      planCount: 12,
+      googleEmail: "sim@example.com",
+      studentPhone: "01011112222",
+      parentPhone: "01033334444",
+      school: "테스트학교",
+      grade: "1",
+      scheduleRules: [
+        { weekday: 1, hour: 17, minute: 0 }, // 월 17:00
+        { weekday: 4, hour: 17, minute: 0 }, // 목 17:00
+      ],
+      scheduleChangeEvents: [
+        {
+          id: "chg-sim-5",
+          startIndex: 5,
+          startDate: "2026-02-17", // 2026-02-17 = 화요일
+          newRules: [
+            { weekday: 2, hour: 19, minute: 0 }, // 화 19:00
+            { weekday: 4, hour: 19, minute: 0 }, // 목 19:00
+          ],
+        },
+      ],
+    };
+
+    const baseDatesISO = buildBaseDatesISO(student, 30);
+    const metaMap = {};
+
+    const getYmd = (index: number) => {
+      const iso = computeEffectiveISO({ token: student.token, index, baseDatesISO, metaMap }).effectiveISO;
+      return ymdFromISO_KST(iso ?? "");
+    };
+
+    // 1. 회차별 날짜 검증
+    // 1~4회차: 기존 월/목
+    expect(getYmd(1)).toBe("2026-02-02"); // 월
+    expect(getYmd(2)).toBe("2026-02-05"); // 목
+    expect(getYmd(3)).toBe("2026-02-09"); // 월
+    expect(getYmd(4)).toBe("2026-02-12"); // 목 (기존 시간표 마지막 수업일!)
+
+    // 5회차부터: 변경된 화/목 (2026-02-17 화요일부터)
+    expect(getYmd(5)).toBe("2026-02-17"); // 화
+    expect(getYmd(6)).toBe("2026-02-19"); // 목
+
+    // 2. 상단 '수업 시간' 텍스트 전환 시점 검증 (resolveActiveScheduleRules)
+    // 4회차 수업 당일(2026-02-12 목): 기존 시간표(월/목) 유지
+    const rulesOn4thDay = resolveActiveScheduleRules({ student, targetYmd: "2026-02-12", baseDatesISO, metaMap });
+    expect(rulesOn4thDay).toEqual(student.scheduleRules); // 월/목
+
+    // 4회차 다음날(2026-02-13 금): 새로운 시간표(화/목)로 자동 전환!
+    const rulesOnNextDay = resolveActiveScheduleRules({ student, targetYmd: "2026-02-13", baseDatesISO, metaMap });
+    expect(rulesOnNextDay).toEqual([
+      { weekday: 2, hour: 19, minute: 0 },
+      { weekday: 4, hour: 19, minute: 0 },
+    ]); // 화/목
+
+    // 5회차 수업 시작일(2026-02-17 화): 새로운 시간표(화/목) 유지
+    const rulesOn5thDay = resolveActiveScheduleRules({ student, targetYmd: "2026-02-17", baseDatesISO, metaMap });
+    expect(rulesOn5thDay).toEqual([
+      { weekday: 2, hour: 19, minute: 0 },
+      { weekday: 4, hour: 19, minute: 0 },
+    ]); // 화/목
   });
 });

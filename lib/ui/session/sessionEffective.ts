@@ -4,6 +4,7 @@
 import { browserStorage } from "@/lib/storage/browserStorage";
 import { TUTORWEB_EVENTS } from "@/lib/events/tutorwebEvents";
 import { pushSharedSnapshot } from "@/lib/storage/sharedSnapshot";
+import { todayYmdKST } from "@/lib/utils/date";
 
 import type { ScheduleRule, Student } from "@/lib/types/index";
 
@@ -591,4 +592,78 @@ export function buildBadges(meta: SessionMeta): string[] {
   }
 
   return out;
+}
+
+/**
+ * 학생의 현재 활성화된 시간표 규칙(ScheduleRule[])을 결정합니다.
+ * - 기본적으로 학생의 기본 시간표(scheduleRules)에서 시작합니다.
+ * - scheduleChangeEvents가 있을 경우:
+ *   - 1회차부터 적용(startIndex <= 1)인 경우: ch.startDate 당일부터 활성화 (또는 startDate 없으면 즉시)
+ *   - N회차부터 적용(startIndex > 1)인 경우:
+ *     - 직전 회차(startIndex - 1)의 실제 수업일(prevYmd) 다음날(today > prevYmd)부터 새로운 시간표로 자동 전환됩니다.
+ *     - (직전 회차 수업 당일까지는 학생/선생님의 혼란을 방지하기 위해 이전 시간표 유지)
+ */
+export function resolveActiveScheduleRules(args: {
+  student?: Student | null;
+  targetYmd?: string;
+  baseDatesISO?: string[];
+  metaMap?: Record<number, SessionMeta>;
+}): ScheduleRule[] {
+  const { student, targetYmd, baseDatesISO, metaMap } = args;
+  if (!student) return [];
+  const defaultRules = Array.isArray(student.scheduleRules) ? student.scheduleRules : [];
+  const changes = Array.isArray(student.scheduleChangeEvents) ? student.scheduleChangeEvents : [];
+  if (changes.length === 0) return defaultRules;
+
+  const today = (targetYmd || todayYmdKST()).trim();
+  const sorted = [...changes].sort((a, b) => a.startIndex - b.startIndex);
+
+  let activeRules: ScheduleRule[] = [...defaultRules];
+
+  // baseDatesISO와 metaMap 준비 (직전 회차 날짜 계산용)
+  const computedBaseDates =
+    baseDatesISO ?? (student ? buildBaseDatesISO(student, Math.max(60, (student.planCount ?? 20) + 10)) : []);
+  const resolvedMetaMap = metaMap ?? (student?.token ? readMetaMap(student.token) : {});
+
+  for (const ch of sorted) {
+    if (!Array.isArray(ch.newRules) || ch.newRules.length === 0) continue;
+
+    if (ch.startIndex <= 1) {
+      // 1회차부터 적용: 시작일 당일부터 전환 (시작일 없으면 즉시 전환)
+      if (ch.startDate && ch.startDate > today) {
+        continue;
+      }
+      activeRules = [...ch.newRules];
+    } else {
+      // N회차부터 적용: 직전 회차(startIndex - 1)의 다음날부터 전환
+      const prevIndex = ch.startIndex - 1;
+      let prevYmd: string | null = null;
+
+      try {
+        const { effectiveISO } = computeEffectiveISO({
+          token: student.token,
+          index: prevIndex,
+          baseDatesISO: computedBaseDates,
+          metaMap: resolvedMetaMap,
+        });
+        prevYmd = ymdFromISO_KST(effectiveISO ?? "");
+      } catch {
+        prevYmd = null;
+      }
+
+      if (prevYmd) {
+        // 직전 회차 날짜의 다음날(today > prevYmd)부터 새 시간표로 전환
+        if (today > prevYmd) {
+          activeRules = [...ch.newRules];
+        }
+      } else {
+        // fallback: 직전 회차 날짜를 알 수 없는 경우 시작일 기준
+        if (!ch.startDate || today >= ch.startDate) {
+          activeRules = [...ch.newRules];
+        }
+      }
+    }
+  }
+
+  return activeRules.length > 0 ? activeRules : defaultRules;
 }
