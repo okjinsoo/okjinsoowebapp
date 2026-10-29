@@ -276,7 +276,15 @@ function resolveStudentId(email: string, snapshot: NormalizedSnapshot): string |
   return student?.id ?? null;
 }
 
-export async function resolveViewerContext(request: NextRequest): Promise<ViewerContext | null> {
+export type ResolveViewerOptions = {
+  includeSessions?: boolean;
+  includeStateKv?: boolean;
+};
+
+export async function resolveViewerContext(
+  request: NextRequest,
+  options?: ResolveViewerOptions
+): Promise<ViewerContext | null> {
   const startMs = Date.now();
   const requestId = requestIdOf(request);
   const route = `${request.nextUrl.pathname}#resolveViewerContext`;
@@ -294,12 +302,17 @@ export async function resolveViewerContext(request: NextRequest): Promise<Viewer
     return null;
   }
 
+  const selectFields = ["teachers", "students"];
+  if (options?.includeSessions ?? true) selectFields.push("sessions");
+  if (options?.includeStateKv ?? true) selectFields.push("state_kv");
+
   if (hasLocalDevAdminSession(request)) {
     if (!cfg.serviceRoleKey) return null;
     const snapshotStartMs = Date.now();
     const snapshotResult = await fetchSnapshotRow({
       cfg,
       accessToken: cfg.serviceRoleKey,
+      select: selectFields,
       useServiceRole: true,
     });
     const snapshotMs = Date.now() - snapshotStartMs;
@@ -378,7 +391,7 @@ export async function resolveViewerContext(request: NextRequest): Promise<Viewer
   const isAdmin = email ? FIXED_ADMIN_EMAILS.has(email) : false;
 
   const [snapshotResult, fetchedRole] = await Promise.all([
-    fetchSnapshotRow({ cfg, accessToken }),
+    fetchSnapshotRow({ cfg, accessToken, select: selectFields }),
     email && !isAdmin
       ? fetchRoleBindingCached({ cfg, accessToken, email }).catch(() => "guest" as ViewerRole)
       : Promise.resolve(isAdmin ? ("admin" as ViewerRole) : ("guest" as ViewerRole)),
@@ -482,7 +495,11 @@ export async function upsertSnapshotPatch(args: {
   patch: SnapshotPatch;
 }): Promise<{ sessionsSynced: boolean; stateKvSynced: boolean }> {
   const cfg = getSupabaseServerConfig();
-  const viewer = await resolveViewerContext(args.request);
+  const hasSessionsPatch = Object.prototype.hasOwnProperty.call(args.patch, "sessions");
+  const viewer = await resolveViewerContext(args.request, {
+    includeSessions: hasSessionsPatch,
+    includeStateKv: false,
+  });
   if (!cfg || !viewer) {
     throw new Error("unauthorized");
   }
@@ -585,6 +602,12 @@ export async function upsertSnapshotPatch(args: {
       currentResult.row?.state_kv && typeof currentResult.row.state_kv === "object"
         ? { ...currentResult.row.state_kv }
         : {};
+    // [최적화] state_kv 내부에 누적된 레거시 일일 백업(mk3:backup:...)을 자동 제거하여 DB 페이로드 비대화 차단
+    for (const key of Object.keys(currentRaw)) {
+      if (key.startsWith("mk3:backup:")) {
+        delete currentRaw[key];
+      }
+    }
     const dropStateKeys = Array.from(
       new Set((args.patch.dropStateKeys ?? []).map((key) => key.trim()).filter((key) => isSharedStateKvKey(key)))
     );

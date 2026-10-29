@@ -6,7 +6,7 @@ import {
   fetchSupabaseUser,
   getSupabaseConfig,
   parseOAuthHash,
-  saveAuthSession,
+  saveAuthSessionAndSyncBridge,
 } from "@/lib/auth/supabaseAuth";
 
 function normalizeNextPath(path: string): string {
@@ -52,7 +52,7 @@ export default function AuthCallbackPage() {
         const providerExpiresAt =
           parsed.providerExpiresIn === null ? null : Date.now() + parsed.providerExpiresIn * 1000;
 
-        saveAuthSession({
+        await saveAuthSessionAndSyncBridge({
           accessToken: parsed.accessToken,
           refreshToken: parsed.refreshToken,
           expiresAt,
@@ -69,9 +69,7 @@ export default function AuthCallbackPage() {
         if (cancelled) return;
         setStatus("done");
         setMessage("로그인이 완료됐어요. 원래 화면으로 이동합니다.");
-        setTimeout(() => {
-          window.location.replace(nextPath || "/");
-        }, 700);
+        window.location.replace(nextPath || "/");
       } catch (err) {
         if (cancelled) return;
         const msg = err instanceof Error ? err.message : "로그인 처리 중 알 수 없는 오류가 발생했어요.";

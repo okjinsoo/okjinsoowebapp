@@ -16,7 +16,9 @@ export async function GET(
   logPerf({ event: "start", route, requestId, method: request.method });
 
   try {
-    const viewer = await resolveViewerContext(request);
+    const viewer = await resolveViewerContext(request, {
+      includeStateKv: false,
+    });
     if (!viewer || viewer.role === "guest") {
       logPerf({
         event: "done",

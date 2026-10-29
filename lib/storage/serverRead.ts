@@ -4,7 +4,7 @@ import { loadSessions } from "@/lib/storage/sessions";
 import { loadStudents } from "@/lib/storage/students";
 import { loadTeachers, TEACHERS_EVENT } from "@/lib/storage/teachers";
 import { TUTORWEB_EVENTS } from "@/lib/events/tutorwebEvents";
-import { AUTH_EVENT } from "@/lib/auth/supabaseAuth";
+import { AUTH_EVENT, loadAuthSession } from "@/lib/auth/supabaseAuth";
 import type { Session, Student, Teacher } from "@/lib/types/index";
 
 type FetchResult<T> = {
@@ -89,8 +89,13 @@ export async function fetchServerJson<T>(url: string, dataKey: string): Promise<
 
   const requestPromise = (async (): Promise<FetchResult<unknown>> => {
     try {
+      const accessToken = loadAuthSession()?.accessToken?.trim() ?? "";
+      const headers: Record<string, string> | undefined = accessToken
+        ? { Authorization: `Bearer ${accessToken}` }
+        : undefined;
       const res = await fetch(url, {
         method: "GET",
+        headers,
         credentials: "same-origin",
       });
       if (!res.ok) {

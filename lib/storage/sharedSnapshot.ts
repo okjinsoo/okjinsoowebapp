@@ -5,6 +5,7 @@ import {
   forceRefreshAuthSession,
   getSupabaseConfig,
   getValidAccessToken,
+  loadAuthSession,
 } from "@/lib/auth/supabaseAuth";
 import { TUTORWEB_EVENTS } from "@/lib/events/tutorwebEvents";
 import { browserStorage } from "@/lib/storage/browserStorage";
@@ -182,9 +183,14 @@ async function fetchInternalSnapshot(args?: {
 
   try {
     const digest = !args?.stateKey && !args?.body ? (browserStorage.getItem(DIGEST_STORAGE_KEY) ?? undefined) : undefined;
+    const accessToken = loadAuthSession()?.accessToken?.trim() ?? "";
+    const headers: Record<string, string> = {};
+    if (args?.body) headers["Content-Type"] = "application/json";
+    if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
+
     const res = await fetch(buildInternalSnapshotUrl({ stateKey: args?.stateKey, digest }), {
       method: args?.body ? "POST" : "GET",
-      headers: args?.body ? { "Content-Type": "application/json" } : undefined,
+      headers: Object.keys(headers).length > 0 ? headers : undefined,
       body: args?.body ? JSON.stringify(args.body) : undefined,
       credentials: "same-origin",
     });
@@ -526,8 +532,6 @@ type PushSharedSnapshotArgs = {
   manualBackupId?: string; // [Safety] 수동 백업 트리거용
 };
 
-const DAILY_BACKUP_KEY = "mk3:last_daily_backup_ts";
-
 export async function pushSharedSnapshot(args?: PushSharedSnapshotArgs): Promise<PushSharedSnapshotResult> {
   const hasTeachersArg = Object.prototype.hasOwnProperty.call(args ?? {}, "teachers");
   const hasStudentsArg = Object.prototype.hasOwnProperty.call(args ?? {}, "students");
@@ -611,52 +615,6 @@ export async function pushSharedSnapshot(args?: PushSharedSnapshotArgs): Promise
 
   const internal = await fetchInternalSnapshot({ body });
   
-  // [Safety] 성공적으로 저장된 후, 수동 백업 요청이 왔다면 즉시 복제본 생성
-  if (args?.manualBackupId) {
-    try {
-      const backupId = args.manualBackupId;
-      await fetchInternalSnapshot({
-        body: {
-          stateKv: {
-            [`mk3:backup:${backupId}`]: JSON.stringify({
-              students: body.students || readLocalStudents(),
-              sessions: body.sessions || readLocalSessions(),
-              ts: Date.now(),
-              source: "manual_trigger"
-            })
-          }
-        }
-      });
-      console.log(`✅ [Safety] 수동 백업 생성 완료: ${backupId}`);
-    } catch (e) {
-      console.error("수동 백업 생성 실패:", e);
-    }
-  }
-
-  // [Safety] 성공적으로 저장된 후, 24시간마다 자동 백업(Daily Snapshot) 생성 시도
-  try {
-    const lastBackup = localStorage.getItem(DAILY_BACKUP_KEY);
-    const now = Date.now();
-    if (!lastBackup || now - parseInt(lastBackup) > 24 * 60 * 60 * 1000) {
-      const snapshotDate = new Date().toISOString().split("T")[0];
-      await fetchInternalSnapshot({
-        body: {
-          stateKv: {
-            [`mk3:backup:${snapshotDate}`]: JSON.stringify({
-              students: body.students || readLocalStudents(),
-              sessions: body.sessions || readLocalSessions(),
-              ts: now
-            })
-          }
-        }
-      });
-      localStorage.setItem(DAILY_BACKUP_KEY, now.toString());
-      console.log(`✅ Daily snapshot created: ${snapshotDate}`);
-    }
-  } catch (e) {
-    console.warn("백그라운드 백업 생성 실패:", e);
-  }
-
   if (
     internal &&
     typeof internal.sessionsSynced === "boolean" &&

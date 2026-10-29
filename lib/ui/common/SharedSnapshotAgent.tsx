@@ -27,6 +27,17 @@ const CALENDAR_SYNC_INITIAL_DELAY_MS = 1500;
 
 const PENING_LOCK_TIMEOUT_MS = 5000; 
 
+function shouldSkipAutoHydrateOnCurrentPath(): boolean {
+  if (typeof window === "undefined") return false;
+  const p = window.location.pathname || "/";
+  return (
+    p === "/" ||
+    p.startsWith("/auth/") ||
+    p.startsWith("/programs") ||
+    p.startsWith("/policy")
+  );
+}
+
 export default function SharedSnapshotAgent() {
   const hydratingRef = useRef(false);
   const pushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -134,6 +145,7 @@ export default function SharedSnapshotAgent() {
     };
 
     const onAuthChanged = () => {
+      if (shouldSkipAutoHydrateOnCurrentPath()) return;
       trySyncCalendarForCurrentLogin(300);
       void hydrate(true);
     };
@@ -141,14 +153,17 @@ export default function SharedSnapshotAgent() {
     // [Vercel 비용 최적화] 정기 폴링(Interval) 대신 탭 활성화 시 전용 동기화(Focus Sync)로 전환
     const handleVisibilityChange = () => {
       if (document.visibilityState === "visible") {
+        if (shouldSkipAutoHydrateOnCurrentPath()) return;
         console.log("[Phase 21 On-Demand] 탭 활성화 감지 - 서버 데이터 갱신 시작");
         void hydrate(true); 
       }
     };
 
     // 초기 실행 시 서버 데이터 동기화 및 캘린더 동기화 백그라운드 지연 실행
-    void hydrate(true);
-    trySyncCalendarForCurrentLogin(CALENDAR_SYNC_INITIAL_DELAY_MS);
+    if (!shouldSkipAutoHydrateOnCurrentPath()) {
+      void hydrate(true);
+      trySyncCalendarForCurrentLogin(CALENDAR_SYNC_INITIAL_DELAY_MS);
+    }
 
     const onPageHide = () => {
       if (pushTimerRef.current) {

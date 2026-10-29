@@ -75,11 +75,12 @@ export default function RoleRouteGuard({ requiredRole, children }: Props) {
 
   useEffect(() => {
     if (status !== "blocked") return;
+    const delayMs = reason === "login" ? 150 : 1200;
     const id = window.setTimeout(() => {
       router.replace(`/?next=${encodeURIComponent(pathname || "/")}`);
-    }, 1800);
+    }, delayMs);
     return () => window.clearTimeout(id);
-  }, [status, router, pathname]);
+  }, [status, reason, router, pathname]);
 
   if (status === "allowed") return <>{children}</>;
 

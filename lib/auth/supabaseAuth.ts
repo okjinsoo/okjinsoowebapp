@@ -144,20 +144,22 @@ function buildAuthBridgeCookiePayload(session: AuthSession): AuthBridgeCookie {
   return payload;
 }
 
-function syncAuthBridgeCookieServer(payload: AuthBridgeCookie | null): void {
-  if (typeof window === "undefined") return;
+function syncAuthBridgeCookieServer(payload: AuthBridgeCookie | null): Promise<void> {
+  if (typeof window === "undefined") return Promise.resolve();
   const method = payload ? "POST" : "DELETE";
   const body = payload ? JSON.stringify(payload) : undefined;
 
-  void fetch("/api/auth/bridge", {
+  return fetch("/api/auth/bridge", {
     method,
     headers: payload ? { "Content-Type": "application/json" } : undefined,
     body,
     credentials: "same-origin",
     keepalive: true,
-  }).catch(() => {
-    // 브리지 쿠키 서버 동기화 실패 시에도 로그인 UX는 유지합니다.
-  });
+  })
+    .then(() => undefined)
+    .catch(() => {
+      // 브리지 쿠키 서버 동기화 실패 시에도 로그인 UX는 유지합니다.
+    });
 }
 
 function clearLocalDevAdminCookieServer(): void {
@@ -171,13 +173,12 @@ function clearLocalDevAdminCookieServer(): void {
   });
 }
 
-function syncAuthBridgeCookieServerDedup(payload: AuthBridgeCookie | null): void {
+function syncAuthBridgeCookieServerDedup(payload: AuthBridgeCookie | null): Promise<void> {
   if (!payload) {
     // 로그아웃은 실패 시 영향이 크므로 cooldown 없이 매번 서버 삭제를 시도합니다.
     lastBridgeSyncPayloadKey = "__EMPTY__";
     lastBridgeSyncAt = Date.now();
-    syncAuthBridgeCookieServer(null);
-    return;
+    return syncAuthBridgeCookieServer(null);
   }
 
   const payloadKey = payload ? JSON.stringify(payload) : "__EMPTY__";
@@ -186,11 +187,11 @@ function syncAuthBridgeCookieServerDedup(payload: AuthBridgeCookie | null): void
     payloadKey === lastBridgeSyncPayloadKey &&
     now - lastBridgeSyncAt < BRIDGE_SYNC_COOLDOWN_MS
   ) {
-    return;
+    return Promise.resolve();
   }
   lastBridgeSyncPayloadKey = payloadKey;
   lastBridgeSyncAt = now;
-  syncAuthBridgeCookieServer(payload);
+  return syncAuthBridgeCookieServer(payload);
 }
 
 export function getSupabaseConfig(): SupabaseConfig | null {
@@ -322,7 +323,7 @@ export function loadAuthSession(): AuthSession | null {
   const storageSession = localSession ?? sessionScoped;
   if (!storageSession) return null;
 
-  syncAuthBridgeCookieServerDedup(buildAuthBridgeCookiePayload(storageSession));
+  void syncAuthBridgeCookieServerDedup(buildAuthBridgeCookiePayload(storageSession));
   return storageSession;
 }
 
@@ -337,7 +338,29 @@ export function saveAuthSession(session: AuthSession): void {
     browserStorage.setItem(AUTH_STORAGE_KEY, raw);
     clearSessionScopedAuthRaw();
   }
-  syncAuthBridgeCookieServerDedup(buildAuthBridgeCookiePayload(session));
+  void syncAuthBridgeCookieServerDedup(buildAuthBridgeCookiePayload(session));
+  dispatchAuthUpdated();
+}
+
+export async function saveAuthSessionAndSyncBridge(
+  session: AuthSession,
+  timeoutMs = 1200
+): Promise<void> {
+  if (typeof window === "undefined") return;
+  const raw = JSON.stringify(session);
+  const persistence = loadAuthPersistence();
+  if (persistence === "session") {
+    writeSessionScopedAuthRaw(raw);
+    browserStorage.removeItem(AUTH_STORAGE_KEY);
+  } else {
+    browserStorage.setItem(AUTH_STORAGE_KEY, raw);
+    clearSessionScopedAuthRaw();
+  }
+  const syncPromise = syncAuthBridgeCookieServerDedup(buildAuthBridgeCookiePayload(session));
+  const timeoutPromise = new Promise<void>((resolve) => {
+    window.setTimeout(resolve, timeoutMs);
+  });
+  await Promise.race([syncPromise, timeoutPromise]);
   dispatchAuthUpdated();
 }
 
@@ -347,7 +370,7 @@ export function clearAuthSession(): void {
   clearSessionScopedAuthRaw();
   // 구버전(클라이언트 작성 쿠키) 잔재 정리
   clearCookie(AUTH_COOKIE_KEY);
-  syncAuthBridgeCookieServerDedup(null);
+  void syncAuthBridgeCookieServerDedup(null);
   clearLocalDevAdminCookieServer();
   dispatchAuthUpdated();
 }

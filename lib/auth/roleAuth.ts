@@ -6,7 +6,6 @@ import {
 } from "@/lib/auth/accessPolicy";
 import { fetchRoleBinding } from "@/lib/auth/roleBindings";
 import { browserStorage } from "@/lib/storage/browserStorage";
-import type { Student, Teacher } from "@/lib/types/index";
 
 export type UserRole = "guest" | "student" | "teacher" | "admin";
 export type { RequiredRole } from "@/lib/auth/accessPolicy";
@@ -22,10 +21,10 @@ function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
 }
 
-type SnapshotResponse = {
-  snapshot?: {
-    teachers?: Teacher[];
-    students?: Student[];
+type AuthMeResponse = {
+  ok?: boolean;
+  user?: {
+    role?: UserRole;
   };
 };
 
@@ -36,7 +35,7 @@ async function resolveSnapshotRoleByEmail(args: {
   if (typeof window === "undefined") return null;
 
   try {
-    const res = await fetch("/api/snapshot", {
+    const res = await fetch("/api/auth/me", {
       method: "GET",
       credentials: "same-origin",
       headers: {
@@ -45,15 +44,10 @@ async function resolveSnapshotRoleByEmail(args: {
     });
     if (!res.ok) return null;
 
-    const body = (await res.json()) as SnapshotResponse;
-    const teachers = Array.isArray(body.snapshot?.teachers) ? body.snapshot?.teachers : [];
-    if (teachers.some((teacher) => normalizeEmail(teacher.email ?? "") === args.email)) {
-      return "teacher";
-    }
-
-    const students = Array.isArray(body.snapshot?.students) ? body.snapshot?.students : [];
-    if (students.some((student) => normalizeEmail(student.googleEmail ?? "") === args.email)) {
-      return "student";
+    const body = (await res.json()) as AuthMeResponse;
+    const role = body.user?.role;
+    if (role === "admin" || role === "teacher" || role === "student") {
+      return role;
     }
   } catch {
     return null;

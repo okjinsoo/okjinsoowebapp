@@ -11,7 +11,10 @@ export async function GET(request: NextRequest) {
   logPerf({ event: "start", route, requestId, method: request.method });
 
   try {
-    const viewer = await resolveViewerContext(request);
+    const viewer = await resolveViewerContext(request, {
+      includeSessions: false,
+      includeStateKv: false,
+    });
     if (!viewer) {
       logPerf({
         event: "done",

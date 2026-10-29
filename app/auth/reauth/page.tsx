@@ -51,12 +51,7 @@ export default function ReauthPage() {
 
   useEffect(() => {
     if (!authUrl) return;
-    const timer = window.setTimeout(() => {
-      window.location.replace(authUrl);
-    }, 700);
-    return () => {
-      window.clearTimeout(timer);
-    };
+    window.location.replace(authUrl);
   }, [authUrl]);
 
   return (

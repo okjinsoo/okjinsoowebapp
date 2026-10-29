@@ -1,11 +1,23 @@
 # Project Status (Latest)
 
-기준 시각: 2026-10-26 16:38 (KST)
+기준 시각: 2026-10-29 19:50 (KST)
 대상 프로젝트: `v1`
 
 ## 1분 요약
 
-- 최신 패치 반영: 2026-10-26 16:38 (KST)
+- 최신 패치 반영: 2026-10-29 19:50 (KST)
+- **첫 웹페이지 입장 및 권한 확인/재로그인 초고속 다이어트 패치 (안전형 방안 1 전면 적용)**:
+  1) **Vercel 서버 리전 한국(서울 `icn1`) 고정 ([vercel.json](file:///Users/okjinsoo/Project/TutorWEB/v1/vercel.json))**: 기본 미국 동부(`iad1`) 서버를 거치며 발생하던 태평양 왕복 네트워크 지연을 한국 서울 리전으로 단축
+  2) **가벼운 API들의 DB 조회 컬럼(`select`) 맞춤형 경량화 ([`resolveViewerContext`](file:///Users/okjinsoo/Project/TutorWEB/v1/lib/server/supabaseSnapshotApi.ts#L284-L398))**:
+     - `/api/auth/me`, `/api/teachers`, `/api/students` 호출 시 무거운 `sessions` 및 `state_kv`(백업 덤프 포함) 컬럼을 DB에서 아예 읽지 않고 `teachers, students`만 조회하도록 분리
+     - `/api/students/[id]/sessions` 및 스냅샷 저장(`upsertSnapshotPatch`) 시에도 불필요한 `state_kv` 전체 읽기를 생략하고, `state_kv` 병합 시 누적된 레거시 `mk3:backup:...` 키를 자동 정리
+     - 브라우저(`pushSharedSnapshot`)에서 매 저장 시 `state_kv` 내부에 중복 생성하던 일일 백업 로직 제거 (서버 전용 백업 테이블 `app_state_snapshot_backups`로 일원화)
+  3) **클라이언트 API 호출 시 Bearer 토큰 직접 동봉 및 브리지 쿠키 동기화 정렬 ([`sharedSnapshot.ts`](file:///Users/okjinsoo/Project/TutorWEB/v1/lib/storage/sharedSnapshot.ts#L178-L202), [`serverRead.ts`](file:///Users/okjinsoo/Project/TutorWEB/v1/lib/storage/serverRead.ts#L90-L102), [`supabaseAuth.ts`](file:///Users/okjinsoo/Project/TutorWEB/v1/lib/auth/supabaseAuth.ts#L345-L364))**:
+     - `/api/auth/bridge` 쿠키 생성 시차로 인해 첫 API 요청들이 401 실패 후 클라이언트 직접 DB 조회로 폴백하던 현상을 Bearer 헤더 직접 주입 및 `saveAuthSessionAndSyncBridge` 대기로 원천 해결
+  4) **로그인/인증 경로 불필요 스냅샷 하이드레이션 차단 및 강제 타이머 제거 ([`SharedSnapshotAgent.tsx`](file:///Users/okjinsoo/Project/TutorWEB/v1/lib/ui/common/SharedSnapshotAgent.tsx#L30-L39), [`reauth/page.tsx`](file:///Users/okjinsoo/Project/TutorWEB/v1/app/auth/reauth/page.tsx#L52-L55), [`callback/page.tsx`](file:///Users/okjinsoo/Project/TutorWEB/v1/app/auth/callback/page.tsx#L55-L72), [`roleAuth.ts`](file:///Users/okjinsoo/Project/TutorWEB/v1/lib/auth/roleAuth.ts#L32-L57))**:
+     - `/`, `/auth/*`, `/programs`, `/policy` 경로에서 백그라운드 전체 스냅샷 자동 다운로드를 건너뛰도록 개선
+     - 역할 확인 폴백 시 `/api/snapshot` 대신 초경량 `/api/auth/me`를 호출하도록 전환하고, 재로그인/콜백의 `700ms + 700ms` 강제 대기 타이머 제거
+  5) **품질 지표 달성**: 단위 테스트 16개 파일 59개 전수 100% 통과, ESLint 오류 0건, Next.js 프로덕션 빌드 정상 통과
 - **수강 프로그램 안내 페이지(`/programs`) 모바일/PC 반응형 프리미엄 전면 개편 (`ProgramsCheckoutClient.tsx`, `app/programs/page.tsx`)**:
   1) **모바일 전용 세그먼트 탭 전환기 탑재 (`sm:hidden`)**: 스마트폰 화면에서 스크롤 부담 없이 [그룹 수업 (270분)]과 [개별 피드백 (180분)]을 상단 터치 탭으로 전환해 1개 카드씩 집중해서 시원하게 열람 (PC는 2열 나란히 뷰 유지)
   2) **모바일 바텀 시트(Bottom Sheet) 결제 모달 전환**: PC 센터 팝업에서 모바일 시 화면 하단에서 슥 올라오는 서랍형 바텀 시트로 자동 변환, 상단 드래그 핸들 및 iOS 사파리 줌 방지 16px 인풋 탑재
