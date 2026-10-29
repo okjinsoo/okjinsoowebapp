@@ -203,7 +203,7 @@
   3) **방안 C (구글 토큰 만료 사전 체크 & 401 헛걸음 차단)**: `SharedSnapshotAgent` 및 `googleCalendarSync.ts`(`runSync`, `runTeacherCalendarRebuild`)에 `isProviderTokenExpired` 사전 가드를 추가하여 만료된 구글 토큰으로 구글 API를 호출하며 발생하는 401 에러 연발 및 재시도 루프 차단
 - 홈화면/로그인 화면 푸터 노출 구조 개선: `app/page.tsx` 및 공통 가드 페이지들의 `minHeight: calc(100vh - 56px)` 고정 높이를 `flex: 1` 유연 레이아웃으로 변경하여, 홈화면 접속 시 스크롤 없이도 하단 사업자 정보 푸터(`AppFooter.tsx`)가 화면 하단에 바로 상시 노출되도록 개선
 - 학생 상태 판정 조건 개선: '연장필요' 기준을 기존 잔여 회차(3회 이하) 기준에서 '마지막 수업일로부터 9일 전(D-9)' 기준으로 개편 (`studentStatusFactory.ts`, `useStudentRegistry.ts`, `StudentHubCore.tsx`)
-- 최신 운영 반영본: 2026-10-26 16:38 (KST)
+- 최신 운영 반영본: 2026-10-29 19:55 (KST)
 - 운영 주소: `https://okjinsoowebapp.vercel.app`
 - 하단 푸터 통신판매업신고번호 등록: `2026-서울마포-2150` 등록 완료 (`AppFooter.tsx`)
 - 중복 프로세스 제거 및 안전 캐싱 패치 (방안 A): `useRoleScopedSelection` 쌍둥이 `useEffect` 2중 호출 단일화, `PageTitleAgent` 로컬 스냅샷 직결로 `/api/students` 독립 네트워크 호출 제거, `useAdminStudentsPageData`의 3중 조회 제거 및 `useStudentRegistry` 데이터 직결, `serverRead.ts` 5초 캐시 + 이벤트(`studentsUpdated`/`sessionsUpdated`/`teachersUpdated`/`AUTH_EVENT`/`storage`) 기반 즉시 캐시 무효화 적용
@@ -246,6 +246,7 @@
 - 관리자 계정이 비소유자면 직접 생성 대신 `pending` 요청 저장
 ## 최근 변경(운영 영향 큰 항목)
 
+- 2026-10-29 19:55: 프로덕션 배포 커밋 `f5fe77c` (운영 주소: `https://okjinsoowebapp.vercel.app`, 첫 웹페이지 입장 및 재로그인 지연 초고속 최적화: 서울 리전 `icn1` 고정, API별 `select` 컬럼 경량화로 `state_kv`/`sessions` 불필요 조회 차단, Bearer 토큰 직접 동봉 및 브리지 쿠키 동기화 정렬, 재로그인/콜백 1.4초 강제 타이머 제거)
 - 2026-10-26 17:00: 프로덕션 배포 커밋 `4691d4f` (운영 주소: `https://okjinsoowebapp.vercel.app`, 결제 버튼 텍스트 수직 중앙 정렬(`programs-action-btn`, `programs-modal-btn`, `programs-tab-btn`) 및 모바일 하단 푸터 가로 드래그/스크롤 차단(`app-footer-inner 100% max-width 980px`, `overflow-x: hidden`: `app/globals.css`, `ProgramsCheckoutClient.tsx`))
 - 2026-10-26 16:50: 프로덕션 배포 커밋 `3eedbe7` (운영 주소: `https://okjinsoowebapp.vercel.app`, 수강 프로그램 페이지 `/programs` 모바일 실해상도 맞춤(device-width 뷰포트 및 100% 유연 너비 전환) 패치: `app/programs/layout.tsx`, `app/globals.css`, `app/programs/page.tsx`)
 - 2026-10-26 16:38: 프로덕션 배포 커밋 `5f132ea` (운영 주소: `https://okjinsoowebapp.vercel.app`, 수강 프로그램 안내 페이지 `/programs` 모바일/PC 반응형 프리미엄 전면 개편: 모바일 세그먼트 탭, 바텀 시트 모달, 4단계 절차 2x2 그리드, 환불 규정 모바일 카드화: `ProgramsCheckoutClient.tsx`, `app/programs/page.tsx`)
