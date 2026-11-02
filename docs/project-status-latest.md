@@ -255,7 +255,7 @@
 - 관리자 계정이 비소유자면 직접 생성 대신 `pending` 요청 저장
 ## 최근 변경(운영 영향 큰 항목)
 
-- 2026-11-02 17:44: 프로덕션 배포 (운영 주소: `https://okjinsoowebapp.vercel.app`, `tmain` 오늘의 수업/다음 수업 학습 진도율(%) 실시간 동기화 누락 해결: 스냅샷 다이제스트 전체 공유 키 SHA-256 해시화, `readSnapshotServerFirst` 수신 즉시 `stateKv` 반영, `sessionProgressUpdated` 이벤트 연동)
+- 2026-11-02 17:44: 프로덕션 배포 커밋 `499a10e` (운영 주소: `https://okjinsoowebapp.vercel.app`, `tmain` 오늘의 수업/다음 수업 학습 진도율(%) 실시간 동기화 누락 해결: 스냅샷 다이제스트 전체 공유 키 SHA-256 해시화, `readSnapshotServerFirst` 수신 즉시 `stateKv` 반영, `sessionProgressUpdated` 이벤트 연동)
 - 2026-10-29 19:55: 프로덕션 배포 커밋 `f5fe77c` (운영 주소: `https://okjinsoowebapp.vercel.app`, 첫 웹페이지 입장 및 재로그인 지연 초고속 최적화: 서울 리전 `icn1` 고정, API별 `select` 컬럼 경량화로 `state_kv`/`sessions` 불필요 조회 차단, Bearer 토큰 직접 동봉 및 브리지 쿠키 동기화 정렬, 재로그인/콜백 1.4초 강제 타이머 제거)
 - 2026-10-26 17:00: 프로덕션 배포 커밋 `4691d4f` (운영 주소: `https://okjinsoowebapp.vercel.app`, 결제 버튼 텍스트 수직 중앙 정렬(`programs-action-btn`, `programs-modal-btn`, `programs-tab-btn`) 및 모바일 하단 푸터 가로 드래그/스크롤 차단(`app-footer-inner 100% max-width 980px`, `overflow-x: hidden`: `app/globals.css`, `ProgramsCheckoutClient.tsx`))
 - 2026-10-26 16:50: 프로덕션 배포 커밋 `3eedbe7` (운영 주소: `https://okjinsoowebapp.vercel.app`, 수강 프로그램 페이지 `/programs` 모바일 실해상도 맞춤(device-width 뷰포트 및 100% 유연 너비 전환) 패치: `app/programs/layout.tsx`, `app/globals.css`, `app/programs/page.tsx`)
