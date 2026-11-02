@@ -1,6 +1,7 @@
 "use client";
 
 import { BROWSER_STORAGE_EVENT } from "@/lib/storage/browserStorage";
+import { TUTORWEB_EVENTS } from "@/lib/events/tutorwebEvents";
 
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
@@ -62,9 +63,14 @@ export default function StudentSessionListCore({ role, token, prefix, hideTokenI
       if (!isSessionProgressEventKeyForToken(key, token)) return;
       setProgressTick((x) => x + 1);
     };
+    const onRemoteProgressChanged: EventListener = () => {
+      setProgressTick((x) => x + 1);
+    };
     window.addEventListener(BROWSER_STORAGE_EVENT, onProgressChanged);
+    window.addEventListener(TUTORWEB_EVENTS.sessionProgressUpdated, onRemoteProgressChanged);
     return () => {
       window.removeEventListener(BROWSER_STORAGE_EVENT, onProgressChanged);
+      window.removeEventListener(TUTORWEB_EVENTS.sessionProgressUpdated, onRemoteProgressChanged);
     };
   }, [token]);
 

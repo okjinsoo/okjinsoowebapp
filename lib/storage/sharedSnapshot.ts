@@ -11,6 +11,7 @@ import { TUTORWEB_EVENTS } from "@/lib/events/tutorwebEvents";
 import { browserStorage } from "@/lib/storage/browserStorage";
 import { safeParseJson } from "@/lib/storage/safeParse";
 import {
+  isSessionProgressStateKey,
   isSharedStateKvKey,
   SHARED_LECTURE_TREE_KEY,
   SHARED_META_MAP_PREFIX,
@@ -225,26 +226,29 @@ export function dispatchLocalSnapshotUpdated(args?: { includeSessions?: boolean 
   }
 }
 
-function applyStateKv(stateKv: Record<string, string> | null | undefined): {
+export function applyStateKv(stateKv: Record<string, string> | null | undefined): {
   changed: boolean;
   hadMetaMap: boolean;
   hadLectureTree: boolean;
+  hadSessionProgress: boolean;
 } {
   if (typeof window === "undefined" || !stateKv) {
     return {
       changed: false,
       hadMetaMap: false,
       hadLectureTree: false,
+      hadSessionProgress: false,
     };
   }
 
   let changed = false;
   let hadMetaMap = false;
   let hadLectureTree = false;
+  let hadSessionProgress = false;
 
   for (const [key, value] of Object.entries(stateKv)) {
     if (!shouldPersistKey(key)) continue;
-    const current = localStorage.getItem(key);
+    const current = browserStorage.getItem(key);
     if (current === value) continue;
 
     if (key === SHARED_LECTURE_TREE_KEY) {
@@ -264,13 +268,30 @@ function applyStateKv(stateKv: Record<string, string> | null | undefined): {
       }
     }
 
-    localStorage.setItem(key, value);
+    // browserStorage.setItem 대신 setItemSilent를 써서 SharedSnapshotAgent의
+    // onStorageChanged(원격 재전송 루프)가 발동하지 않도록 하되, browserStorage 단기 캐시는 즉시 갱신하도록 처리
+    browserStorage.setItemSilent(key, value);
     changed = true;
     if (key === SHARED_LECTURE_TREE_KEY) hadLectureTree = true;
     if (key.startsWith(SHARED_META_MAP_PREFIX)) hadMetaMap = true;
+    if (isSessionProgressStateKey(key)) hadSessionProgress = true;
   }
 
-  return { changed, hadMetaMap, hadLectureTree };
+  return { changed, hadMetaMap, hadLectureTree, hadSessionProgress };
+}
+
+export function applyStateKvAndNotify(stateKv: Record<string, string> | null | undefined): void {
+  if (typeof window === "undefined" || !stateKv) return;
+  const stateResult = applyStateKv(stateKv);
+  if (stateResult.hadLectureTree) {
+    window.dispatchEvent(new CustomEvent(TUTORWEB_EVENTS.lectureTreeUpdated));
+  }
+  if (stateResult.hadMetaMap) {
+    window.dispatchEvent(new CustomEvent(TUTORWEB_EVENTS.metaMapUpdated));
+  }
+  if (stateResult.hadSessionProgress) {
+    window.dispatchEvent(new CustomEvent(TUTORWEB_EVENTS.sessionProgressUpdated));
+  }
 }
 
 function applyLocalSnapshot(args: {
@@ -314,6 +335,9 @@ function applyLocalSnapshot(args: {
   }
   if (stateResult.hadMetaMap) {
     window.dispatchEvent(new CustomEvent(TUTORWEB_EVENTS.metaMapUpdated));
+  }
+  if (stateResult.hadSessionProgress) {
+    window.dispatchEvent(new CustomEvent(TUTORWEB_EVENTS.sessionProgressUpdated));
   }
 }
 

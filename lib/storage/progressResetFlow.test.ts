@@ -6,7 +6,7 @@ vi.mock("server-only", () => ({}));
 const fetchMock = vi.fn();
 globalThis.fetch = fetchMock;
 
-import { upsertSnapshotPatch } from "@/lib/server/supabaseSnapshotApi";
+import { calculateSnapshotDigest, upsertSnapshotPatch } from "@/lib/server/supabaseSnapshotApi";
 import { isSharedStateKvKey, sessionProgressByLeafIdKey } from "@/lib/storage/sharedStateKeys";
 import { NextRequest } from "next/server";
 
@@ -80,5 +80,40 @@ describe("Progress state saving flow", () => {
     });
 
     expect(result.stateKvSynced).toBe(true);
+  });
+
+  it("changes snapshot digest when any student session progress changes even with trailing metaMap keys", () => {
+    const baseStateKv: Record<string, string> = {
+      "mk3:studentA:session:35:leafIds": JSON.stringify(["leaf_1"]),
+      "mk3:studentA:session:35:progressByLeafId": JSON.stringify({
+        leaf_1: { noteDone: false, solveDone: false },
+      }),
+      // 알파벳 뒤쪽에 위치한 키 3개 이상 존재 시나리오
+      "tutorweb_metaMap_v1:studentX": JSON.stringify({ 1: { status: "present" } }),
+      "tutorweb_metaMap_v1:studentY": JSON.stringify({ 1: { status: "present" } }),
+      "tutorweb_metaMap_v1:studentZ": JSON.stringify({ 1: { status: "present" } }),
+    };
+
+    const updatedStateKv: Record<string, string> = {
+      ...baseStateKv,
+      "mk3:studentA:session:35:progressByLeafId": JSON.stringify({
+        leaf_1: { noteDone: true, solveDone: true },
+      }),
+    };
+
+    const digestBefore = calculateSnapshotDigest({
+      teachers: [],
+      students: [],
+      sessions: [],
+      stateKv: baseStateKv,
+    });
+    const digestAfter = calculateSnapshotDigest({
+      teachers: [],
+      students: [],
+      sessions: [],
+      stateKv: updatedStateKv,
+    });
+
+    expect(digestBefore).not.toBe(digestAfter);
   });
 });

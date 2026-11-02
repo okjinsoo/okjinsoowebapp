@@ -4,5 +4,6 @@ export const TUTORWEB_EVENTS = {
   sessionsUpdated: "tutorweb:sessionsUpdated",
   metaMapUpdated: "tutorweb:metaMapUpdated",
   lectureTreeUpdated: "tutorweb:lectureTreeUpdated",
+  sessionProgressUpdated: "tutorweb:sessionProgressUpdated",
   googleAuthError: "tutorweb:googleAuthError",
 } as const;

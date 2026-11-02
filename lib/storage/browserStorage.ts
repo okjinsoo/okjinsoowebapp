@@ -85,6 +85,20 @@ class BrowserStorageImpl implements Storage {
     dispatchStorageChanged({ type: "remove", key, oldValue, newValue: null });
   }
 
+  setItemSilent(key: string, value: string): void {
+    const now = Date.now();
+    this.cache.set(key, { value, expiry: now + this.CACHE_TTL });
+
+    const storage = getLocalStorage();
+    if (storage) {
+      if (storage.getItem(key) === value) return;
+      storage.setItem(key, value);
+      return;
+    }
+    if ((memoryFallback.get(key) ?? null) === value) return;
+    memoryFallback.set(key, value);
+  }
+
   setItem(key: string, value: string): void {
     const now = Date.now();
     this.cache.set(key, { value, expiry: now + this.CACHE_TTL });
@@ -104,4 +118,4 @@ class BrowserStorageImpl implements Storage {
   }
 }
 
-export const browserStorage: Storage = new BrowserStorageImpl();
+export const browserStorage = new BrowserStorageImpl();

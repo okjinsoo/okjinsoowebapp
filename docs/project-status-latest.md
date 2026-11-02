@@ -1,11 +1,20 @@
 # Project Status (Latest)
 
-기준 시각: 2026-10-29 19:50 (KST)
+기준 시각: 2026-11-02 17:43 (KST)
 대상 프로젝트: `v1`
 
 ## 1분 요약
 
-- 최신 패치 반영: 2026-10-29 19:50 (KST)
+- 최신 패치 반영: 2026-11-02 17:43 (KST)
+- **`tmain`('오늘의 수업' / '다음 수업') 학생 학습 진도율(%) 실시간 동기화 누락 원천 해결 패치 (선택지 1 전면 적용)**:
+  1) **서버 스냅샷 다이제스트(Digest) 전체 공유 키 해시화로 정밀도 100% 확보 ([`supabaseSnapshotApi.ts`](file:///Users/okjinsoo/Project/TutorWEB/v1/lib/server/supabaseSnapshotApi.ts#L84-L112))**:
+     - 기존 `kvKeys.slice(-3)` 샘플링 방식은 알파벳 뒤쪽인 `tutorweb_metaMap_v1:...` 키에 가려져 앞쪽의 모든 학생 회차 학습 진도율(`mk3:...:progressByLeafId`) 변경을 감지하지 못하고 `changed: false`를 반환하던 구조적 결함 해결
+     - 모든 공유 키(`isSharedStateKvKey`)와 값을 SHA-256 해시로 요약하여 어느 학생의 어느 회차 진도율이 1%라도 변경되면 즉시 다이제스트가 갱신되도록 개선
+  2) **스냅샷 조회 시 학습 데이터(`stateKv`) 즉시 로컬 반영 및 단기 캐시 동기화 ([`serverRead.ts`](file:///Users/okjinsoo/Project/TutorWEB/v1/lib/storage/serverRead.ts#L280-L286), [`sharedSnapshot.ts`](file:///Users/okjinsoo/Project/TutorWEB/v1/lib/storage/sharedSnapshot.ts#L229-L296), [`browserStorage.ts`](file:///Users/okjinsoo/Project/TutorWEB/v1/lib/storage/browserStorage.ts#L88-L100))**:
+     - `readSnapshotServerFirst`가 `/api/snapshot` 응답을 수신할 때 `applyStateKvAndNotify`를 즉시 호출하여 첫 렌더링부터 최신 진도율이 로컬 스토리지 및 `browserStorage` 인메모리 캐시(`setItemSilent`)에 반영되도록 연결
+  3) **학습 진도율 변경 전용 이벤트(`sessionProgressUpdated`) 신설 및 `tmain`/회차 목록 실시간 리렌더링 ([`tutorwebEvents.ts`](file:///Users/okjinsoo/Project/TutorWEB/v1/lib/events/tutorwebEvents.ts#L1-L9), [`useStudentRegistry.ts`](file:///Users/okjinsoo/Project/TutorWEB/v1/lib/hooks/useStudentRegistry.ts#L67-L94), [`StudentSessionListCore.tsx`](file:///Users/okjinsoo/Project/TutorWEB/v1/lib/ui/student/StudentSessionListCore.tsx#L66-L75))**:
+     - 회차 상세 화면에 직접 클릭해 들어가지 않아도 `tmain` 진입 및 포커스 동기화 즉시 '오늘의 수업'과 '다음 수업'의 진도율(%)이 100%로 동기화되어 표시되도록 개선
+  4) **품질 지표 달성**: 단위 테스트 16개 파일 60개 전수 100% 통과, ESLint 오류 0건, Next.js 프로덕션 빌드 정상 통과
 - **첫 웹페이지 입장 및 권한 확인/재로그인 초고속 다이어트 패치 (안전형 방안 1 전면 적용)**:
   1) **Vercel 서버 리전 한국(서울 `icn1`) 고정 ([vercel.json](file:///Users/okjinsoo/Project/TutorWEB/v1/vercel.json))**: 기본 미국 동부(`iad1`) 서버를 거치며 발생하던 태평양 왕복 네트워크 지연을 한국 서울 리전으로 단축
   2) **가벼운 API들의 DB 조회 컬럼(`select`) 맞춤형 경량화 ([`resolveViewerContext`](file:///Users/okjinsoo/Project/TutorWEB/v1/lib/server/supabaseSnapshotApi.ts#L284-L398))**:
@@ -203,7 +212,7 @@
   3) **방안 C (구글 토큰 만료 사전 체크 & 401 헛걸음 차단)**: `SharedSnapshotAgent` 및 `googleCalendarSync.ts`(`runSync`, `runTeacherCalendarRebuild`)에 `isProviderTokenExpired` 사전 가드를 추가하여 만료된 구글 토큰으로 구글 API를 호출하며 발생하는 401 에러 연발 및 재시도 루프 차단
 - 홈화면/로그인 화면 푸터 노출 구조 개선: `app/page.tsx` 및 공통 가드 페이지들의 `minHeight: calc(100vh - 56px)` 고정 높이를 `flex: 1` 유연 레이아웃으로 변경하여, 홈화면 접속 시 스크롤 없이도 하단 사업자 정보 푸터(`AppFooter.tsx`)가 화면 하단에 바로 상시 노출되도록 개선
 - 학생 상태 판정 조건 개선: '연장필요' 기준을 기존 잔여 회차(3회 이하) 기준에서 '마지막 수업일로부터 9일 전(D-9)' 기준으로 개편 (`studentStatusFactory.ts`, `useStudentRegistry.ts`, `StudentHubCore.tsx`)
-- 최신 운영 반영본: 2026-10-29 19:55 (KST)
+- 최신 운영 반영본: 2026-11-02 17:44 (KST)
 - 운영 주소: `https://okjinsoowebapp.vercel.app`
 - 하단 푸터 통신판매업신고번호 등록: `2026-서울마포-2150` 등록 완료 (`AppFooter.tsx`)
 - 중복 프로세스 제거 및 안전 캐싱 패치 (방안 A): `useRoleScopedSelection` 쌍둥이 `useEffect` 2중 호출 단일화, `PageTitleAgent` 로컬 스냅샷 직결로 `/api/students` 독립 네트워크 호출 제거, `useAdminStudentsPageData`의 3중 조회 제거 및 `useStudentRegistry` 데이터 직결, `serverRead.ts` 5초 캐시 + 이벤트(`studentsUpdated`/`sessionsUpdated`/`teachersUpdated`/`AUTH_EVENT`/`storage`) 기반 즉시 캐시 무효화 적용
@@ -246,6 +255,7 @@
 - 관리자 계정이 비소유자면 직접 생성 대신 `pending` 요청 저장
 ## 최근 변경(운영 영향 큰 항목)
 
+- 2026-11-02 17:44: 프로덕션 배포 (운영 주소: `https://okjinsoowebapp.vercel.app`, `tmain` 오늘의 수업/다음 수업 학습 진도율(%) 실시간 동기화 누락 해결: 스냅샷 다이제스트 전체 공유 키 SHA-256 해시화, `readSnapshotServerFirst` 수신 즉시 `stateKv` 반영, `sessionProgressUpdated` 이벤트 연동)
 - 2026-10-29 19:55: 프로덕션 배포 커밋 `f5fe77c` (운영 주소: `https://okjinsoowebapp.vercel.app`, 첫 웹페이지 입장 및 재로그인 지연 초고속 최적화: 서울 리전 `icn1` 고정, API별 `select` 컬럼 경량화로 `state_kv`/`sessions` 불필요 조회 차단, Bearer 토큰 직접 동봉 및 브리지 쿠키 동기화 정렬, 재로그인/콜백 1.4초 강제 타이머 제거)
 - 2026-10-26 17:00: 프로덕션 배포 커밋 `4691d4f` (운영 주소: `https://okjinsoowebapp.vercel.app`, 결제 버튼 텍스트 수직 중앙 정렬(`programs-action-btn`, `programs-modal-btn`, `programs-tab-btn`) 및 모바일 하단 푸터 가로 드래그/스크롤 차단(`app-footer-inner 100% max-width 980px`, `overflow-x: hidden`: `app/globals.css`, `ProgramsCheckoutClient.tsx`))
 - 2026-10-26 16:50: 프로덕션 배포 커밋 `3eedbe7` (운영 주소: `https://okjinsoowebapp.vercel.app`, 수강 프로그램 페이지 `/programs` 모바일 실해상도 맞춤(device-width 뷰포트 및 100% 유연 너비 전환) 패치: `app/programs/layout.tsx`, `app/globals.css`, `app/programs/page.tsx`)

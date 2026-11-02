@@ -3,6 +3,7 @@
 import { loadSessions } from "@/lib/storage/sessions";
 import { loadStudents } from "@/lib/storage/students";
 import { loadTeachers, TEACHERS_EVENT } from "@/lib/storage/teachers";
+import { applyStateKvAndNotify } from "@/lib/storage/sharedSnapshot";
 import { TUTORWEB_EVENTS } from "@/lib/events/tutorwebEvents";
 import { AUTH_EVENT, loadAuthSession } from "@/lib/auth/supabaseAuth";
 import type { Session, Student, Teacher } from "@/lib/types/index";
@@ -279,6 +280,9 @@ export async function readSnapshotServerFirst(): Promise<{
     const stateKv = snapshot.stateKv && typeof snapshot.stateKv === "object"
       ? (snapshot.stateKv as Record<string, string>)
       : undefined;
+    if (stateKv) {
+      applyStateKvAndNotify(stateKv);
+    }
     return {
       teachers,
       students,

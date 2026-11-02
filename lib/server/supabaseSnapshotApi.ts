@@ -1,5 +1,6 @@
 import "server-only";
 
+import { createHash } from "crypto";
 import type { NextRequest } from "next/server";
 
 import {
@@ -87,23 +88,27 @@ export function calculateSnapshotDigest(snapshot: NormalizedSnapshot): string {
   // [다이어트] 백업 키(mk3:backup:...) 등 UI와 무관한 키를 제외하고 순수 공유 상태 키만 반영
   const kvKeys = Object.keys(snapshot.stateKv).filter(isSharedStateKvKey).sort();
   const kvCount = kvKeys.length;
-  
-  // [Phase 24.3 개선] 단순히 키 개수만 세는 게 아니라, 내용물의 변화를 감지할 수 있는 지문 생성
-  // 데이터가 너무 크면 성능 저하가 올 수 있으므로 하이브리드 방식을 사용합니다.
-  const kvSample = kvKeys.slice(-3).map(k => {
-    const val = snapshot.stateKv[k] || "";
-    return `${k}:${val.length}:${val.slice(-20)}`; // 키 이름, 길이, 마지막 20글자 조합
-  }).join("|");
+
+  // [진도율/메타맵 완벽 감지] 기존 slice(-3) 샘플링은 알파벳 뒤쪽(tutorweb_metaMap_v1:...)에 가려져
+  // 앞쪽의 모든 학생 학습 진도율(mk3:...:progressByLeafId) 변경을 감지하지 못하던 문제를 원천 해결합니다.
+  const hash = createHash("sha256");
+  for (const k of kvKeys) {
+    hash.update(k);
+    hash.update("\0");
+    hash.update(snapshot.stateKv[k] ?? "");
+    hash.update("\n");
+  }
+  const kvHash = hash.digest("base64url").slice(0, 24);
 
   const sample = JSON.stringify({
     tc: tCount,
     sc: sCount,
     sec: sessCount,
     kc: kvCount,
-    ks: kvSample, // [핵심] 주요 KV 데이터의 상태 샘플 포함
+    kh: kvHash,
     ls: snapshot.sessions[sessCount - 1]?.id ?? "",
   });
-  
+
   return Buffer.from(sample).toString("base64");
 }
 

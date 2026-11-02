@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { BROWSER_STORAGE_EVENT } from "@/lib/storage/browserStorage";
+import { isSessionProgressStateKey } from "@/lib/storage/sharedStateKeys";
 import { TEACHERS_EVENT } from "@/lib/storage/teachers";
 import { readSnapshotServerFirst } from "@/lib/storage/serverRead";
 import {
@@ -65,12 +67,21 @@ export function useStudentRegistry() {
     const bumpTick = () => {
       setTick((t) => t + 1);
     };
+    const onBrowserStorageChanged: EventListener = (event) => {
+      const ce = event as CustomEvent<{ key?: string | null }>;
+      const key = ce.detail?.key ?? "";
+      if (key && isSessionProgressStateKey(key)) {
+        bumpTick();
+      }
+    };
 
     void refreshSnapshot();
     window.addEventListener(TUTORWEB_EVENTS.studentsUpdated, requestSnapshotRefresh);
     window.addEventListener(TEACHERS_EVENT, requestSnapshotRefresh);
     window.addEventListener(TUTORWEB_EVENTS.sessionsUpdated, requestSnapshotRefresh);
     window.addEventListener(TUTORWEB_EVENTS.metaMapUpdated, bumpTick);
+    window.addEventListener(TUTORWEB_EVENTS.sessionProgressUpdated, bumpTick);
+    window.addEventListener(BROWSER_STORAGE_EVENT, onBrowserStorageChanged);
 
     return () => {
       cancelled = true;
@@ -78,6 +89,8 @@ export function useStudentRegistry() {
       window.removeEventListener(TEACHERS_EVENT, requestSnapshotRefresh);
       window.removeEventListener(TUTORWEB_EVENTS.sessionsUpdated, requestSnapshotRefresh);
       window.removeEventListener(TUTORWEB_EVENTS.metaMapUpdated, bumpTick);
+      window.removeEventListener(TUTORWEB_EVENTS.sessionProgressUpdated, bumpTick);
+      window.removeEventListener(BROWSER_STORAGE_EVENT, onBrowserStorageChanged);
     };
   }, []);
 

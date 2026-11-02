@@ -13,6 +13,7 @@ import {
 } from "@/lib/storage/sharedSnapshot";
 import { syncGoogleCalendarForExistingSessions } from "@/lib/storage/sessions";
 import {
+  isSessionProgressStateKey,
   isSharedStateKvKey,
   SHARED_LECTURE_TREE_KEY,
   SHARED_META_MAP_PREFIX,
@@ -189,6 +190,7 @@ export default function SharedSnapshotAgent() {
         // 기타 공유 상태 변경 시 관련 이벤트 발생
         if (key === SHARED_LECTURE_TREE_KEY) window.dispatchEvent(new CustomEvent(TUTORWEB_EVENTS.lectureTreeUpdated));
         if (key.startsWith(SHARED_META_MAP_PREFIX)) window.dispatchEvent(new CustomEvent(TUTORWEB_EVENTS.metaMapUpdated));
+        if (isSessionProgressStateKey(key)) window.dispatchEvent(new CustomEvent(TUTORWEB_EVENTS.sessionProgressUpdated));
       }
     };
 
