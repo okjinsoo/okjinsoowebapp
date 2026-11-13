@@ -25,6 +25,10 @@ export default function ProgramsSuccessClient() {
   const paymentKey = searchParams.get("paymentKey");
   const orderId = searchParams.get("orderId");
   const amount = searchParams.get("amount");
+  const programId = searchParams.get("programId") ?? "";
+  const buyerName = searchParams.get("buyerName") ?? "";
+  const buyerPhone = searchParams.get("buyerPhone") ?? "";
+  const studentName = searchParams.get("studentName") ?? "";
 
   const [status, setStatus] = useState<"loading" | "success" | "error">(
     paymentKey && orderId && amount ? "loading" : "success"
@@ -51,6 +55,10 @@ export default function ProgramsSuccessClient() {
             paymentKey,
             orderId,
             amount: Number(amount),
+            programId,
+            buyerName,
+            buyerPhone,
+            studentName,
           }),
         });
 
@@ -79,7 +87,7 @@ export default function ProgramsSuccessClient() {
     return () => {
       isMounted = false;
     };
-  }, [paymentKey, orderId, amount]);
+  }, [paymentKey, orderId, amount, programId, buyerName, buyerPhone, studentName]);
 
   if (status === "loading") {
     return (

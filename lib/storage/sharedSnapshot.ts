@@ -2,9 +2,6 @@
 
 import {
   AUTH_STORAGE_KEY,
-  forceRefreshAuthSession,
-  getSupabaseConfig,
-  getValidAccessToken,
   loadAuthSession,
 } from "@/lib/auth/supabaseAuth";
 import { TUTORWEB_EVENTS } from "@/lib/events/tutorwebEvents";
@@ -24,13 +21,6 @@ export const STUDENTS_KEY = "tutorweb_students_v1";
 export const SESSIONS_KEY = "tutorweb_sessions_v1";
 const PULL_COOLDOWN_MS = 2000;
 const DIGEST_STORAGE_KEY = "tutorweb_snapshot_digest_v1";
-
-type SnapshotRow = {
-  teachers?: Teacher[];
-  students?: Student[];
-  sessions?: Session[];
-  state_kv?: Record<string, unknown> | null;
-};
 
 type InternalSnapshotResponse = {
   ok?: boolean;
@@ -54,10 +44,6 @@ type InternalSnapshotBody = {
   stateKv?: Record<string, string>;
   dropStateKeys?: string[];
 };
-
-type FetchRowsResult =
-  | { ok: true; rows: SnapshotRow[] }
-  | { ok: false; status: number; text: string };
 
 export type PushSharedSnapshotResult = {
   sessionsSynced: boolean;
@@ -151,21 +137,6 @@ function readLocalStateKv(): Record<string, string> {
 
 export function readLocalSharedStateKv(): Record<string, string> {
   return readLocalStateKv();
-}
-
-async function getHeaders(args?: { json?: boolean; forceRefresh?: boolean }): Promise<Record<string, string> | null> {
-  const cfg = getSupabaseConfig();
-  const accessToken = args?.forceRefresh
-    ? (await forceRefreshAuthSession())?.accessToken ?? null
-    : await getValidAccessToken();
-  if (!cfg || !accessToken) return null;
-
-  const headers: Record<string, string> = {
-    apikey: cfg.anonKey,
-    Authorization: `Bearer ${accessToken}`,
-  };
-  if (args?.json) headers["Content-Type"] = "application/json";
-  return headers;
 }
 
 function buildInternalSnapshotUrl(args?: { stateKey?: string; digest?: string }): string {
@@ -341,180 +312,12 @@ function applyLocalSnapshot(args: {
   }
 }
 
-function isMissingColumnError(detail: string, column: string): boolean {
-  const lower = detail.toLowerCase();
-  return (
-    lower.includes(column.toLowerCase()) &&
-    (lower.includes("column") || lower.includes("schema cache") || lower.includes("42703"))
-  );
-}
-
-function isJwtAuthError(detail: string): boolean {
-  const lower = detail.toLowerCase();
-  return lower.includes("jwt expired") || lower.includes("invalid jwt") || lower.includes("jwt");
-}
-
-function isNetworkFetchFailure(args: { status: number; text: string }): boolean {
-  return args.status === 0 || args.text.startsWith("fetch_failed:");
-}
-
 function hasLocalSnapshot(): boolean {
   if (typeof window === "undefined") return false;
   return (
     browserStorage.getItem(TEACHERS_KEY) !== null &&
     browserStorage.getItem(STUDENTS_KEY) !== null
   );
-}
-
-async function fetchSnapshotRows(args: {
-  url: URL;
-  headers: Record<string, string>;
-  select: string;
-}): Promise<FetchRowsResult> {
-  try {
-    const requestUrl = new URL(args.url.toString());
-    requestUrl.searchParams.set("select", args.select);
-    requestUrl.searchParams.set("id", `eq.${SNAPSHOT_KEY}`);
-    requestUrl.searchParams.set("limit", "1");
-
-    const execute = async (headers: Record<string, string>): Promise<FetchRowsResult> => {
-      try {
-        const res = await fetch(requestUrl.toString(), {
-          method: "GET",
-          headers,
-        });
-
-        if (res.ok) {
-          return { ok: true, rows: (await res.json()) as SnapshotRow[] };
-        }
-
-        return {
-          ok: false,
-          status: res.status,
-          text: await res.text(),
-        };
-      } catch (error) {
-        const message = error instanceof Error ? error.message : "unknown_error";
-        return {
-          ok: false,
-          status: 0,
-          text: `fetch_failed:${message}`,
-        };
-      }
-    };
-
-    let result = await execute(args.headers);
-    if (!result.ok && result.status === 401 && isJwtAuthError(result.text)) {
-      const retryHeaders = await getHeaders({ forceRefresh: true });
-      if (retryHeaders) {
-        result = await execute(retryHeaders);
-      }
-    }
-    return result;
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "unknown_error";
-    return {
-      ok: false,
-      status: 0,
-      text: `fetch_failed:${message}`,
-    };
-  }
-}
-
-async function postSnapshotUpsertWithRetry(args: {
-  url: URL;
-  headers: Record<string, string>;
-  payload: unknown;
-}): Promise<{ ok: boolean; status: number; text: string }> {
-  const body = JSON.stringify(args.payload);
-
-  const execute = async (headers: Record<string, string>) => {
-    try {
-      const res = await fetch(args.url.toString(), {
-        method: "POST",
-        headers: {
-          ...headers,
-          Prefer: "resolution=merge-duplicates",
-        },
-        body,
-      });
-      if (res.ok) {
-        return {
-          ok: true,
-          status: res.status,
-          text: "",
-        };
-      }
-      return {
-        ok: false,
-        status: res.status,
-        text: await res.text(),
-      };
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "unknown_error";
-      return {
-        ok: false,
-        status: 0,
-        text: `fetch_failed:${message}`,
-      };
-    }
-  };
-
-  let result = await execute(args.headers);
-  if (!result.ok && result.status === 401 && isJwtAuthError(result.text)) {
-    const retryHeaders = await getHeaders({ json: true, forceRefresh: true });
-    if (retryHeaders) {
-      result = await execute(retryHeaders);
-    }
-  }
-  return result;
-}
-
-async function fetchRemoteStateKv(args: {
-  url: URL;
-  headers: Record<string, string>;
-}): Promise<Record<string, string>> {
-  const result = await fetchSnapshotRows({
-    url: args.url,
-    headers: args.headers,
-    select: "state_kv",
-  });
-  if (!result.ok) {
-    if (isMissingColumnError(result.text, "state_kv")) {
-      return {};
-    }
-    if (isNetworkFetchFailure(result)) {
-      return {};
-    }
-    throw new Error(`snapshot fetch failed(state_kv): ${result.status} ${result.text}`);
-  }
-  const row = result.rows[0];
-  return toStateKv(row?.state_kv);
-}
-
-async function fetchRemoteStateKvRaw(args: {
-  url: URL;
-  headers: Record<string, string>;
-}): Promise<Record<string, unknown>> {
-  const result = await fetchSnapshotRows({
-    url: args.url,
-    headers: args.headers,
-    select: "state_kv",
-  });
-  if (!result.ok) {
-    if (isMissingColumnError(result.text, "state_kv")) {
-      return {};
-    }
-    if (isNetworkFetchFailure(result)) {
-      throw new Error(`snapshot fetch failed(state_kv_network): ${result.text}`);
-    }
-    throw new Error(`snapshot fetch failed(state_kv): ${result.status} ${result.text}`);
-  }
-  const row = result.rows[0];
-  if (!row?.state_kv || typeof row.state_kv !== "object" || Array.isArray(row.state_kv)) {
-    return {};
-  }
-  return { ...(row.state_kv as Record<string, unknown>) };
 }
 
 export async function readRemoteSharedStateKvValue(key: string): Promise<string | null> {
@@ -528,22 +331,9 @@ export async function readRemoteSharedStateKvValue(key: string): Promise<string 
     return typeof internal.value === "string" ? internal.value : null;
   }
 
-  const cfg = getSupabaseConfig();
-  if (!cfg) return null;
-
-  const headers = await getHeaders();
-  if (!headers) return null;
-
-  try {
-    const snapshotUrl = new URL("/rest/v1/app_state_snapshots", cfg.url);
-    const stateKv = await fetchRemoteStateKv({
-      url: snapshotUrl,
-      headers,
-    });
-    return stateKv[key] ?? null;
-  } catch {
-    return null;
-  }
+  // [보안 패치: Direct DB Fallback 제거]
+  // 서버 API(/api/snapshot)가 권한 검증 및 필터링을 전담하므로 클라이언트 직접 DB 조회를 차단합니다.
+  return null;
 }
 
 type PushSharedSnapshotArgs = {
@@ -650,148 +440,12 @@ export async function pushSharedSnapshot(args?: PushSharedSnapshotArgs): Promise
     };
   }
 
-  const cfg = getSupabaseConfig();
-  if (!cfg) {
-    return {
-      sessionsSynced: !hasSessionsArg,
-      stateKvSynced: !touchesStateKv,
-    };
-  }
-
-  const headers = await getHeaders({ json: true });
-  if (!headers) {
-    return {
-      sessionsSynced: !hasSessionsArg,
-      stateKvSynced: !touchesStateKv,
-    };
-  }
-  let stateKv: Record<string, string> | undefined;
-
-  if (touchesStateKv) {
-    const readHeaders = await getHeaders();
-    if (!readHeaders) {
-      return {
-        sessionsSynced: !hasSessionsArg,
-        stateKvSynced: false,
-      };
-    }
-
-    const snapshotUrl = new URL("/rest/v1/app_state_snapshots", cfg.url);
-    // Fallback 경로에서는 server-only 키(예: 학습시트 teacher map)까지 보존해야 한다.
-    // 네트워크 실패 시 {}로 간주하면 기존 키가 유실될 수 있으므로 즉시 중단한다.
-    let remoteStateKvRaw: Record<string, unknown>;
-    try {
-      remoteStateKvRaw = await fetchRemoteStateKvRaw({
-        url: snapshotUrl,
-        headers: readHeaders,
-      });
-    } catch {
-      return {
-        sessionsSynced: false,
-        stateKvSynced: false,
-      };
-    }
-    const mergedRaw: Record<string, unknown> = {
-      ...remoteStateKvRaw,
-      ...(stateKvPatch ?? {}),
-    };
-    stateKv = {};
-    for (const [key, value] of Object.entries(mergedRaw)) {
-      if (typeof value === "string") {
-        stateKv[key] = value;
-      } else if (value && typeof value === "object") {
-        try {
-          stateKv[key] = JSON.stringify(value);
-        } catch {
-          // noop
-        }
-      }
-    }
-    for (const key of args?.dropStateKeys ?? []) {
-      if (!shouldPersistKey(key)) continue;
-      delete stateKv[key];
-    }
-  }
-
-  const snapshotUrl = new URL("/rest/v1/app_state_snapshots", cfg.url);
-  const upsertUrl = new URL(snapshotUrl.toString());
-  upsertUrl.searchParams.set("on_conflict", "id");
-
-  const fullPayload: {
-    id: string;
-    teachers?: Teacher[];
-    students?: Student[];
-    sessions?: Session[];
-    state_kv?: Record<string, string>;
-  } = { id: SNAPSHOT_KEY };
-  if (hasTeachersArg && teachers) fullPayload.teachers = teachers;
-  if (hasStudentsArg && students) fullPayload.students = students;
-  if (hasSessionsArg && sessions) fullPayload.sessions = sessions;
-  if (touchesStateKv && stateKv) {
-    fullPayload.state_kv = stateKv;
-  }
-
-  const fullResult = await postSnapshotUpsertWithRetry({
-    url: upsertUrl,
-    headers,
-    payload: [fullPayload],
-  });
-
-  if (fullResult.ok) {
-    return {
-      sessionsSynced: true,
-      stateKvSynced: true,
-    };
-  }
-
-  const text = fullResult.text;
-  const sessionsMissing = hasSessionsArg && isMissingColumnError(text, "sessions");
-  const stateKvMissing = touchesStateKv && isMissingColumnError(text, "state_kv");
-
-  if (!sessionsMissing && !stateKvMissing) {
-    if (isNetworkFetchFailure(fullResult)) {
-      return {
-        sessionsSynced: false,
-        stateKvSynced: false,
-      };
-    }
-    throw new Error(`snapshot upsert failed: ${fullResult.status} ${text}`);
-  }
-
-  const fallbackPayload: {
-    id: string;
-    teachers?: Teacher[];
-    students?: Student[];
-    sessions?: Session[];
-    state_kv?: Record<string, string>;
-  } = { id: SNAPSHOT_KEY };
-  if (hasTeachersArg && teachers) fallbackPayload.teachers = teachers;
-  if (hasStudentsArg && students) fallbackPayload.students = students;
-  if (hasSessionsArg && sessions && !sessionsMissing) fallbackPayload.sessions = sessions;
-  if (touchesStateKv && !stateKvMissing) fallbackPayload.state_kv = stateKv ?? {};
-
-  const fallbackResult = await postSnapshotUpsertWithRetry({
-    url: upsertUrl,
-    headers,
-    payload: [fallbackPayload],
-  });
-
-  if (!fallbackResult.ok) {
-    if (isNetworkFetchFailure(fallbackResult)) {
-      return {
-        sessionsSynced: false,
-        stateKvSynced: false,
-      };
-    }
-    const fallbackText = fallbackResult.text;
-    throw new Error(
-      `snapshot upsert failed (fallback): ${fallbackResult.status} ${fallbackText}`
-    );
-  }
-
+  // [보안 패치: Direct DB Upsert Fallback 제거]
+  // 서버 문지기(/api/snapshot)가 거절했거나 통신에 실패했을 때 브라우저가 직접 DB를 덮어쓰면
+  // 권한 우회 및 동시성 데이터 증발이 발생하므로 안전하게 동기화 실패를 반환합니다.
   return {
-    sessionsSynced: !hasSessionsArg || !sessionsMissing,
-    stateKvSynced: !touchesStateKv || !stateKvMissing,
+    sessionsSynced: false,
+    stateKvSynced: false,
   };
 }
 
@@ -866,81 +520,16 @@ export async function pullSharedSnapshotAndHydrateWithOptions(args?: {
       };
     }
 
-    const cfg = getSupabaseConfig();
-    if (!cfg) return null;
-
-    const headers = await getHeaders();
-    if (!headers) return null;
-
-    const baseUrl = new URL("/rest/v1/app_state_snapshots", cfg.url);
-    const selectFields = ["teachers", "students", "sessions", "state_kv"];
-    let sessionsMissing = false;
-    let stateKvMissing = false;
-    let rows: SnapshotRow[] | null = null;
-
-    while (selectFields.length >= 2) {
-      const result = await fetchSnapshotRows({
-        url: baseUrl,
-        headers,
-        select: selectFields.join(","),
-      });
-      if (result.ok) {
-        rows = result.rows;
-        break;
-      }
-
-      let changed = false;
-      if (selectFields.includes("sessions") && isMissingColumnError(result.text, "sessions")) {
-        sessionsMissing = true;
-        selectFields.splice(selectFields.indexOf("sessions"), 1);
-        changed = true;
-      }
-      if (selectFields.includes("state_kv") && isMissingColumnError(result.text, "state_kv")) {
-        stateKvMissing = true;
-        selectFields.splice(selectFields.indexOf("state_kv"), 1);
-        changed = true;
-      }
-      if (changed) continue;
-      if (isNetworkFetchFailure(result)) {
-        if (hasLocalSnapshot()) {
-          return {
-            teachers: readLocalTeachers(),
-            students: readLocalStudents(),
-            sessions: readLocalSessions(),
-          };
-        }
-        return null;
-      }
-      if (hasLocalSnapshot()) {
-        return {
-          teachers: readLocalTeachers(),
-          students: readLocalStudents(),
-          sessions: readLocalSessions(),
-        };
-      }
-      return null;
+    // [보안 패치: Direct DB Pull Fallback 제거]
+    // 서버 API(/api/snapshot)가 일시적으로 응답하지 않으면 기존 로컬 스냅샷을 안전하게 유지합니다.
+    if (hasLocalSnapshot()) {
+      return {
+        teachers: readLocalTeachers(),
+        students: readLocalStudents(),
+        sessions: readLocalSessions(),
+      };
     }
-
-    if (!rows) return null;
-    const row = rows[0];
-    if (!row) return null;
-
-    const teachers = Array.isArray(row.teachers) ? row.teachers : [];
-    const students = Array.isArray(row.students) ? row.students : [];
-    const sessions =
-      !sessionsMissing && Array.isArray(row.sessions)
-        ? row.sessions
-        : readLocalSessions();
-    const stateKv = !stateKvMissing ? toStateKv(row.state_kv) : null;
-
-    applyLocalSnapshot({
-      teachers,
-      students,
-      sessions: sessionsMissing ? undefined : sessions,
-      stateKv,
-    });
-    lastPullSnapshotAt = Date.now();
-    return { teachers, students, sessions };
+    return null;
   })();
 
   try {

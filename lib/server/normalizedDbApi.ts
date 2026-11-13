@@ -81,7 +81,8 @@ export async function fetchStudentsFromDb(args: {
     url.searchParams.set("id", `eq.${args.studentId}`);
   }
 
-  const token = args.useServiceRole && args.cfg.serviceRoleKey
+  const useService = args.useServiceRole ?? true;
+  const token = useService && args.cfg.serviceRoleKey
     ? args.cfg.serviceRoleKey
     : args.accessToken || args.cfg.anonKey;
 
@@ -124,7 +125,8 @@ export async function fetchSessionsForStudentFromDb(args: {
   url.searchParams.set("student_id", `eq.${args.studentId}`);
   url.searchParams.set("order", "session_index.asc");
 
-  const token = args.useServiceRole && args.cfg.serviceRoleKey
+  const useService = args.useServiceRole ?? true;
+  const token = useService && args.cfg.serviceRoleKey
     ? args.cfg.serviceRoleKey
     : args.accessToken || args.cfg.anonKey;
 
@@ -169,7 +171,8 @@ export async function fetchTodaySessionsFromDb(args: {
   url.searchParams.set("display_at", `lte.${args.todayEndIso}`);
   url.searchParams.set("order", "display_at.asc");
 
-  const token = args.useServiceRole && args.cfg.serviceRoleKey
+  const useService = args.useServiceRole ?? true;
+  const token = useService && args.cfg.serviceRoleKey
     ? args.cfg.serviceRoleKey
     : args.accessToken || args.cfg.anonKey;
 

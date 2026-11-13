@@ -113,7 +113,11 @@ export async function executeDualWriteSync(args: {
   if (!args.cfg || !args.cfg.url) return result;
 
   const url = args.cfg.url;
-  const token = args.useServiceRole && args.cfg.serviceRoleKey ? args.cfg.serviceRoleKey : args.accessToken || args.cfg.anonKey;
+  const useService = args.useServiceRole ?? true;
+  const token =
+    useService && args.cfg.serviceRoleKey
+      ? args.cfg.serviceRoleKey
+      : args.accessToken || args.cfg.anonKey;
   const headers = {
     "Content-Type": "application/json",
     apikey: token,
@@ -182,7 +186,11 @@ export async function getNormalizedTableCounts(args: {
   if (!args.cfg || !args.cfg.url) return result;
 
   const url = args.cfg.url;
-  const token = args.useServiceRole && args.cfg.serviceRoleKey ? args.cfg.serviceRoleKey : args.accessToken || args.cfg.anonKey;
+  const useService = args.useServiceRole ?? true;
+  const token =
+    useService && args.cfg.serviceRoleKey
+      ? args.cfg.serviceRoleKey
+      : args.accessToken || args.cfg.anonKey;
   const headers = {
     apikey: token,
     Authorization: `Bearer ${token}`,

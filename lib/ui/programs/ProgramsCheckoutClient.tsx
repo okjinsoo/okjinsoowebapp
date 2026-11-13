@@ -134,12 +134,20 @@ export default function ProgramsCheckoutClient() {
       const toss = TossPaymentsConstructor(TOSS_CLIENT_KEY);
       const uniqueOrderId = `OJS_${Date.now()}_${Math.floor(1000 + Math.random() * 9000)}`;
 
+      const successUrlObj = new URL("/programs/success", window.location.origin);
+      successUrlObj.searchParams.set("programId", selectedProgram.id);
+      successUrlObj.searchParams.set("buyerName", buyerName.trim());
+      successUrlObj.searchParams.set("buyerPhone", buyerPhone.trim());
+      if (studentName.trim()) {
+        successUrlObj.searchParams.set("studentName", studentName.trim());
+      }
+
       await toss.requestPayment("카드", {
         amount: selectedProgram.price,
         orderId: uniqueOrderId,
         orderName: selectedProgram.name,
-        customerName: buyerName,
-        successUrl: `${window.location.origin}/programs/success`,
+        customerName: buyerName.trim(),
+        successUrl: successUrlObj.toString(),
         failUrl: `${window.location.origin}/programs/fail`,
       });
     } catch (err: unknown) {

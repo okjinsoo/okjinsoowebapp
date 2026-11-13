@@ -1,19 +1,73 @@
 import { NextResponse } from "next/server";
+import { validatePaymentConfirmInput } from "@/lib/server/paymentValidation";
+import { recordConfirmedPaymentOrder, type PaymentOrderRecord } from "@/lib/server/paymentOrderStore";
+
+function buildOrderRecordFromToss(args: {
+  orderId: string;
+  paymentKey: string;
+  amount: number;
+  body: Record<string, unknown>;
+  tossData: Record<string, unknown>;
+}): PaymentOrderRecord {
+  const programId = typeof args.body.programId === "string" ? args.body.programId.trim() : "";
+  const buyerNameFromBody = typeof args.body.buyerName === "string" ? args.body.buyerName.trim() : "";
+  const buyerPhone = typeof args.body.buyerPhone === "string" ? args.body.buyerPhone.trim() : "";
+  const studentName = typeof args.body.studentName === "string" ? args.body.studentName.trim() : "";
+
+  const orderName =
+    typeof args.tossData.orderName === "string" && args.tossData.orderName.trim()
+      ? args.tossData.orderName.trim()
+      : "옥진수학 수강 프로그램";
+  const method = typeof args.tossData.method === "string" ? args.tossData.method : "카드";
+  const status = typeof args.tossData.status === "string" ? args.tossData.status : "DONE";
+  const approvedAt = typeof args.tossData.approvedAt === "string" ? args.tossData.approvedAt : null;
+  const receiptObj =
+    args.tossData.receipt && typeof args.tossData.receipt === "object"
+      ? (args.tossData.receipt as { url?: unknown })
+      : null;
+  const receiptUrl = typeof receiptObj?.url === "string" ? receiptObj.url : "";
+
+  return {
+    orderId: args.orderId,
+    paymentKey: args.paymentKey,
+    programId,
+    orderName,
+    amount: args.amount,
+    buyerName: buyerNameFromBody,
+    buyerPhone,
+    studentName,
+    status,
+    method,
+    approvedAt,
+    receiptUrl,
+    createdAt: approvedAt ?? new Date().toISOString(),
+  };
+}
 
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { paymentKey, orderId, amount } = body;
-
-    if (!paymentKey || !orderId || amount === undefined) {
+    const validation = validatePaymentConfirmInput(body ?? {});
+    if (!validation.ok) {
       return NextResponse.json(
-        { success: false, message: "필수 결제 파라미터(paymentKey, orderId, amount)가 누락되었습니다." },
+        { success: false, code: validation.code, message: validation.message },
         { status: 400 }
       );
     }
 
-    const secretKey =
-      process.env.TOSS_SECRET_KEY || "live_sk_d46qopOB892elGwN5abO3ZmM75y0";
+    const secretKey = (process.env.TOSS_SECRET_KEY ?? "").trim();
+    if (!secretKey) {
+      console.error("[Toss Payments] Server configuration error: TOSS_SECRET_KEY is not set.");
+      return NextResponse.json(
+        {
+          success: false,
+          code: "SERVER_CONFIG_MISSING",
+          message: "결제 서버 환경변수가 설정되지 않았습니다. 관리자에게 문의해 주세요.",
+        },
+        { status: 500 }
+      );
+    }
+
     const basicAuth = Buffer.from(`${secretKey}:`).toString("base64");
 
     const tossResponse = await fetch("https://api.tosspayments.com/v1/payments/confirm", {
@@ -23,9 +77,9 @@ export async function POST(req: Request) {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        paymentKey,
-        orderId,
-        amount: Number(amount),
+        paymentKey: validation.paymentKey,
+        orderId: validation.orderId,
+        amount: validation.amount,
       }),
       cache: "no-store",
     });
@@ -35,6 +89,15 @@ export async function POST(req: Request) {
     if (!tossResponse.ok) {
       // 이미 승인된 결제인지 확인 (ALREADY_APPROVED)
       if (data?.code === "ALREADY_APPROVED") {
+        const orderRecord = buildOrderRecordFromToss({
+          orderId: validation.orderId,
+          paymentKey: validation.paymentKey,
+          amount: validation.amount,
+          body: (body ?? {}) as Record<string, unknown>,
+          tossData: (data ?? {}) as Record<string, unknown>,
+        });
+        await recordConfirmedPaymentOrder(orderRecord, (data ?? {}) as Record<string, unknown>);
+
         return NextResponse.json({
           success: true,
           alreadyApproved: true,
@@ -53,8 +116,22 @@ export async function POST(req: Request) {
       );
     }
 
+    // [선택지 C: 결제 장부 자동 기록] 토스 승인 즉시 서버 DB 및 스냅샷 백업 장부에 영구 기록
+    const orderRecord = buildOrderRecordFromToss({
+      orderId: validation.orderId,
+      paymentKey: validation.paymentKey,
+      amount: validation.amount,
+      body: (body ?? {}) as Record<string, unknown>,
+      tossData: (data ?? {}) as Record<string, unknown>,
+    });
+    const ledgerResult = await recordConfirmedPaymentOrder(
+      orderRecord,
+      (data ?? {}) as Record<string, unknown>
+    );
+
     return NextResponse.json({
       success: true,
+      ledgerSaved: ledgerResult.savedToTable || ledgerResult.savedToSnapshotFallback,
       payment: data,
     });
   } catch (error) {

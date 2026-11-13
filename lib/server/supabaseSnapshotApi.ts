@@ -16,7 +16,12 @@ import {
 import { fetchSupabaseAuthUserCached, fetchRoleBindingCached } from "@/lib/server/authCache";
 import { logSecurityEvent } from "@/lib/security/securityLog";
 import { logPerf } from "@/lib/server/performanceLog";
-import { isSharedStateKvKey } from "@/lib/storage/sharedStateKeys";
+import {
+  isSessionProgressStateKey,
+  isSharedStateKvKey,
+  SHARED_META_MAP_PREFIX,
+} from "@/lib/storage/sharedStateKeys";
+import { isTeacherAllowedStateKvKey } from "@/lib/server/snapshotFilter";
 import type { Session, Student, Teacher } from "@/lib/types/index";
 import { executeDualWriteSync } from "@/lib/server/dualWriteSync";
 
@@ -137,7 +142,9 @@ function buildHeaders(args: {
   preferMerge?: boolean;
   useServiceRole?: boolean;
 }): Record<string, string> {
-  const useServiceRole = Boolean(args.useServiceRole && args.cfg.serviceRoleKey);
+  // 서버 내부에서 이미 resolveViewerContext로 사용자 인증/권한을 검증했으므로
+  // DB RLS 잠금과 호환되도록 serviceRoleKey가 있으면 기본 활용합니다.
+  const useServiceRole = Boolean((args.useServiceRole ?? true) && args.cfg.serviceRoleKey);
   const apikey = useServiceRole ? args.cfg.serviceRoleKey! : args.cfg.anonKey;
   const bearer = useServiceRole ? args.cfg.serviceRoleKey! : args.accessToken;
   const headers: Record<string, string> = {
@@ -495,6 +502,16 @@ export async function readSnapshotStateValue(request: NextRequest, key: string):
   return viewer.snapshot.stateKv[key] ?? null;
 }
 
+export function isStudentAllowedStateKvKey(key: string, studentToken: string | null | undefined): boolean {
+  const token = (studentToken ?? "").trim();
+  if (!token || !key) return false;
+  if (key === `${SHARED_META_MAP_PREFIX}${token}`) return true;
+  if (key.startsWith(`mk3:${token}:session:`) && isSessionProgressStateKey(key)) {
+    return true;
+  }
+  return false;
+}
+
 export async function upsertSnapshotPatch(args: {
   request: NextRequest;
   patch: SnapshotPatch;
@@ -532,7 +549,7 @@ export async function upsertSnapshotPatch(args: {
   const hasDropStateKeys = Object.prototype.hasOwnProperty.call(args.patch, "dropStateKeys");
   const touchesStateKv = hasStateKv || hasDropStateKeys;
 
-  // [Phase 23] 서버 사이드 권한/무결성 검증
+  // [Phase 23] 서버 사이드 권한/무결성 검증 (DB 쓰기/RPC 실행 전에 최우선 검증)
   // 1. 관리자만 선생님 정보를 수정할 수 있음
   if (hasTeachers && viewer.role !== "admin") {
     logGuard("UNAUTHORIZED_TEACHER_EDIT");
@@ -541,44 +558,52 @@ export async function upsertSnapshotPatch(args: {
 
   // 2. 학생 계정의 제약 사항
   if (viewer.role === "student") {
-    if (hasStudents) {
-      // 학생은 본인의 정보만 수정 가능하며, 특정 필드(결제 횟수 등)는 수정 불가
-      const patchStudents = args.patch.students ?? [];
-      const isTryingToEditOthers = patchStudents.some(s => s.id !== viewer.studentId);
-      if (isTryingToEditOthers) {
-        logGuard("UNAUTHORIZED_STUDENT_EDIT_TARGET", {
-          patchStudentCount: patchStudents.length,
-          viewerStudentId: viewer.studentId,
-        });
-        throw new Error("unauthorized_student_edit_target");
-      }
+    const currentStudent = viewer.snapshot.students.find((s) => s.id === viewer.studentId);
+    const studentToken = currentStudent?.token?.trim() ?? "";
 
-      // 중요 필드(planCount, paymentHistory) 조작 방지
-      // (기존 스냅샷 데이터를 가져와서 학생이 보낸 패치와 대조)
-      const currentStudent = viewer.snapshot.students.find(s => s.id === viewer.studentId);
-      if (currentStudent) {
-        for (const s of patchStudents) {
-          if (s.planCount !== currentStudent.planCount || 
-              JSON.stringify(s.paymentHistory) !== JSON.stringify(currentStudent.paymentHistory)) {
-             logGuard("UNAUTHORIZED_STUDENT_FIELD_MANIPULATION", {
-               studentId: s.id,
-             });
-             throw new Error("unauthorized_field_manipulation");
-          }
+    // 2-1. 자신의 학생 정보만 수정 가능 (전체 학생 명단 수정 시도 차단)
+    if (hasStudents) {
+      if (!args.patch.students || args.patch.students.length > 1 || args.patch.students[0]?.id !== viewer.studentId) {
+        logGuard("UNAUTHORIZED_STUDENT_DATA_MANIPULATION");
+        throw new Error("unauthorized_student_data_manipulation");
+      }
+      // 2-2. 민감 정보(결제, 횟수 등) 수정 시도 차단
+      const patchStudent = args.patch.students[0];
+      if (currentStudent && patchStudent) {
+        if (
+          patchStudent.planCount !== currentStudent.planCount ||
+          JSON.stringify(patchStudent.paymentHistory) !== JSON.stringify(currentStudent.paymentHistory)
+        ) {
+          logGuard("UNAUTHORIZED_FINANCIAL_DATA_MANIPULATION", {
+            studentId: patchStudent.id,
+          });
+          throw new Error("unauthorized_financial_data_manipulation");
         }
       }
     }
+    // 2-3. 수업(sessions) 및 선생님 정보 수정 차단
+    if (hasSessions || hasTeachers) {
+      logGuard("UNAUTHORIZED_SESSION_OR_TEACHER_MANIPULATION", {
+        hasSessions,
+        hasTeachers,
+      });
+      throw new Error("unauthorized_session_or_teacher_manipulation");
+    }
+    // 2-4. 학습 상태(stateKv)는 오직 본인 토큰(mk3:{token}:session:..., tutorweb_metaMap_v1:{token})만 허용하고
+    //      타 학생의 학습 상태나 전역 강의 트리(mk3:lectureTree 등) 수정은 철통 차단
+    if (touchesStateKv) {
+      const stateKvKeys = Object.keys(args.patch.stateKv ?? {});
+      const dropKeys = (args.patch.dropStateKeys ?? []).map((k) => k.trim()).filter(Boolean);
+      const allTouchedKeys = [...stateKvKeys, ...dropKeys];
+      const hasForbiddenKey =
+        !studentToken || allTouchedKeys.some((k) => !isStudentAllowedStateKvKey(k, studentToken));
 
-    if (hasSessions) {
-      // 학생은 본인의 세션만 업데이트 가능
-      const patchSessions = args.patch.sessions ?? [];
-      const hasOtherStudentSessions = patchSessions.some(s => s.studentId !== viewer.studentId);
-      if (hasOtherStudentSessions) {
-        logGuard("UNAUTHORIZED_SESSION_EDIT_TARGET", {
-          patchSessionCount: patchSessions.length,
-          viewerStudentId: viewer.studentId,
+      if (hasForbiddenKey) {
+        logGuard("UNAUTHORIZED_METADATA_MANIPULATION", {
+          studentId: viewer.studentId,
+          touchedKeysCount: allTouchedKeys.length,
         });
-        throw new Error("unauthorized_session_edit_target");
+        throw new Error("unauthorized_metadata_manipulation");
       }
     }
   }
@@ -587,41 +612,96 @@ export async function upsertSnapshotPatch(args: {
     const patchStudents = args.patch.students ?? [];
     const currentStudents = viewer.snapshot.students;
     if (currentStudents.length > 5 && patchStudents.length < currentStudents.length * 0.5) {
-       logGuard("MASS_DELETION_BLOCKED", {
-         beforeCount: currentStudents.length,
-         afterCount: patchStudents.length,
-       });
-       throw new Error("server_blocked_mass_deletion");
+      logGuard("MASS_DELETION_BLOCKED", {
+        beforeCount: currentStudents.length,
+        afterCount: patchStudents.length,
+      });
+      throw new Error("server_blocked_mass_deletion");
     }
   }
 
   let mergedStateKv: Record<string, unknown> | undefined;
+  let stateKvUpdatedAtomically = false;
+
   if (touchesStateKv) {
-    const currentResult = await fetchSnapshotRow({
-      cfg,
-      accessToken: viewer.accessToken,
-      select: ["state_kv"],
-      useServiceRole: viewer.isLocalDevAdmin,
-    });
-    const currentRaw =
-      currentResult.row?.state_kv && typeof currentResult.row.state_kv === "object"
-        ? { ...currentResult.row.state_kv }
-        : {};
-    // [최적화] state_kv 내부에 누적된 레거시 일일 백업(mk3:backup:...)을 자동 제거하여 DB 페이로드 비대화 차단
-    for (const key of Object.keys(currentRaw)) {
-      if (key.startsWith("mk3:backup:")) {
-        delete currentRaw[key];
-      }
-    }
-    const dropStateKeys = Array.from(
+    // [선택지 B 보안] 선생님이 다른 선생님 담당 학생의 학습 진도/출결 키를 덮어쓰지 않도록 필터링
+    const rawPatchKv = toStateKv(args.patch.stateKv ?? {});
+    const rawDropKeys = Array.from(
       new Set((args.patch.dropStateKeys ?? []).map((key) => key.trim()).filter((key) => isSharedStateKvKey(key)))
     );
-    mergedStateKv = {
-      ...currentRaw,
-      ...toStateKv(args.patch.stateKv ?? {}),
-    };
-    for (const key of dropStateKeys) {
-      delete mergedStateKv[key];
+
+    let sanitizedPatchKv = rawPatchKv;
+    let sanitizedDropKeys = rawDropKeys;
+
+    if (viewer.role === "teacher" && viewer.teacherId) {
+      const myStudentTokens = new Set(
+        viewer.snapshot.students
+          .filter((s) => s.teacherId === viewer.teacherId)
+          .map((s) => (s.token ?? "").trim())
+          .filter(Boolean)
+      );
+      sanitizedPatchKv = {};
+      for (const [k, v] of Object.entries(rawPatchKv)) {
+        if (isTeacherAllowedStateKvKey(k, myStudentTokens)) {
+          sanitizedPatchKv[k] = v;
+        }
+      }
+      sanitizedDropKeys = rawDropKeys.filter((k) => isTeacherAllowedStateKvKey(k, myStudentTokens));
+    }
+
+    // [선택지 B 핵심] DB 내부 원자적(Atomic) 부분 병합 RPC 우선 시도 (동시 덮어쓰기 Lost Update 원천 차단)
+    try {
+      const rpcUrl = new URL("/rest/v1/rpc/patch_snapshot_state_kv", cfg.url);
+      const rpcRes = await fetch(rpcUrl.toString(), {
+        method: "POST",
+        headers: buildHeaders({
+          cfg,
+          accessToken: viewer.accessToken,
+          json: true,
+          useServiceRole: viewer.isLocalDevAdmin,
+        }),
+        body: JSON.stringify({
+          p_snapshot_id: SNAPSHOT_KEY,
+          p_patch: sanitizedPatchKv,
+          p_drop_keys: sanitizedDropKeys,
+        }),
+        cache: "no-store",
+      });
+
+      if (rpcRes.ok) {
+        const rpcData = await rpcRes.json();
+        if (rpcData === true) {
+          stateKvUpdatedAtomically = true;
+        }
+      }
+    } catch {
+      // RPC 함수가 아직 생성되지 않았거나 일시 오류 시 아래 기존 병합(Fallback)으로 안전하게 이어짐
+    }
+
+    if (!stateKvUpdatedAtomically) {
+      const currentResult = await fetchSnapshotRow({
+        cfg,
+        accessToken: viewer.accessToken,
+        select: ["state_kv"],
+        useServiceRole: viewer.isLocalDevAdmin,
+      });
+      const currentRaw =
+        currentResult.row?.state_kv && typeof currentResult.row.state_kv === "object"
+          ? { ...currentResult.row.state_kv }
+          : {};
+      // [최적화] state_kv 내부에 누적된 레거시 일일 백업(mk3:backup:...)을 자동 제거하여 DB 페이로드 비대화 차단
+      for (const key of Object.keys(currentRaw)) {
+        if (key.startsWith("mk3:backup:")) {
+          delete currentRaw[key];
+        }
+      }
+      mergedStateKv = {
+        ...currentRaw,
+        ...sanitizedPatchKv,
+      };
+      for (const key of sanitizedDropKeys) {
+        delete mergedStateKv[key];
+      }
     }
   }
 
@@ -672,46 +752,17 @@ export async function upsertSnapshotPatch(args: {
     }
   }
 
-  // [Phase 23 보안] 권한별 쓰기 제한
-  if (viewer.role === "student") {
-    // 1. 자신의 학생 정보만 수정 가능 (전체 학생 명단 수정 시도 차단)
-    if (hasStudents) {
-      if (!args.patch.students || args.patch.students.length > 1 || args.patch.students[0]?.id !== viewer.studentId) {
-        logGuard("UNAUTHORIZED_STUDENT_DATA_MANIPULATION");
-        throw new Error("unauthorized_student_data_manipulation");
-      }
-      // 2. 민감 정보(결제, 횟수 등) 수정 시도 차단
-      const currentStudent = viewer.snapshot.students.find(s => s.id === viewer.studentId);
-      const patchStudent = args.patch.students[0];
-      if (currentStudent && patchStudent) {
-        if (patchStudent.planCount !== currentStudent.planCount || 
-            JSON.stringify(patchStudent.paymentHistory) !== JSON.stringify(currentStudent.paymentHistory)) {
-          logGuard("UNAUTHORIZED_FINANCIAL_DATA_MANIPULATION", {
-            studentId: patchStudent.id,
-          });
-          throw new Error("unauthorized_financial_data_manipulation");
-        }
-      }
-    }
-    // 3. 수업(sessions) 및 선생님 정보 수정 차단
-    if (hasSessions || hasTeachers) {
-      logGuard("UNAUTHORIZED_SESSION_OR_TEACHER_MANIPULATION", {
-        hasSessions,
-        hasTeachers,
-      });
-      throw new Error("unauthorized_session_or_teacher_manipulation");
-    }
-    // 4. 전역 설정(stateKv) 수정 차단
-    if (touchesStateKv) {
-       logGuard("UNAUTHORIZED_METADATA_MANIPULATION");
-       throw new Error("unauthorized_metadata_manipulation");
-    }
-  }
-
   if (hasTeachers) payload.teachers = args.patch.teachers ?? [];
   if (hasStudents) payload.students = finalStudentsPayload;
   if (hasSessions) payload.sessions = finalSessionsPayload;
-  if (touchesStateKv) payload.state_kv = mergedStateKv ?? {};
+  if (touchesStateKv && !stateKvUpdatedAtomically) payload.state_kv = mergedStateKv ?? {};
+
+  // state_kv만 패치하는 요청이었고 이미 DB 원자적 RPC로 완료되었다면, 불필요한 전체 행 Upsert를 생략합니다.
+  const hasRemainingColumns =
+    hasTeachers || hasStudents || hasSessions || (touchesStateKv && !stateKvUpdatedAtomically);
+  if (!hasRemainingColumns) {
+    return { sessionsSynced: true, stateKvSynced: true };
+  }
 
   const requestUrl = new URL("/rest/v1/app_state_snapshots", cfg.url);
   requestUrl.searchParams.set("on_conflict", "id");
@@ -759,7 +810,7 @@ export async function upsertSnapshotPatch(args: {
   if (hasTeachers) fallbackPayload.teachers = args.patch.teachers ?? [];
   if (hasStudents) fallbackPayload.students = finalStudentsPayload;
   if (hasSessions && !sessionsMissing) fallbackPayload.sessions = finalSessionsPayload;
-  if (touchesStateKv && !stateKvMissing) fallbackPayload.state_kv = mergedStateKv ?? {};
+  if (touchesStateKv && !stateKvUpdatedAtomically && !stateKvMissing) fallbackPayload.state_kv = mergedStateKv ?? {};
 
   const fallback = await execute(fallbackPayload);
   if (!fallback.ok) {

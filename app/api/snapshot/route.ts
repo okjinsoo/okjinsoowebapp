@@ -2,34 +2,9 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
 import { resolveViewerContext, upsertSnapshotPatch } from "@/lib/server/supabaseSnapshotApi";
+import { filterStateKvForViewer } from "@/lib/server/snapshotFilter";
 import { logPerf, requestIdFromHeaders } from "@/lib/server/performanceLog";
-import { isSharedStateKvKey, SHARED_META_MAP_PREFIX } from "@/lib/storage/sharedStateKeys";
 import type { Session, Student, Teacher } from "@/lib/types/index";
-
-function filterStateKvForViewer(
-  stateKv: Record<string, string>,
-  viewer: { role: string; studentId: string | null; studentToken?: string | null }
-): Record<string, string> {
-  const out: Record<string, string> = {};
-  const isStudent = viewer.role === "student" && Boolean(viewer.studentToken);
-  const studentTokenPrefix = isStudent ? `mk3:${viewer.studentToken}:` : "";
-  const studentMetaKey = isStudent ? `${SHARED_META_MAP_PREFIX}${viewer.studentToken}` : "";
-
-  for (const [k, v] of Object.entries(stateKv)) {
-    if (!isSharedStateKvKey(k)) continue; // [다이어트 핵심] mk3:backup: 등 백업 키 및 불필요한 키 전송 차단
-
-    if (isStudent) {
-      // 학생 계정이면 본인 데이터만 선별
-      if (k.startsWith(SHARED_META_MAP_PREFIX) && k !== studentMetaKey) continue;
-      if (k.startsWith("mk3:") && !k.startsWith("mk3:lectureTree") && !k.startsWith("mk3:driveRootId")) {
-        if (!k.startsWith(studentTokenPrefix)) continue;
-      }
-    }
-
-    out[k] = v;
-  }
-  return out;
-}
 
 export async function GET(request: NextRequest) {
   const startMs = Date.now();
@@ -107,24 +82,42 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // [V18 최적화] 학생 계정은 본인 데이터만 전송하여 패킷 크기 절감
-    const sessions = viewer.role === "student" && viewer.studentId
-      ? viewer.snapshot.sessions.filter(s => s.studentId === viewer.studentId)
-      : viewer.snapshot.sessions;
+    // [V18 & 선택지 B 최적화] 학생은 본인 데이터만, 선생님은 본인 담당 학생 데이터만 전송하여 패킷 크기 절감
+    const students =
+      viewer.role === "student" && viewer.studentId
+        ? viewer.snapshot.students.filter((s) => s.id === viewer.studentId)
+        : viewer.role === "teacher" && viewer.teacherId
+          ? viewer.snapshot.students.filter((s) => s.teacherId === viewer.teacherId)
+          : viewer.snapshot.students;
 
-    const students = viewer.role === "student" && viewer.studentId
-      ? viewer.snapshot.students.filter(s => s.id === viewer.studentId)
-      : viewer.snapshot.students;
+    const allowedStudentIds =
+      viewer.role === "teacher" && viewer.teacherId
+        ? new Set(students.map((s) => s.id))
+        : null;
 
-    const studentToken = viewer.role === "student" && viewer.studentId
-      ? (viewer.snapshot.students.find(s => s.id === viewer.studentId)?.token ?? null)
-      : null;
+    const sessions =
+      viewer.role === "student" && viewer.studentId
+        ? viewer.snapshot.sessions.filter((s) => s.studentId === viewer.studentId)
+        : allowedStudentIds
+          ? viewer.snapshot.sessions.filter((s) => allowedStudentIds.has(s.studentId))
+          : viewer.snapshot.sessions;
 
-    // [옵션 1: 스냅샷 다이어트] 불필요한 백업 키 제거 및 페이로드 경량화
+    const studentToken =
+      viewer.role === "student" && viewer.studentId
+        ? (viewer.snapshot.students.find((s) => s.id === viewer.studentId)?.token ?? null)
+        : null;
+
+    const teacherStudentTokens =
+      viewer.role === "teacher" && viewer.teacherId
+        ? new Set(students.map((s) => (s.token ?? "").trim()).filter(Boolean))
+        : undefined;
+
+    // [옵션 1 & 선택지 B: 스냅샷 다이어트] 불필요한 백업 키 및 타 담당 학생 키 제거
     const stateKv = filterStateKvForViewer(viewer.snapshot.stateKv, {
       role: viewer.role,
       studentId: viewer.studentId,
       studentToken,
+      teacherStudentTokens,
     });
 
     logPerf({

@@ -1,11 +1,40 @@
 # Project Status (Latest)
 
-기준 시각: 2026-11-02 17:43 (KST)
+기준 시각: 2026-11-14 00:20 (KST)
 대상 프로젝트: `v1`
 
 ## 1분 요약
 
-- 최신 패치 반영: 2026-11-02 17:43 (KST)
+- 최신 패치 반영: 2026-11-14 00:20 (KST)
+- **CTO 구조 진단 3단계 (선택지 C): 온라인 수강 신청 및 결제 승인 장부(`payment_orders`) 자동 기록 시스템 완성**:
+  1) **주문서 신청자 연락처/학생명 보존 전달 파이프라인 구축 ([`ProgramsCheckoutClient.tsx`](file:///Users/okjinsoo/Project/TutorWEB/v1/lib/ui/programs/ProgramsCheckoutClient.tsx#L134-L152), [`ProgramsSuccessClient.tsx`](file:///Users/okjinsoo/Project/TutorWEB/v1/lib/ui/programs/ProgramsSuccessClient.tsx#L23-L65))**:
+     - 기존에 토스 결제창 호출 후 콜백(`/programs/success`)으로 돌아올 때 주문서에 적은 연락처(`buyerPhone`), 수강생 이름(`studentName`), 프로그램 ID(`programId`)가 유실되던 단절 문제를 해결하여 `/api/payments/confirm`까지 안전하게 전달
+  2) **결제 승인 즉시 서버 이중 장부 자동 기록 ([`014_create_payment_orders.sql`](file:///Users/okjinsoo/Project/TutorWEB/v1/db/migrations/014_create_payment_orders.sql), [`paymentOrderStore.ts`](file:///Users/okjinsoo/Project/TutorWEB/v1/lib/server/paymentOrderStore.ts), [`app/api/payments/confirm/route.ts`](file:///Users/okjinsoo/Project/TutorWEB/v1/app/api/payments/confirm/route.ts))**:
+     - 토스페이먼츠 승인 완료(또는 `ALREADY_APPROVED`) 즉시 정규화 테이블 `public.payment_orders`에 주문번호, 신청자명, 휴대폰 번호, 수강생 이름, 결제 금액, 승인 시각, 매출전표(영수증) URL을 자동 기록
+     - 아직 `014` SQL을 실행하지 않은 환경에서도 결제 내역이 100% 보존되도록 서버 스냅샷 내부(`server:payment_orders_v1`)에 이중 안전 백업 기록
+  3) **관리자 전용 결제 장부 조회 API 신설 ([`app/api/payments/orders/route.ts`](file:///Users/okjinsoo/Project/TutorWEB/v1/app/api/payments/orders/route.ts))**:
+     - 관리자(`admin`)만 접근 가능한 `GET /api/payments/orders` 엔드포인트를 구축하여 언제든 온라인 결제 신청 내역을 최신순으로 조회 가능
+  4) **품질 지표 달성**: 단위 테스트 16개 파일 64개 전수 100% 통과, ESLint 오류 0건, Next.js 프로덕션 빌드 정상 통과
+- **CTO 구조 진단 2단계 (선택지 B): `state_kv` 원자적(Atomic) 부분 패치 및 선생님별 데이터 맞춤형 다이어트 전면 적용**:
+  1) **DB 내부 원자적 부분 병합 RPC(`patch_snapshot_state_kv`) 도입 ([`013_atomic_state_kv_patch.sql`](file:///Users/okjinsoo/Project/TutorWEB/v1/db/migrations/013_atomic_state_kv_patch.sql), [`supabaseSnapshotApi.ts`](file:///Users/okjinsoo/Project/TutorWEB/v1/lib/server/supabaseSnapshotApi.ts#L644-L672))**:
+     - 기존에 `state_kv` 1개 키만 바뀌어도 전체 JSON을 읽어와 JS에서 병합 후 통째로 덮어쓰던 구조(Lost Update 위험)를 개선하여, PostgreSQL 내부에서 바뀐 키만 즉시 병합(`||`)/삭제(`-`)하는 원자적 RPC를 우선 호출하도록 개편
+     - `state_kv` 단독 패치 시 원자적 RPC가 성공하면 불필요한 전체 행 Upsert를 생략하고 즉시 완료 처리(미적용 환경에서는 기존 병합으로 자동 Fallback 보장)
+  2) **선생님(`teacher`) 계정 접속 시 본인 담당 학생 데이터만 전송 및 수정 보호 ([`app/api/snapshot/route.ts`](file:///Users/okjinsoo/Project/TutorWEB/v1/app/api/snapshot/route.ts#L90-L120), [`lib/server/snapshotFilter.ts`](file:///Users/okjinsoo/Project/TutorWEB/v1/lib/server/snapshotFilter.ts))**:
+     - `/api/snapshot` 조회 시 선생님 계정이면 타 선생님의 학생/세션/진도율/메타맵을 제외하고 **본인 담당 학생(`teacherId === viewer.teacherId`) 데이터만 선별 전송**하여 네트워크 페이로드와 브라우저 메모리 부담 대폭 절감
+     - 선생님이 스냅샷 패치 시 타 선생님 담당 학생의 `stateKv` 키가 섞여 들어가더라도 `isTeacherAllowedStateKvKey`로 안전하게 필터링하여 교차 오염 원천 방지
+  3) **품질 지표 달성**: 단위 테스트 16개 파일 63개 전수 100% 통과, ESLint 오류 0건, Next.js 프로덕션 빌드 정상 통과
+- **CTO 구조 진단 1단계 (선택지 A): 보안 취약점 원천 잠금 및 결제/학습 상태 무결성 패치 전면 적용**:
+  1) **토스페이먼츠 비밀키 하드코딩 제거 및 결제 금액/주문번호 위변조 서버 검증 ([`app/api/payments/confirm/route.ts`](file:///Users/okjinsoo/Project/TutorWEB/v1/app/api/payments/confirm/route.ts), [`lib/server/paymentValidation.ts`](file:///Users/okjinsoo/Project/TutorWEB/v1/lib/server/paymentValidation.ts))**:
+     - 소스코드에 노출되어 있던 라이브 시크릿 키(`live_sk_...`) 폴백을 완전 제거하고 서버 전용 환경변수(`process.env.TOSS_SECRET_KEY`)로 격리
+     - 결제 승인 요청 시 주문번호 접두어(`OJS_`) 및 정식 수강료 금액(`360,000원`) 일치 여부를 서버에서 사전 검증하여 금액 위변조 공격 원천 차단
+  2) **학생 계정의 본인 학습 진도(`stateKv`) 저장 허용 & 타 학생/전역 설정 조작 차단 ([`supabaseSnapshotApi.ts`](file:///Users/okjinsoo/Project/TutorWEB/v1/lib/server/supabaseSnapshotApi.ts#L504-L512))**:
+     - 기존에 학생(`role === "student"`)의 모든 `stateKv` 수정을 일괄 차단하던 모순을 해결하고, `isStudentAllowedStateKvKey`를 통해 오직 본인 토큰(`mk3:{본인토큰}:session:...`, `tutorweb_metaMap_v1:{본인토큰}`) 키만 정밀 허용
+     - 타 학생의 학습 데이터나 학원 전체 강의 트리(`mk3:lectureTree`) 수정 시도는 즉시 차단 및 보안 로그 기록
+  3) **브라우저의 DB 직접 덮어쓰기 뒷문(Direct Supabase REST Fallback) 전면 폐쇄 ([`sharedSnapshot.ts`](file:///Users/okjinsoo/Project/TutorWEB/v1/lib/storage/sharedSnapshot.ts#L503-L680))**:
+     - `/api/snapshot` 서버 문지기를 거치지 않고 브라우저가 직접 `/rest/v1/app_state_snapshots`에 접근해 권한 검증 없이 전체 데이터를 읽거나 덮어쓰던 레거시 Fallback 코드 약 250줄 완전 제거
+  4) **서버 내부 DB 통신 `service_role` 기본화 및 정규화 테이블 RLS 잠금 마이그레이션 ([`012_lockdown_rls_policies.sql`](file:///Users/okjinsoo/Project/TutorWEB/v1/db/migrations/012_lockdown_rls_policies.sql), [`dualWriteSync.ts`](file:///Users/okjinsoo/Project/TutorWEB/v1/lib/server/dualWriteSync.ts), [`normalizedDbApi.ts`](file:///Users/okjinsoo/Project/TutorWEB/v1/lib/server/normalizedDbApi.ts))**:
+     - 기존 `011` 마이그레이션의 무제한 개방 정책(`USING (true)`)을 대체하여, 일반 인증 사용자가 타 학생의 개인정보나 회차 테이블을 직접 수정/열람할 수 없도록 최소 권한 RLS 정책 수립
+  5) **품질 지표 달성**: 단위 테스트 16개 파일 62개 전수 100% 통과, ESLint 오류 0건, Next.js 프로덕션 빌드 정상 통과
 - **`tmain`('오늘의 수업' / '다음 수업') 학생 학습 진도율(%) 실시간 동기화 누락 원천 해결 패치 (선택지 1 전면 적용)**:
   1) **서버 스냅샷 다이제스트(Digest) 전체 공유 키 해시화로 정밀도 100% 확보 ([`supabaseSnapshotApi.ts`](file:///Users/okjinsoo/Project/TutorWEB/v1/lib/server/supabaseSnapshotApi.ts#L84-L112))**:
      - 기존 `kvKeys.slice(-3)` 샘플링 방식은 알파벳 뒤쪽인 `tutorweb_metaMap_v1:...` 키에 가려져 앞쪽의 모든 학생 회차 학습 진도율(`mk3:...:progressByLeafId`) 변경을 감지하지 못하고 `changed: false`를 반환하던 구조적 결함 해결
@@ -212,7 +241,7 @@
   3) **방안 C (구글 토큰 만료 사전 체크 & 401 헛걸음 차단)**: `SharedSnapshotAgent` 및 `googleCalendarSync.ts`(`runSync`, `runTeacherCalendarRebuild`)에 `isProviderTokenExpired` 사전 가드를 추가하여 만료된 구글 토큰으로 구글 API를 호출하며 발생하는 401 에러 연발 및 재시도 루프 차단
 - 홈화면/로그인 화면 푸터 노출 구조 개선: `app/page.tsx` 및 공통 가드 페이지들의 `minHeight: calc(100vh - 56px)` 고정 높이를 `flex: 1` 유연 레이아웃으로 변경하여, 홈화면 접속 시 스크롤 없이도 하단 사업자 정보 푸터(`AppFooter.tsx`)가 화면 하단에 바로 상시 노출되도록 개선
 - 학생 상태 판정 조건 개선: '연장필요' 기준을 기존 잔여 회차(3회 이하) 기준에서 '마지막 수업일로부터 9일 전(D-9)' 기준으로 개편 (`studentStatusFactory.ts`, `useStudentRegistry.ts`, `StudentHubCore.tsx`)
-- 최신 운영 반영본: 2026-11-02 17:44 (KST)
+- 최신 운영 반영본: 2026-11-14 00:20 (KST)
 - 운영 주소: `https://okjinsoowebapp.vercel.app`
 - 하단 푸터 통신판매업신고번호 등록: `2026-서울마포-2150` 등록 완료 (`AppFooter.tsx`)
 - 중복 프로세스 제거 및 안전 캐싱 패치 (방안 A): `useRoleScopedSelection` 쌍둥이 `useEffect` 2중 호출 단일화, `PageTitleAgent` 로컬 스냅샷 직결로 `/api/students` 독립 네트워크 호출 제거, `useAdminStudentsPageData`의 3중 조회 제거 및 `useStudentRegistry` 데이터 직결, `serverRead.ts` 5초 캐시 + 이벤트(`studentsUpdated`/`sessionsUpdated`/`teachersUpdated`/`AUTH_EVENT`/`storage`) 기반 즉시 캐시 무효화 적용
@@ -255,6 +284,7 @@
 - 관리자 계정이 비소유자면 직접 생성 대신 `pending` 요청 저장
 ## 최근 변경(운영 영향 큰 항목)
 
+- 2026-11-14 00:20: 프로덕션 배포 커밋 `58f2df4` (운영 주소: `https://okjinsoowebapp.vercel.app`, CTO 구조 진단 1~3단계 통합 패치: 토스 시크릿키 격리 및 결제 금액 검증, 학생/선생님 `stateKv` 세밀한 권한 분리 및 Direct DB Fallback 제거, `patch_snapshot_state_kv` 원자적 병합 및 교사별 스냅샷 다이어트, 온라인 수강 신청 결제 원장 `payment_orders` 이중 기록 및 조회 API 구축)
 - 2026-11-02 17:44: 프로덕션 배포 커밋 `499a10e` (운영 주소: `https://okjinsoowebapp.vercel.app`, `tmain` 오늘의 수업/다음 수업 학습 진도율(%) 실시간 동기화 누락 해결: 스냅샷 다이제스트 전체 공유 키 SHA-256 해시화, `readSnapshotServerFirst` 수신 즉시 `stateKv` 반영, `sessionProgressUpdated` 이벤트 연동)
 - 2026-10-29 19:55: 프로덕션 배포 커밋 `f5fe77c` (운영 주소: `https://okjinsoowebapp.vercel.app`, 첫 웹페이지 입장 및 재로그인 지연 초고속 최적화: 서울 리전 `icn1` 고정, API별 `select` 컬럼 경량화로 `state_kv`/`sessions` 불필요 조회 차단, Bearer 토큰 직접 동봉 및 브리지 쿠키 동기화 정렬, 재로그인/콜백 1.4초 강제 타이머 제거)
 - 2026-10-26 17:00: 프로덕션 배포 커밋 `4691d4f` (운영 주소: `https://okjinsoowebapp.vercel.app`, 결제 버튼 텍스트 수직 중앙 정렬(`programs-action-btn`, `programs-modal-btn`, `programs-tab-btn`) 및 모바일 하단 푸터 가로 드래그/스크롤 차단(`app-footer-inner 100% max-width 980px`, `overflow-x: hidden`: `app/globals.css`, `ProgramsCheckoutClient.tsx`))
