@@ -1,7 +1,12 @@
 import { describe, it, expect } from "vitest";
 import { resolveDurationMinForSessionWithMeta, resolveRulesForIndex } from "@/lib/ui/session/sessionCardFactory";
 import { getEffectiveMetaMap, parseMetaMapFromRaw } from "@/lib/ui/session/sessionEffective";
-import type { Student } from "@/lib/types/index";
+import {
+  isGoogleRateLimitError,
+  partitionSyncTargetsForMeetSafety,
+  runWithConcurrencyLimit,
+} from "@/lib/integrations/googleCalendarSync";
+import type { Session, Student } from "@/lib/types/index";
 
 describe("Google Calendar 동기화 시간 및 수업 길이 계산 검증", () => {
   const mockStudent: Student = {
@@ -78,5 +83,53 @@ describe("Google Calendar 동기화 시간 및 수업 길이 계산 검증", () 
       },
     });
     expect(effective[1].overrideDurationMin).toBe(120);
+  });
+
+  it("C단계: 영구 Meet 링크가 없는 학생은 첫 회차만 직렬 seed로 분리하고 나머지는 병렬 대상으로 분류한다", () => {
+    const stuWithoutMeet: Student = { ...mockStudent, id: "st_no_meet", permanentMeetUrl: undefined };
+    const stuWithMeet: Student = {
+      ...mockStudent,
+      id: "st_has_meet",
+      permanentMeetUrl: "https://meet.google.com/aaa-bbbb-ccc",
+    };
+    const studentById = new Map<string, Student>([
+      [stuWithoutMeet.id, stuWithoutMeet],
+      [stuWithMeet.id, stuWithMeet],
+    ]);
+
+    const targets: Session[] = [
+      { id: "a1", studentId: "st_no_meet", index: 1, displayAt: "2026-09-01T08:00:00.000Z", state: "normal" },
+      { id: "a2", studentId: "st_no_meet", index: 2, displayAt: "2026-09-03T08:00:00.000Z", state: "normal" },
+      { id: "b1", studentId: "st_has_meet", index: 1, displayAt: "2026-09-01T09:00:00.000Z", state: "normal" },
+      { id: "b2", studentId: "st_has_meet", index: 2, displayAt: "2026-09-03T09:00:00.000Z", state: "normal" },
+    ];
+
+    const { seedTargets, parallelTargets } = partitionSyncTargetsForMeetSafety(targets, studentById);
+    expect(seedTargets.map((s) => s.id)).toEqual(["a1"]);
+    expect(parallelTargets.map((s) => s.id)).toEqual(["a2", "b1", "b2"]);
+  });
+
+  it("C단계: runWithConcurrencyLimit은 지정된 최대 동시 실행 수(limit)를 초과하지 않고 모든 항목을 처리한다", async () => {
+    let active = 0;
+    let peakActive = 0;
+    const done: number[] = [];
+
+    await runWithConcurrencyLimit([1, 2, 3, 4, 5, 6, 7], 3, async (item) => {
+      active += 1;
+      peakActive = Math.max(peakActive, active);
+      await new Promise((r) => setTimeout(r, 5));
+      done.push(item);
+      active -= 1;
+    });
+
+    expect(peakActive).toBeLessThanOrEqual(3);
+    expect(done.sort((a, b) => a - b)).toEqual([1, 2, 3, 4, 5, 6, 7]);
+  });
+
+  it("C단계: 구글 API 속도 제한(429 및 403 rateLimitExceeded)을 정확히 판별한다", () => {
+    expect(isGoogleRateLimitError(429, "Too Many Requests")).toBe(true);
+    expect(isGoogleRateLimitError(403, "User Rate Limit Exceeded (userRateLimitExceeded)")).toBe(true);
+    expect(isGoogleRateLimitError(403, "Insufficient Permission")).toBe(false);
+    expect(isGoogleRateLimitError(404, "Not Found")).toBe(false);
   });
 });

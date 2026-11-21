@@ -23,7 +23,7 @@ import {
   isSessionProgressEventKeyForToken,
 } from "@/lib/factories/sessionProgressFactory";
 import { todayYmdKST } from "@/lib/utils/date";
-import { syncSessionDisplayAtByToken } from "@/lib/ui/session/syncSessionDisplayAt";
+import { saveSessionAdjustmentByToken } from "@/lib/ui/session/syncSessionDisplayAt";
 import { canEditSessionMeta, type SessionRole } from "@/lib/policies/sessionRolePolicy";
 import { Session, Student } from "@/lib/types/index";
 import { useStudentSessionContext } from "@/lib/hooks/useStudentSessionContext";
@@ -46,19 +46,16 @@ function isNonNegInt(n: unknown): boolean {
   return Number.isFinite(x) && Math.floor(x) === x && x >= 0;
 }
 
+const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
+
 function kstYmdFromISO(iso: string): string | null {
   try {
-    const dt = new Date(iso);
-    if (!Number.isFinite(dt.getTime())) return null;
-    const parts = new Intl.DateTimeFormat("en-CA", {
-      timeZone: "Asia/Seoul",
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-    }).formatToParts(dt);
-    const y = parts.find((p) => p.type === "year")?.value ?? "1970";
-    const m = parts.find((p) => p.type === "month")?.value ?? "01";
-    const d = parts.find((p) => p.type === "day")?.value ?? "01";
+    const ms = new Date(iso).getTime();
+    if (!Number.isFinite(ms)) return null;
+    const kst = new Date(ms + KST_OFFSET_MS);
+    const y = String(kst.getUTCFullYear()).padStart(4, "0");
+    const m = String(kst.getUTCMonth() + 1).padStart(2, "0");
+    const d = String(kst.getUTCDate()).padStart(2, "0");
     return `${y}-${m}-${d}`;
   } catch {
     return null;
@@ -72,25 +69,14 @@ function formatTimeLabel(hour: string, minute: string): string {
 
 function kstTimeRangeFromISO(iso: string, durationMin: number): string | null {
   try {
-    const dt = new Date(iso);
-    if (!Number.isFinite(dt.getTime())) return null;
-    const parts = new Intl.DateTimeFormat("en-CA", {
-      timeZone: "Asia/Seoul",
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: false,
-    }).formatToParts(dt);
-    const hh = parts.find((p) => p.type === "hour")?.value ?? "00";
-    const mm = parts.find((p) => p.type === "minute")?.value ?? "00";
-    const end = new Date(dt.getTime() + Math.max(1, Math.floor(durationMin)) * 60 * 1000);
-    const endParts = new Intl.DateTimeFormat("en-CA", {
-      timeZone: "Asia/Seoul",
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: false,
-    }).formatToParts(end);
-    const ehh = endParts.find((p) => p.type === "hour")?.value ?? "00";
-    const emm = endParts.find((p) => p.type === "minute")?.value ?? "00";
+    const ms = new Date(iso).getTime();
+    if (!Number.isFinite(ms)) return null;
+    const startKst = new Date(ms + KST_OFFSET_MS);
+    const hh = String(startKst.getUTCHours()).padStart(2, "0");
+    const mm = String(startKst.getUTCMinutes()).padStart(2, "0");
+    const endKst = new Date(ms + Math.max(1, Math.floor(durationMin)) * 60 * 1000 + KST_OFFSET_MS);
+    const ehh = String(endKst.getUTCHours()).padStart(2, "0");
+    const emm = String(endKst.getUTCMinutes()).padStart(2, "0");
     return `${formatTimeLabel(hh, mm)} ~ ${formatTimeLabel(ehh, emm)}`;
   } catch {
     return null;
@@ -496,18 +482,27 @@ export default function SessionTopBarCore({ role, token, index }: Props) {
 
     setIsSaving(true);
     try {
-      await upsertMeta(token, index, {
-        status,
-        carry: checkCarry ? Number(draftCarry) : 0,
-        overrideDate: checkOverride ? draftOverrideDate : "",
-        overrideHour: checkOverride ? h : null,
-        overrideMinute: checkOverride ? (draftOverrideMinute ?? 0) : null,
-        overrideDurationMin: durationMin,
-        overrideSource: checkOverride ? "manual" : "",
-        reason: needReasonUI ? draftReason : "",
-        record: needReasonUI ? draftRecord : "",
+      const saved = await saveSessionAdjustmentByToken({
+        token,
+        index,
+        patch: {
+          status,
+          carry: checkCarry ? Number(draftCarry) : 0,
+          overrideDate: checkOverride ? draftOverrideDate : "",
+          overrideHour: checkOverride ? h : null,
+          overrideMinute: checkOverride ? (draftOverrideMinute ?? 0) : null,
+          overrideDurationMin: durationMin,
+          overrideSource: checkOverride ? "manual" : "",
+          reason: needReasonUI ? draftReason : "",
+          record: needReasonUI ? draftRecord : "",
+        },
+        students: snapshotStudents.length > 0 ? snapshotStudents : undefined,
+        sessions: snapshotSessions.length > 0 ? snapshotSessions : undefined,
       });
-      await syncSessionDisplayAtByToken(token);
+      if (!saved.ok) {
+        alert("저장에 실패했습니다. 네트워크 상태를 확인한 뒤 다시 시도해주세요.");
+        return;
+      }
       setOpen(false);
     } finally {
       setIsSaving(false);

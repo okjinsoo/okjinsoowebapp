@@ -1,7 +1,7 @@
 // v1/lib/ui/session/sessionEffective.ts
 "use client";
 
-import { browserStorage } from "@/lib/storage/browserStorage";
+import { BROWSER_STORAGE_EVENT, browserStorage } from "@/lib/storage/browserStorage";
 import { TUTORWEB_EVENTS } from "@/lib/events/tutorwebEvents";
 import { pushSharedSnapshot } from "@/lib/storage/sharedSnapshot";
 import { todayYmdKST } from "@/lib/utils/date";
@@ -104,20 +104,69 @@ export function metaMapKey(token: string) {
   return `tutorweb_metaMap_v1:${token}`;
 }
 
+export function buildUpdatedMetaMap(
+  token: string,
+  index: number,
+  patch: Partial<SessionMeta>
+): {
+  key: string;
+  raw: string;
+  nextMetaMap: Record<number, SessionMeta>;
+  nextMeta: SessionMeta;
+} {
+  const current = readMetaMap(token);
+  const prev = current[index] ?? {};
+  const next: SessionMeta = { ...prev, ...patch };
+
+  next.carry = safeInt(next.carry ?? 0, 0);
+  next.overrideDate = typeof next.overrideDate === "string" ? next.overrideDate : "";
+  next.overrideHour = next.overrideHour === null || next.overrideHour === undefined ? null : safeHour(next.overrideHour);
+  next.overrideMinute =
+    next.overrideMinute === null || next.overrideMinute === undefined ? null : safeMinute(next.overrideMinute);
+  next.overrideDurationMin =
+    next.overrideDurationMin === null || next.overrideDurationMin === undefined
+      ? null
+      : safeDurationMin(next.overrideDurationMin);
+  next.overrideSource = normalizeOverrideSource(next.overrideSource);
+  next.reason = typeof next.reason === "string" ? next.reason : "";
+  next.record = typeof next.record === "string" ? next.record : "";
+
+  const nextMetaMap: Record<number, SessionMeta> = {
+    ...current,
+    [index]: next,
+  };
+  const key = metaMapKey(token);
+  const raw = JSON.stringify(nextMetaMap);
+  return { key, raw, nextMetaMap, nextMeta: next };
+}
+
 async function writeMetaMap(token: string, metaMap: Record<number, SessionMeta>) {
   if (typeof window === "undefined") return;
   const key = metaMapKey(token);
   const raw = JSON.stringify(metaMap);
-  browserStorage.setItem(key, raw);
+  // 직접 pushSharedSnapshot을 호출하므로 setItemSilent를 사용하여 SharedSnapshotAgent의 700ms 뒤 중복 POST를 차단한다.
+  browserStorage.setItemSilent(key, raw);
   window.dispatchEvent(new CustomEvent(TUTORWEB_EVENTS.metaMapUpdated, { detail: { token } }));
+  const queueRetry = () => {
+    window.dispatchEvent(
+      new CustomEvent(BROWSER_STORAGE_EVENT, {
+        detail: { type: "set", key, oldValue: null, newValue: raw },
+      })
+    );
+  };
   try {
-    await pushSharedSnapshot({
+    const result = await pushSharedSnapshot({
       stateKv: {
         [key]: raw,
       },
     });
+    if (!result.stateKvSynced) {
+      // 서버 반영 실패 시에만 SharedSnapshotAgent 재시도 큐에 태운다.
+      queueRetry();
+    }
   } catch (err) {
     console.error("공유 스냅샷 동기화 실패(metaMap):", err);
+    queueRetry();
   }
 }
 
@@ -185,26 +234,9 @@ export function getEffectiveMetaMap(args: {
 }
 
 export async function upsertMeta(token: string, index: number, patch: Partial<SessionMeta>): Promise<SessionMeta> {
-  const current = readMetaMap(token);
-  const prev = current[index] ?? {};
-  const next: SessionMeta = { ...prev, ...patch };
-
-  next.carry = safeInt(next.carry ?? 0, 0);
-  next.overrideDate = typeof next.overrideDate === "string" ? next.overrideDate : "";
-  next.overrideHour = next.overrideHour === null || next.overrideHour === undefined ? null : safeHour(next.overrideHour);
-  next.overrideMinute =
-    next.overrideMinute === null || next.overrideMinute === undefined ? null : safeMinute(next.overrideMinute);
-  next.overrideDurationMin =
-    next.overrideDurationMin === null || next.overrideDurationMin === undefined
-      ? null
-      : safeDurationMin(next.overrideDurationMin);
-  next.overrideSource = normalizeOverrideSource(next.overrideSource);
-  next.reason = typeof next.reason === "string" ? next.reason : "";
-  next.record = typeof next.record === "string" ? next.record : "";
-
-  current[index] = next;
-  await writeMetaMap(token, current);
-  return next;
+  const { nextMetaMap, nextMeta } = buildUpdatedMetaMap(token, index, patch);
+  await writeMetaMap(token, nextMetaMap);
+  return nextMeta;
 }
 
 // -------------------- baseDatesISO --------------------
@@ -214,23 +246,15 @@ export async function upsertMeta(token: string, index: number, patch: Partial<Se
  * - sessions.displayAt 기반은 12개 이후 extrapolation 때문에 월/수/금 패턴이 깨질 수 있어 사용하지 않음
  */
 
+const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
 function weekdayKSTFromYMD(ymd: string): number | null {
-  // ymd = "YYYY-MM-DD"
-  // Intl로 Asia/Seoul 기준 요일을 구한다 (환경 timezone과 무관하게)
+  // ymd = "YYYY-MM-DD" -> T00:00:00Z는 KST 09:00이므로 getUTCDay()가 KST 요일과 정확히 일치한다.
   try {
     const dt = new Date(`${ymd}T00:00:00Z`);
     if (!Number.isFinite(dt.getTime())) return null;
-
-    const wk = new Intl.DateTimeFormat("en-US", {
-      weekday: "short",
-      timeZone: "Asia/Seoul",
-    }).format(dt);
-
-    // Sun Mon Tue Wed Thu Fri Sat
-    const map: Record<string, number> = {
-      Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6,
-    };
-    return map[wk] ?? null;
+    return dt.getUTCDay();
   } catch {
     return null;
   }
@@ -239,20 +263,13 @@ function weekdayKSTFromYMD(ymd: string): number | null {
 function ymdAddDays(ymd: string, days: number): string | null {
   try {
     const dt = new Date(`${ymd}T00:00:00Z`);
-    if (!Number.isFinite(dt.getTime())) return null;
-    const next = new Date(dt.getTime() + days * 24 * 60 * 60 * 1000);
+    const ms = dt.getTime();
+    if (!Number.isFinite(ms)) return null;
+    const next = new Date(ms + days * DAY_MS);
     if (!Number.isFinite(next.getTime())) return null;
-
-    const parts = new Intl.DateTimeFormat("en-CA", {
-      timeZone: "Asia/Seoul",
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-    }).formatToParts(next);
-
-    const y = parts.find((p) => p.type === "year")?.value ?? "1970";
-    const m = parts.find((p) => p.type === "month")?.value ?? "01";
-    const d = parts.find((p) => p.type === "day")?.value ?? "01";
+    const y = String(next.getUTCFullYear()).padStart(4, "0");
+    const m = String(next.getUTCMonth() + 1).padStart(2, "0");
+    const d = String(next.getUTCDate()).padStart(2, "0");
     return `${y}-${m}-${d}`;
   } catch {
     return null;
@@ -287,26 +304,20 @@ function normalizeRules(rules: ScheduleRule[]): ScheduleRule[] {
 export function ymdFromISO_KST(iso: string): string | null {
   try {
     const dt = new Date(iso);
-    if (!Number.isFinite(dt.getTime())) return null;
-    const parts = new Intl.DateTimeFormat("en-CA", {
-      timeZone: "Asia/Seoul",
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-    }).formatToParts(dt);
-    const y = parts.find((p) => p.type === "year")?.value ?? "1970";
-    const m = parts.find((p) => p.type === "month")?.value ?? "01";
-    const d = parts.find((p) => p.type === "day")?.value ?? "01";
+    const ms = dt.getTime();
+    if (!Number.isFinite(ms)) return null;
+    const kst = new Date(ms + KST_OFFSET_MS);
+    const y = String(kst.getUTCFullYear()).padStart(4, "0");
+    const m = String(kst.getUTCMonth() + 1).padStart(2, "0");
+    const d = String(kst.getUTCDate()).padStart(2, "0");
     return `${y}-${m}-${d}`;
   } catch {
     return null;
   }
 }
 
-function buildDatesFromRules(startYMD: string, rules: ScheduleRule[], count: number): string[] {
-  if (!startYMD) return [];
-  if (rules.length === 0) return [];
-  const sorted = normalizeRules(rules);
+function buildDatesFromRules(startYMD: string, sortedRules: ScheduleRule[], count: number): string[] {
+  if (!startYMD || sortedRules.length === 0) return [];
 
   const out: string[] = [];
   let curYMD: string | null = startYMD;
@@ -316,7 +327,7 @@ function buildDatesFromRules(startYMD: string, rules: ScheduleRule[], count: num
 
     const wd = weekdayKSTFromYMD(curYMD);
     if (wd !== null) {
-      for (const r of sorted) {
+      for (const r of sortedRules) {
         if (r.weekday !== wd) continue;
         const iso = isoFromKST(curYMD, r.hour, r.minute);
         if (iso) out.push(iso);
@@ -330,10 +341,8 @@ function buildDatesFromRules(startYMD: string, rules: ScheduleRule[], count: num
   return out;
 }
 
-function buildDatesAfterISO(lastISO: string, rules: ScheduleRule[], count: number): string[] {
-  if (!lastISO) return [];
-  if (rules.length === 0) return [];
-  const sorted = normalizeRules(rules);
+function buildDatesAfterISO(lastISO: string, sortedRules: ScheduleRule[], count: number): string[] {
+  if (!lastISO || sortedRules.length === 0) return [];
   const lastTime = new Date(lastISO).getTime();
   const startYMD = ymdFromISO_KST(lastISO);
   if (!startYMD) return [];
@@ -345,7 +354,7 @@ function buildDatesAfterISO(lastISO: string, rules: ScheduleRule[], count: numbe
     if (!curYMD) break;
     const wd = weekdayKSTFromYMD(curYMD);
     if (wd !== null) {
-      for (const r of sorted) {
+      for (const r of sortedRules) {
         if (r.weekday !== wd) continue;
         const iso = isoFromKST(curYMD, r.hour, r.minute);
         if (iso) {
@@ -401,12 +410,16 @@ function buildDatesSegment(args: {
   return buildDatesAfterISO(boundaryISO, rules, count);
 }
 
-function buildBaseDatesISOFromRules(student: Student, count: number): string[] {
+function buildBaseDatesISOFromRules(
+  student: Student,
+  count: number,
+  metaMapOverride?: Record<number, SessionMeta>
+): string[] {
   const startYMD = student.startDate;
   if (!startYMD || count <= 0) return [];
 
   const rawChanges = Array.isArray(student.scheduleChangeEvents) ? student.scheduleChangeEvents : [];
-  const localMetaMap = readMetaMap(student.token ?? "");
+  const localMetaMap = metaMapOverride ?? readMetaMap(student.token ?? "");
 
   // 결제/회차 추가 이력(paymentHistory)의 시작 회차별 시작일 매핑
   const rawPayments = Array.isArray(student.paymentHistory) ? student.paymentHistory : [];
@@ -422,36 +435,30 @@ function buildBaseDatesISOFromRules(student: Student, count: number): string[] {
     }
   }
 
-  // 규칙 조회를 위한 도우미 함수 (특정 베이스 인덱스가 어떤 규칙을 따르는지 결정)
-  const getRulesForBaseIdx = (baseIdx: number) => {
-    // 1. 역순으로 변화 이벤트를 확인하여 해당 인덱스에 걸리는 최신 규칙을 찾음
-    // baseIdx는 0-based 포인트이므로, 실제 세션 index와 비교할 때는 index = baseIdx + 1 - carry 가 필요하지만,
-    // 여기서는 단순히 '법칙이 적용되는 시점'인 baseStartIndex와 비교합니다.
-    
-    // changes를 미리 가공
-    const changes = rawChanges
-      .filter((c) => Number.isFinite(c.startIndex) && c.startIndex >= 1)
-      .map((c) => {
-        // 법칙이 바뀌는 시점은 그 '회차'가 앉을 '의자' 번호입니다.
-        // 이때 해당 회차 자체의 이월은 의자 번호를 결정하는 변수이지, 법칙의 경계를 가르는 변수가 아니어야 합니다.
-        // 따라서 이전 회차까지의 이월만 합산합니다.
-        const carryOffset = carrySumUntil(localMetaMap, c.startIndex - 1);
-        return {
-          ...c,
-          baseStartIndex: c.startIndex + carryOffset,
-          rules: normalizeRules(c.newRules ?? []),
-        };
-      })
-      .sort((a, b) => b.baseStartIndex - a.baseStartIndex); // 큰 인덱스 우선
+  // [최적화] 기본 규칙과 변경 이벤트를 루프 밖에서 단 1회만 정규화·정렬해 재사용한다.
+  const defaultRules = normalizeRules(student.scheduleRules ?? []);
+  const preparedChanges = rawChanges
+    .filter((c) => Number.isFinite(c.startIndex) && c.startIndex >= 1)
+    .map((c) => {
+      // 법칙이 바뀌는 시점은 그 '회차'가 앉을 '의자' 번호이므로 이전 회차까지의 이월만 합산한다.
+      const carryOffset = carrySumUntil(localMetaMap, c.startIndex - 1);
+      return {
+        baseStartIndex: c.startIndex + carryOffset,
+        rules: normalizeRules(c.newRules ?? []),
+        minStartYMD: normalizeYmd(c.startDate),
+      };
+    })
+    .sort((a, b) => b.baseStartIndex - a.baseStartIndex); // 큰 인덱스 우선
 
+  const getRulesForBaseIdx = (baseIdx: number) => {
     const paymentMinYMD = paymentStartMap.get(baseIdx + 1) ?? null;
 
-    for (const ch of changes) {
+    for (const ch of preparedChanges) {
       if (baseIdx + 1 >= ch.baseStartIndex) {
-        return { rules: ch.rules, minStartYMD: paymentMinYMD || normalizeYmd(ch.startDate) };
+        return { rules: ch.rules, minStartYMD: paymentMinYMD || ch.minStartYMD };
       }
     }
-    return { rules: normalizeRules(student.scheduleRules ?? []), minStartYMD: paymentMinYMD };
+    return { rules: defaultRules, minStartYMD: paymentMinYMD };
   };
 
   const out: string[] = [];
@@ -483,10 +490,14 @@ function buildBaseDatesISOFromRules(student: Student, count: number): string[] {
  * ✅ 이제 baseDatesISO는 sessions.displayAt이 아니라 규칙 기반으로 만든다.
  * - planCount만 생성하면 carry 때문에 더 뒤가 필요할 수 있으니, "여유분"을 함께 만든다.
  */
-export function buildBaseDatesISO(student: Student, extra = 60): string[] {
+export function buildBaseDatesISO(
+  student: Student,
+  extra = 60,
+  metaMapOverride?: Record<number, SessionMeta>
+): string[] {
   const pc = Math.max(0, safeInt(student.planCount ?? 0, 0));
   const need = pc + Math.max(0, extra);
-  return buildBaseDatesISOFromRules(student, need);
+  return buildBaseDatesISOFromRules(student, need, metaMapOverride);
 }
 
 function toMeta(v: unknown): Partial<SessionMeta> | null {

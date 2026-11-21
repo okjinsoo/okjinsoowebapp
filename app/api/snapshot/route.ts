@@ -178,6 +178,8 @@ export async function POST(request: NextRequest) {
       teachers?: Teacher[];
       students?: Student[];
       sessions?: Session[];
+      studentsMergeMode?: "replace" | "merge";
+      sessionsMergeMode?: "replace" | "merge";
       stateKv?: Record<string, string>;
       dropStateKeys?: string[];
     };
@@ -188,6 +190,12 @@ export async function POST(request: NextRequest) {
         ...(Object.prototype.hasOwnProperty.call(body ?? {}, "teachers") ? { teachers: body.teachers } : {}),
         ...(Object.prototype.hasOwnProperty.call(body ?? {}, "students") ? { students: body.students } : {}),
         ...(Object.prototype.hasOwnProperty.call(body ?? {}, "sessions") ? { sessions: body.sessions } : {}),
+        ...(body?.studentsMergeMode === "merge" || body?.studentsMergeMode === "replace"
+          ? { studentsMergeMode: body.studentsMergeMode }
+          : {}),
+        ...(body?.sessionsMergeMode === "merge" || body?.sessionsMergeMode === "replace"
+          ? { sessionsMergeMode: body.sessionsMergeMode }
+          : {}),
         ...(Object.prototype.hasOwnProperty.call(body ?? {}, "stateKv") ? { stateKv: body.stateKv } : {}),
         ...(Object.prototype.hasOwnProperty.call(body ?? {}, "dropStateKeys")
           ? { dropStateKeys: body.dropStateKeys }

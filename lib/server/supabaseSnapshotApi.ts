@@ -23,7 +23,7 @@ import {
 } from "@/lib/storage/sharedStateKeys";
 import { isTeacherAllowedStateKvKey } from "@/lib/server/snapshotFilter";
 import type { Session, Student, Teacher } from "@/lib/types/index";
-import { executeDualWriteSync } from "@/lib/server/dualWriteSync";
+import { computeChangedRowsById, executeDualWriteSync } from "@/lib/server/dualWriteSync";
 
 const SNAPSHOT_KEY = "main";
 export function getAdminEmails(): Set<string> {
@@ -74,13 +74,100 @@ export type ViewerContext = {
   isLocalDevAdmin: boolean;
 };
 
+export type SnapshotMergeMode = "replace" | "merge";
+
 export type SnapshotPatch = {
   teachers?: Teacher[];
   students?: Student[];
   sessions?: Session[];
+  studentsMergeMode?: SnapshotMergeMode;
+  sessionsMergeMode?: SnapshotMergeMode;
   stateKv?: Record<string, string>;
   dropStateKeys?: string[];
 };
+
+/**
+ * 부분 병합 모드("merge")에서 기존 배열을 보존하면서 패치 항목만 ID 기준으로 안전 병합합니다.
+ * - 관리자/선생님이 동시에 서로 다른 학생을 수정할 때 발생하는 덮어쓰기(Lost Update)를 원천 차단합니다.
+ */
+export function mergeSnapshotEntitiesById<T extends { id: string }>(
+  existing: T[],
+  patchItems: T[]
+): T[] {
+  const patchById = new Map<string, T>();
+  for (const item of patchItems) {
+    if (!item?.id) continue;
+    patchById.set(item.id, item);
+  }
+  if (patchById.size === 0) return existing;
+
+  const merged: T[] = [];
+  const seen = new Set<string>();
+  for (const row of existing) {
+    if (!row?.id) continue;
+    const patched = patchById.get(row.id);
+    if (patched) {
+      merged.push(patched);
+      seen.add(row.id);
+    } else {
+      merged.push(row);
+    }
+  }
+  for (const item of patchItems) {
+    if (!item?.id || seen.has(item.id)) continue;
+    merged.push(item);
+    seen.add(item.id);
+  }
+  return merged;
+}
+
+/**
+ * 선생님이 studentsMergeMode="merge"로 학생을 패치할 때 보안 경계를 강제합니다.
+ * - 이미 DB에 존재하는 학생 ID는 반드시 원래부터 본인 담당인 학생만 수정 허용(타 선생님 학생 탈취 차단)
+ * - DB에 없는 신규 학생 ID는 teacherId가 본인인 경우만 허용
+ */
+export function filterTeacherAllowedStudentMergePatch(
+  existingStudents: Student[],
+  patchStudents: Student[],
+  teacherId: string
+): Student[] {
+  const existingById = new Map<string, Student>();
+  for (const s of existingStudents) {
+    if (s?.id) existingById.set(s.id, s);
+  }
+  return patchStudents.filter((patch) => {
+    if (!patch?.id) return false;
+    const existing = existingById.get(patch.id);
+    if (existing) {
+      return existing.teacherId === teacherId;
+    }
+    return patch.teacherId === teacherId;
+  });
+}
+
+/**
+ * 선생님이 sessionsMergeMode="merge"로 세션을 패치할 때 보안 경계를 강제합니다.
+ * - 이미 DB에 존재하는 세션 ID는 원래 소속 학생과 패치 대상 학생 모두 본인 담당인 경우만 허용
+ * - 신규 세션 ID는 소속 학생이 본인 담당인 경우만 허용
+ */
+export function filterTeacherAllowedSessionMergePatch(
+  existingSessions: Session[],
+  patchSessions: Session[],
+  myStudentIds: Set<string>
+): Session[] {
+  const existingById = new Map<string, Session>();
+  for (const s of existingSessions) {
+    if (s?.id) existingById.set(s.id, s);
+  }
+  return patchSessions.filter((patch) => {
+    if (!patch?.id || !myStudentIds.has(patch.studentId)) return false;
+    const existing = existingById.get(patch.id);
+    if (existing) {
+      return myStudentIds.has(existing.studentId);
+    }
+    return true;
+  });
+}
 
 /**
  * [V18 최적화] 데이터의 변경 여부를 짧은 문자열로 요약합니다.
@@ -549,7 +636,13 @@ export async function upsertSnapshotPatch(args: {
   const hasDropStateKeys = Object.prototype.hasOwnProperty.call(args.patch, "dropStateKeys");
   const touchesStateKv = hasStateKv || hasDropStateKeys;
 
-  // [Phase 23] 서버 사이드 권한/무결성 검증 (DB 쓰기/RPC 실행 전에 최우선 검증)
+  // [Phase 23 + C-2 보완] 서버 사이드 권한/무결성 검증 (DB 쓰기/RPC 실행 전에 최우선 검증)
+  // 0. 미등록 게스트 계정은 어떤 스냅샷 쓰기도 허용하지 않음
+  if (viewer.role === "guest") {
+    logGuard("UNAUTHORIZED_GUEST_WRITE");
+    throw new Error("unauthorized");
+  }
+
   // 1. 관리자만 선생님 정보를 수정할 수 있음
   if (hasTeachers && viewer.role !== "admin") {
     logGuard("UNAUTHORIZED_TEACHER_EDIT");
@@ -608,7 +701,12 @@ export async function upsertSnapshotPatch(args: {
     }
   }
 
-  if (hasStudents && viewer.role !== "student") {
+  const studentsMergeMode: SnapshotMergeMode =
+    args.patch.studentsMergeMode === "merge" ? "merge" : "replace";
+  const sessionsMergeMode: SnapshotMergeMode =
+    args.patch.sessionsMergeMode === "merge" ? "merge" : "replace";
+
+  if (hasStudents && viewer.role !== "student" && studentsMergeMode !== "merge") {
     const patchStudents = args.patch.students ?? [];
     const currentStudents = viewer.snapshot.students;
     if (currentStudents.length > 5 && patchStudents.length < currentStudents.length * 0.5) {
@@ -650,6 +748,7 @@ export async function upsertSnapshotPatch(args: {
     }
 
     // [선택지 B 핵심] DB 내부 원자적(Atomic) 부분 병합 RPC 우선 시도 (동시 덮어쓰기 Lost Update 원천 차단)
+    // 이미 resolveViewerContext 및 위 RBAC 검증을 통과했으므로 serviceRoleKey가 있으면 기본 활용한다.
     try {
       const rpcUrl = new URL("/rest/v1/rpc/patch_snapshot_state_kv", cfg.url);
       const rpcRes = await fetch(rpcUrl.toString(), {
@@ -658,7 +757,7 @@ export async function upsertSnapshotPatch(args: {
           cfg,
           accessToken: viewer.accessToken,
           json: true,
-          useServiceRole: viewer.isLocalDevAdmin,
+          useServiceRole: true,
         }),
         body: JSON.stringify({
           p_snapshot_id: SNAPSHOT_KEY,
@@ -683,7 +782,7 @@ export async function upsertSnapshotPatch(args: {
         cfg,
         accessToken: viewer.accessToken,
         select: ["state_kv"],
-        useServiceRole: viewer.isLocalDevAdmin,
+        useServiceRole: true,
       });
       const currentRaw =
         currentResult.row?.state_kv && typeof currentResult.row.state_kv === "object"
@@ -724,6 +823,18 @@ export async function upsertSnapshotPatch(args: {
       } else {
         finalStudentsPayload = viewer.snapshot.students;
       }
+    } else if (studentsMergeMode === "merge") {
+      const rawPatchStudents = args.patch.students ?? [];
+      if (viewer.role === "teacher" && viewer.teacherId) {
+        const allowedPatch = filterTeacherAllowedStudentMergePatch(
+          viewer.snapshot.students,
+          rawPatchStudents,
+          viewer.teacherId
+        );
+        finalStudentsPayload = mergeSnapshotEntitiesById(viewer.snapshot.students, allowedPatch);
+      } else {
+        finalStudentsPayload = mergeSnapshotEntitiesById(viewer.snapshot.students, rawPatchStudents);
+      }
     } else if (viewer.role === "teacher" && viewer.teacherId) {
       // [동시성 보호] 선생님은 본인 담당 학생만 수정/저장하므로, 다른 선생님의 학생 정보는 최신 스냅샷에서 보존
       const patchMap = new Map((args.patch.students ?? []).map((s) => [s.id, s]));
@@ -736,19 +847,33 @@ export async function upsertSnapshotPatch(args: {
 
   let finalSessionsPayload: Session[] | undefined;
   if (hasSessions) {
-    if (viewer.role === "teacher" && viewer.teacherId) {
+    const rawPatchSessions = args.patch.sessions ?? [];
+    if (sessionsMergeMode === "merge") {
+      if (viewer.role === "teacher" && viewer.teacherId) {
+        const myStudentIds = new Set(
+          viewer.snapshot.students.filter((s) => s.teacherId === viewer.teacherId).map((s) => s.id)
+        );
+        const allowedPatch = filterTeacherAllowedSessionMergePatch(
+          viewer.snapshot.sessions,
+          rawPatchSessions,
+          myStudentIds
+        );
+        finalSessionsPayload = mergeSnapshotEntitiesById(viewer.snapshot.sessions, allowedPatch);
+      } else {
+        finalSessionsPayload = mergeSnapshotEntitiesById(viewer.snapshot.sessions, rawPatchSessions);
+      }
+    } else if (viewer.role === "teacher" && viewer.teacherId) {
       // [동시성 보호] 본인 담당 학생들의 세션만 패치로 갱신하고, 다른 선생님 담당 학생들의 세션은 최신 스냅샷에서 보존
       const myStudentIds = new Set(
         viewer.snapshot.students.filter((s) => s.teacherId === viewer.teacherId).map((s) => s.id)
       );
-      const patchSessions = args.patch.sessions ?? [];
-      const patchStudentIds = new Set(patchSessions.map((s) => s.studentId));
+      const patchStudentIds = new Set(rawPatchSessions.map((s) => s.studentId));
       const untouchedSessions = viewer.snapshot.sessions.filter(
         (s) => !myStudentIds.has(s.studentId) && !patchStudentIds.has(s.studentId)
       );
-      finalSessionsPayload = [...untouchedSessions, ...patchSessions];
+      finalSessionsPayload = [...untouchedSessions, ...rawPatchSessions];
     } else {
-      finalSessionsPayload = args.patch.sessions ?? [];
+      finalSessionsPayload = rawPatchSessions;
     }
   }
 
@@ -764,6 +889,13 @@ export async function upsertSnapshotPatch(args: {
     return { sessionsSynced: true, stateKvSynced: true };
   }
 
+  const changedStudentsForDualWrite = hasStudents
+    ? computeChangedRowsById(viewer.snapshot.students, finalStudentsPayload)
+    : undefined;
+  const changedSessionsForDualWrite = hasSessions
+    ? computeChangedRowsById(viewer.snapshot.sessions, finalSessionsPayload)
+    : undefined;
+
   const requestUrl = new URL("/rest/v1/app_state_snapshots", cfg.url);
   requestUrl.searchParams.set("on_conflict", "id");
 
@@ -775,7 +907,7 @@ export async function upsertSnapshotPatch(args: {
         accessToken: viewer.accessToken,
         json: true,
         preferMerge: true,
-        useServiceRole: viewer.isLocalDevAdmin,
+        useServiceRole: true,
       }),
       body: JSON.stringify([bodyPayload]),
       cache: "no-store",
@@ -789,14 +921,19 @@ export async function upsertSnapshotPatch(args: {
 
   const first = await execute(payload);
   if (first.ok) {
-    // [Phase 3: 무중단 듀얼 라이트] 정규화 테이블로 비동기 동시 기록
-    void executeDualWriteSync({
-      students: finalStudentsPayload,
-      sessions: finalSessionsPayload,
-      cfg,
-      accessToken: viewer.accessToken,
-      useServiceRole: viewer.isLocalDevAdmin,
-    });
+    // [Phase 3 + B단계 최적화] 전체 행 대신 실제로 변경된 학생/세션 행만 정규화 테이블에 경량 듀얼라이트
+    if (
+      (changedStudentsForDualWrite && changedStudentsForDualWrite.length > 0) ||
+      (changedSessionsForDualWrite && changedSessionsForDualWrite.length > 0)
+    ) {
+      void executeDualWriteSync({
+        students: changedStudentsForDualWrite,
+        sessions: changedSessionsForDualWrite,
+        cfg,
+        accessToken: viewer.accessToken,
+        useServiceRole: true,
+      });
+    }
     return { sessionsSynced: true, stateKvSynced: true };
   }
 
@@ -817,14 +954,19 @@ export async function upsertSnapshotPatch(args: {
     throw new Error(`snapshot upsert failed (fallback): ${fallback.status} ${fallback.text}`);
   }
 
-  // [Phase 3: 무중단 듀얼 라이트] 정규화 테이블로 비동기 동시 기록 (fallback 분기)
-  void executeDualWriteSync({
-    students: finalStudentsPayload,
-    sessions: finalSessionsPayload,
-    cfg,
-    accessToken: viewer.accessToken,
-    useServiceRole: viewer.isLocalDevAdmin,
-  });
+  // [Phase 3 + B단계 최적화] fallback 분기에서도 변경분만 정규화 테이블에 경량 듀얼라이트
+  if (
+    (changedStudentsForDualWrite && changedStudentsForDualWrite.length > 0) ||
+    (!sessionsMissing && changedSessionsForDualWrite && changedSessionsForDualWrite.length > 0)
+  ) {
+    void executeDualWriteSync({
+      students: changedStudentsForDualWrite,
+      sessions: sessionsMissing ? undefined : changedSessionsForDualWrite,
+      cfg,
+      accessToken: viewer.accessToken,
+      useServiceRole: true,
+    });
+  }
 
   return {
     sessionsSynced: !hasSessions || !sessionsMissing,

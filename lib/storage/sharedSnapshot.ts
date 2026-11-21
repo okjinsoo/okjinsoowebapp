@@ -41,6 +41,8 @@ type InternalSnapshotBody = {
   teachers?: Teacher[];
   students?: Student[];
   sessions?: Session[];
+  studentsMergeMode?: "replace" | "merge";
+  sessionsMergeMode?: "replace" | "merge";
   stateKv?: Record<string, string>;
   dropStateKeys?: string[];
 };
@@ -340,11 +342,39 @@ type PushSharedSnapshotArgs = {
   teachers?: Teacher[];
   students?: Student[];
   sessions?: Session[];
+  studentsMergeMode?: "replace" | "merge";
+  sessionsMergeMode?: "replace" | "merge";
   stateKv?: Record<string, unknown>;
   dropStateKeys?: string[];
   forceEmpty?: boolean; // [Safety] 의도적으로 빈 데이터를 보낼 때 사용
   manualBackupId?: string; // [Safety] 수동 백업 트리거용
 };
+
+function mergeEntitiesById<T extends { id: string }>(base: T[], patch: T[]): T[] {
+  const patchById = new Map<string, T>();
+  for (const row of patch) {
+    if (!row?.id) continue;
+    patchById.set(row.id, row);
+  }
+  const merged: T[] = [];
+  const seen = new Set<string>();
+  for (const row of base) {
+    if (!row?.id) continue;
+    const next = patchById.get(row.id);
+    if (next) {
+      merged.push(next);
+      seen.add(row.id);
+    } else {
+      merged.push(row);
+    }
+  }
+  for (const row of patch) {
+    if (!row?.id || seen.has(row.id)) continue;
+    merged.push(row);
+    seen.add(row.id);
+  }
+  return merged;
+}
 
 export async function pushSharedSnapshot(args?: PushSharedSnapshotArgs): Promise<PushSharedSnapshotResult> {
   const hasTeachersArg = Object.prototype.hasOwnProperty.call(args ?? {}, "teachers");
@@ -354,13 +384,23 @@ export async function pushSharedSnapshot(args?: PushSharedSnapshotArgs): Promise
   const hasDropStateKeysArg = Object.prototype.hasOwnProperty.call(args ?? {}, "dropStateKeys");
 
   // [Phase 25.1] 강력한 데이터 유실 방지 가드 (Strict Empty Guard)
-  // 의도적 비우기(forceEmpty)가 아닌데, 원래 데이터가 있었음에도 불구하고 []를 보내려 하면 즉시 차단한다.
+  // 의도적 비우기(forceEmpty)나 부분 병합(merge)이 아닌데 []를 보내려 하면 즉시 차단한다.
   if (!args?.forceEmpty) {
-    if (hasStudentsArg && (args?.students?.length ?? 0) === 0 && readLocalStudents().length > 0) {
+    if (
+      hasStudentsArg &&
+      args?.studentsMergeMode !== "merge" &&
+      (args?.students?.length ?? 0) === 0 &&
+      readLocalStudents().length > 0
+    ) {
       console.error("⛔ [Safety Guard] 학생 데이터 유실 위험이 감지되어 업로드를 차단했습니다. (Empty Array Blocked)");
       return { sessionsSynced: false, stateKvSynced: false };
     }
-    if (hasSessionsArg && (args?.sessions?.length ?? 0) === 0 && readLocalSessions().length > 0) {
+    if (
+      hasSessionsArg &&
+      args?.sessionsMergeMode !== "merge" &&
+      (args?.sessions?.length ?? 0) === 0 &&
+      readLocalSessions().length > 0
+    ) {
       console.error("⛔ [Safety Guard] 수업 데이터 유실 위험이 감지되어 업로드를 차단했습니다. (Empty Array Blocked)");
       return { sessionsSynced: false, stateKvSynced: false };
     }
@@ -375,8 +415,16 @@ export async function pushSharedSnapshot(args?: PushSharedSnapshotArgs): Promise
 
   if (isLocalOnlySnapshotMode()) {
     const localTeachers = hasTeachersArg ? teachers ?? [] : readLocalTeachers();
-    const localStudents = hasStudentsArg ? students ?? [] : readLocalStudents();
-    const localSessions = hasSessionsArg ? sessions ?? [] : undefined;
+    const localStudents = hasStudentsArg
+      ? args?.studentsMergeMode === "merge"
+        ? mergeEntitiesById(readLocalStudents(), students ?? [])
+        : (students ?? [])
+      : readLocalStudents();
+    const localSessions = hasSessionsArg
+      ? args?.sessionsMergeMode === "merge"
+        ? mergeEntitiesById(readLocalSessions(), sessions ?? [])
+        : (sessions ?? [])
+      : undefined;
     const localStateKv = readLocalStateKv();
     const droppedStateKeys = Array.from(
       new Set((args?.dropStateKeys ?? []).map((key) => key.trim()).filter((key) => shouldPersistKey(key)))
@@ -417,8 +465,14 @@ export async function pushSharedSnapshot(args?: PushSharedSnapshotArgs): Promise
 
   const body: InternalSnapshotBody = {};
   if (hasTeachersArg) body.teachers = teachers;
-  if (hasStudentsArg) body.students = students;
-  if (hasSessionsArg) body.sessions = sessions;
+  if (hasStudentsArg) {
+    body.students = students;
+    if (args?.studentsMergeMode) body.studentsMergeMode = args.studentsMergeMode;
+  }
+  if (hasSessionsArg) {
+    body.sessions = sessions;
+    if (args?.sessionsMergeMode) body.sessionsMergeMode = args.sessionsMergeMode;
+  }
   if (hasStateKvArg) body.stateKv = stateKvPatch ?? {};
   if (hasDropStateKeysArg) body.dropStateKeys = args?.dropStateKeys ?? [];
 

@@ -6,6 +6,7 @@ import { createPortal } from "react-dom";
 import { TUTORWEB_EVENTS } from "@/lib/events/tutorwebEvents";
 import { loadCurrentTeacherId } from "@/lib/storage/teachers";
 import { buildStudentSessionsFromRows, readSnapshotServerFirst } from "@/lib/storage/serverRead";
+import { readLocalSessions, readLocalStudents } from "@/lib/storage/sharedSnapshot";
 import {
   buildBaseDatesISO,
   computeEffectiveISO,
@@ -13,7 +14,7 @@ import {
   useMetaMap,
   readMetaMap,
 } from "@/lib/factories/sessionFactories";
-import { syncSessionDisplayAtByToken } from "@/lib/ui/session/syncSessionDisplayAt";
+import { saveSessionAdjustmentByToken } from "@/lib/ui/session/syncSessionDisplayAt";
 import { canEditSessionMeta, type SessionRole } from "@/lib/policies/sessionRolePolicy";
 import type { SessionMeta } from "@/lib/factories/sessionFactories";
 import type { Session, Student } from "@/lib/types/index";
@@ -60,17 +61,27 @@ export default function SessionQuickActions({ role, token, index }: Props) {
       setTeacherId(loadCurrentTeacherId());
     };
 
-    const requestRefresh = () => {
+    const requestRefreshFromLocalFirst = () => {
+      // 같은 탭의 저장 직후(studentsUpdated/sessionsUpdated)에는 방금 갱신된 로컬 스냅샷을 즉시 반영하여
+      // 화면의 모든 SessionQuickActions가 일제히 GET /api/snapshot을 재요청하는 연쇄 네트워크 폭탄을 차단한다.
+      const localStudents = readLocalStudents();
+      const localSessions = readLocalSessions();
+      if (localStudents.length > 0 && localSessions.length > 0) {
+        setStudents(localStudents);
+        setAllSessions(localSessions);
+        setTeacherId(loadCurrentTeacherId());
+        return;
+      }
       void refreshSnapshot();
     };
 
     void refreshSnapshot();
-    window.addEventListener(TUTORWEB_EVENTS.studentsUpdated, requestRefresh);
-    window.addEventListener(TUTORWEB_EVENTS.sessionsUpdated, requestRefresh);
+    window.addEventListener(TUTORWEB_EVENTS.studentsUpdated, requestRefreshFromLocalFirst);
+    window.addEventListener(TUTORWEB_EVENTS.sessionsUpdated, requestRefreshFromLocalFirst);
     return () => {
       cancelled = true;
-      window.removeEventListener(TUTORWEB_EVENTS.studentsUpdated, requestRefresh);
-      window.removeEventListener(TUTORWEB_EVENTS.sessionsUpdated, requestRefresh);
+      window.removeEventListener(TUTORWEB_EVENTS.studentsUpdated, requestRefreshFromLocalFirst);
+      window.removeEventListener(TUTORWEB_EVENTS.sessionsUpdated, requestRefreshFromLocalFirst);
     };
   }, []);
 
@@ -174,11 +185,20 @@ export default function SessionQuickActions({ role, token, index }: Props) {
   const onSave = async (finalData: Partial<SessionMeta>) => {
     setIsSaving(true);
     try {
-      await upsertMeta(token, index, {
-        ...finalData,
-        overrideSource: finalData.overrideDate ? "manual" : "",
+      const saved = await saveSessionAdjustmentByToken({
+        token,
+        index,
+        patch: {
+          ...finalData,
+          overrideSource: finalData.overrideDate ? "manual" : "",
+        },
+        students,
+        sessions: allSessions,
       });
-      await syncSessionDisplayAtByToken(token);
+      if (!saved.ok) {
+        alert("저장에 실패했습니다. 네트워크 상태를 확인한 뒤 다시 시도해주세요.");
+        return;
+      }
       setOpen(false);
     } finally {
       setIsSaving(false);
@@ -649,19 +669,16 @@ function AdjustmentModalContent({
   );
 }
 
+const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
+
 function kstYmdFromISO(iso: string): string | null {
   try {
-    const dt = new Date(iso);
-    if (!Number.isFinite(dt.getTime())) return null;
-    const parts = new Intl.DateTimeFormat("en-CA", {
-      timeZone: "Asia/Seoul",
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-    }).formatToParts(dt);
-    const y = parts.find((p) => p.type === "year")?.value ?? "1970";
-    const m = parts.find((p) => p.type === "month")?.value ?? "01";
-    const d = parts.find((p) => p.type === "day")?.value ?? "01";
+    const ms = new Date(iso).getTime();
+    if (!Number.isFinite(ms)) return null;
+    const kst = new Date(ms + KST_OFFSET_MS);
+    const y = String(kst.getUTCFullYear()).padStart(4, "0");
+    const m = String(kst.getUTCMonth() + 1).padStart(2, "0");
+    const d = String(kst.getUTCDate()).padStart(2, "0");
     return `${y}-${m}-${d}`;
   } catch {
     return null;
@@ -675,26 +692,15 @@ function formatTimeLabel(hour: string, minute: string): string {
 
 function kstTimeRangeFromISO(iso: string, durationMin: number): string | null {
   try {
-    const dt = new Date(iso);
-    if (!Number.isFinite(dt.getTime())) return null;
-    const parts = new Intl.DateTimeFormat("en-CA", {
-      timeZone: "Asia/Seoul",
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: false,
-    }).formatToParts(dt);
-    const hh = parts.find((p) => p.type === "hour")?.value ?? "00";
-    const mm = parts.find((p) => p.type === "minute")?.value ?? "00";
+    const ms = new Date(iso).getTime();
+    if (!Number.isFinite(ms)) return null;
+    const startKst = new Date(ms + KST_OFFSET_MS);
+    const hh = String(startKst.getUTCHours()).padStart(2, "0");
+    const mm = String(startKst.getUTCMinutes()).padStart(2, "0");
     const normalizedDuration = Math.max(1, Math.floor(Number(durationMin) || 60));
-    const end = new Date(dt.getTime() + normalizedDuration * 60 * 1000);
-    const endParts = new Intl.DateTimeFormat("en-CA", {
-      timeZone: "Asia/Seoul",
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: false,
-    }).formatToParts(end);
-    const ehh = endParts.find((p) => p.type === "hour")?.value ?? "00";
-    const emm = endParts.find((p) => p.type === "minute")?.value ?? "00";
+    const endKst = new Date(ms + normalizedDuration * 60 * 1000 + KST_OFFSET_MS);
+    const ehh = String(endKst.getUTCHours()).padStart(2, "0");
+    const emm = String(endKst.getUTCMinutes()).padStart(2, "0");
     return `${formatTimeLabel(hh, mm)} ~ ${formatTimeLabel(ehh, emm)}`;
   } catch {
     return null;

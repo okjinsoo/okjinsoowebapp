@@ -23,6 +23,7 @@ type SaveSessionsOptions = {
   skipSharedSnapshot?: boolean;
   snapshotMode?: "merge" | "replace";
   serverRequired?: boolean;
+  previousOverride?: Session[];
 };
 
 let sessionsCache: { value: Session[]; expiry: number } | null = null;
@@ -90,7 +91,7 @@ async function syncSharedSnapshot(
 export function saveSessions(list: Session[], options?: SaveSessionsOptions): void {
   if (typeof window === "undefined") return;
   sessionsCache = null; // 저장 시 캐시 무효화
-  const previous = loadSessions();
+  const previous = options?.previousOverride ?? loadSessions();
   
   replaceSessionsLocal(list);
   
@@ -147,6 +148,7 @@ function applySessionPatches(patches: Array<{ id: string; patch: Partial<Session
 
   const current = loadSessions();
   let changed = false;
+  const changedSessions: Session[] = [];
   const next = current.map((session) => {
     const patch = patchById.get(session.id);
     if (!patch) return session;
@@ -157,21 +159,25 @@ function applySessionPatches(patches: Array<{ id: string; patch: Partial<Session
     });
     if (same) return session;
     changed = true;
+    changedSessions.push(merged);
     return merged;
   });
 
   if (!changed) return;
-  // 캘린더 동기화 엔진이 만든 상태 패치(synced/error)를 다시 동기화 엔진에 재주입하지 않도록 차단
-  saveSessions(next, {
-    skipSharedSnapshot: false,
-    serverRequired: true,
-    suppressCalendarSync: true,
+  // 로컬 스토리지 즉시 반영 (캘린더 동기화 루프 차단)
+  replaceSessionsLocal(next);
+  // [C-2 보완] 전체 스냅샷 GET->POST 덮어쓰기 대신, 캘린더 상태가 실제로 바뀐 세션만 부분 병합(merge) 전송
+  void pushSharedSnapshot({
+    sessions: changedSessions,
+    sessionsMergeMode: "merge",
+  }).catch((err) => {
+    console.error("applySessionPatches: 공유 스냅샷 부분 병합 동기화 실패:", err);
   });
 }
 
 /**
  * 동기화 엔진이 student.permanentMeetUrl을 기록할 때 호출됩니다.
- * localStorage의 students 배열을 패치하고 서버에 업로드합니다.
+ * localStorage의 students 배열을 패치하고 서버에 부분 병합 업로드합니다.
  */
 function applyStudentPatches(patches: Array<{ id: string; patch: Partial<Student> }>): void {
   if (typeof window === "undefined") return;
@@ -187,6 +193,7 @@ function applyStudentPatches(patches: Array<{ id: string; patch: Partial<Student
 
   const current = readLocalStudents();
   let changed = false;
+  const changedStudents: Student[] = [];
   const next = current.map((student) => {
     const patch = patchById.get(student.id);
     if (!patch) return student;
@@ -196,7 +203,9 @@ function applyStudentPatches(patches: Array<{ id: string; patch: Partial<Student
     });
     if (same) return student;
     changed = true;
-    return { ...student, ...patch };
+    const merged = { ...student, ...patch };
+    changedStudents.push(merged);
+    return merged;
   });
 
   if (!changed) return;
@@ -205,9 +214,12 @@ function applyStudentPatches(patches: Array<{ id: string; patch: Partial<Student
   const nextRaw = JSON.stringify(next);
   browserStorage.setItem(STUDENTS_KEY, nextRaw);
 
-  // 서버 스냅샷에도 반영 (suppressCalendarSync: true로 루프 방지)
-  void syncSharedSnapshot(loadSessions(), "merge", true).catch((err) => {
-    console.error("applyStudentPatches: 공유 스냅샷 동기화 실패:", err);
+  // [C-2 보완] 바뀐 학생 행만 부분 병합(merge) 전송하여 동시 수정 덮어쓰기 및 전체 스냅샷 왕복 제거
+  void pushSharedSnapshot({
+    students: changedStudents,
+    studentsMergeMode: "merge",
+  }).catch((err) => {
+    console.error("applyStudentPatches: 공유 스냅샷 부분 병합 동기화 실패:", err);
   });
 }
 

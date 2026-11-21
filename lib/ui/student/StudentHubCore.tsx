@@ -47,6 +47,7 @@ import { buildSessionContextBadges } from "@/lib/ui/common/sessionExtraBadge";
 import {
   buildSessionCardViewModel,
   resolveDurationMinForSessionWithMeta,
+  resolveRulesForIndex,
 } from "@/lib/ui/session/sessionCardFactory";
 import { StudentPaymentPanel } from "./panels/StudentPaymentPanel";
 import { StudentSessionAddModal } from "./modals/StudentSessionAddModal";
@@ -65,7 +66,9 @@ import {
   isLocalOnlySnapshotMode,
   pullSharedSnapshotAndHydrateWithOptions,
   pushSharedSnapshot,
+  readLocalSessions,
   readLocalSharedStateKv,
+  readLocalStudents,
   readRemoteSharedStateKvValue,
 } from "@/lib/storage/sharedSnapshot";
 import {
@@ -187,42 +190,34 @@ function parseStudentBackupFile(raw: unknown): StudentBackupFileV1 | null {
   };
 }
 
+const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
 function ymdFromISO_KST(iso?: string): string | null {
   if (!iso) return null;
-  const d = new Date(iso);
-  if (!Number.isFinite(d.getTime())) return null;
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Seoul",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).formatToParts(d);
-  const y = parts.find((p) => p.type === "year")?.value ?? "1970";
-  const m = parts.find((p) => p.type === "month")?.value ?? "01";
-  const dd = parts.find((p) => p.type === "day")?.value ?? "01";
+  const ms = new Date(iso).getTime();
+  if (!Number.isFinite(ms)) return null;
+  const kst = new Date(ms + KST_OFFSET_MS);
+  const y = String(kst.getUTCFullYear()).padStart(4, "0");
+  const m = String(kst.getUTCMonth() + 1).padStart(2, "0");
+  const dd = String(kst.getUTCDate()).padStart(2, "0");
   return `${y}-${m}-${dd}`;
 }
 
 function ymdAddDays(ymd: string, days: number): string {
-  const base = new Date(`${ymd}T00:00:00+09:00`);
-  base.setUTCDate(base.getUTCDate() + days);
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Seoul",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).formatToParts(base);
-  const y = parts.find((p) => p.type === "year")?.value ?? "1970";
-  const m = parts.find((p) => p.type === "month")?.value ?? "01";
-  const d = parts.find((p) => p.type === "day")?.value ?? "01";
+  const ms = new Date(`${ymd}T00:00:00Z`).getTime();
+  if (!Number.isFinite(ms)) return ymd;
+  const next = new Date(ms + days * DAY_MS);
+  const y = String(next.getUTCFullYear()).padStart(4, "0");
+  const m = String(next.getUTCMonth() + 1).padStart(2, "0");
+  const d = String(next.getUTCDate()).padStart(2, "0");
   return `${y}-${m}-${d}`;
 }
 
 function weekdayFromYmdKST(ymd: string): number {
-  const dt = new Date(`${ymd}T12:00:00+09:00`);
-  const wd = new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Seoul", weekday: "short" }).format(dt);
-  const map: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
-  return map[wd] ?? 0;
+  const dt = new Date(`${ymd}T00:00:00Z`);
+  if (!Number.isFinite(dt.getTime())) return 0;
+  return dt.getUTCDay();
 }
 
 function isoFromKst(ymd: string, hour: number, minute: number): string {
@@ -890,18 +885,46 @@ export default function StudentHubCore({
     updatedStudent: Student,
     clearExtensionFromIndex?: number
   ): Promise<boolean> {
-    let baseline: Awaited<ReturnType<typeof loadLatestCoreSnapshotBaselineServerRequired>>;
-    try {
-      baseline = await loadLatestCoreSnapshotBaselineServerRequired();
-    } catch (err) {
-      console.error("시간 변경 서버 기준 데이터 로드 실패:", err);
-      return false;
+    // [B단계 최적화 + C-2 보완] 전체 스냅샷 재조회(GET) + 전체 업로드(POST) 대신,
+    // 현재 학생 1명 + 실제로 날짜가 바뀐 회차만 부분 병합(merge) 모드로 단 1회 전송한다.
+    let localStudents = readLocalStudents();
+    let localSessions = readLocalSessions();
+    let hasFullLocalStudents = localStudents.length > 0;
+    const hasOwnPersistedSessions = localSessions.some(
+      (s) => s.studentId === updatedStudent.id && !s.id.startsWith("virtual_")
+    );
+
+    if (!hasOwnPersistedSessions) {
+      const ownFromState = sessions.filter(
+        (s) => s.studentId === updatedStudent.id && !s.id.startsWith("virtual_")
+      );
+      if (ownFromState.length > 0) {
+        localSessions = [
+          ...localSessions.filter((s) => s.studentId !== updatedStudent.id),
+          ...ownFromState,
+        ];
+      } else {
+        try {
+          const baseline = await loadLatestCoreSnapshotBaselineServerRequired();
+          localStudents = baseline.students;
+          localSessions = baseline.sessions;
+          hasFullLocalStudents = localStudents.length > 0;
+        } catch (err) {
+          console.error("시간 변경 서버 기준 데이터 로드 실패:", err);
+          return false;
+        }
+      }
     }
-    const nextStudents = buildNextStudentsList(updatedStudent, baseline.students);
+
+    const nextStudents = hasFullLocalStudents
+      ? buildNextStudentsList(updatedStudent, localStudents)
+      : [];
 
     // ✅ 시간 변경 시작 회차 이후의 extension override(연장 결제 자동 설정 날짜)를 초기화
     // → computeEffectiveISO가 override 대신 새 baseDatesISO(수/토)를 사용하도록 해제
     // → manual override(선생님이 직접 변경한 날짜)는 건드리지 않음
+    const metaKey = metaMapKey(token);
+    const previousMetaRaw = browserStorage.getItem(metaKey);
     let metaChanged = false;
     const localMetaMap = readMetaMap(token);
     const nextMetaMap: Record<number, ReturnType<typeof readMetaMap>[number]> = { ...localMetaMap };
@@ -923,30 +946,89 @@ export default function StudentHubCore({
         }
       }
       if (metaChanged) {
-        browserStorage.setItem(metaMapKey(token), JSON.stringify(nextMetaMap));
+        browserStorage.setItemSilent(metaKey, JSON.stringify(nextMetaMap));
         window.dispatchEvent(new CustomEvent(TUTORWEB_EVENTS.metaMapUpdated, { detail: { token } }));
       }
     }
 
-    // metaMap이 초기화된 뒤 세션 날짜를 재계산
-    const { list: nextSessions, changed: sessionsChanged } = buildSyncedSessionsForStudent(
-      updatedStudent,
-      baseline.sessions,
-      { force: clearExtensionFromIndex !== undefined }
+    const rollbackMetaIfChanged = () => {
+      if (!metaChanged) return;
+      if (previousMetaRaw !== null) {
+        browserStorage.setItemSilent(metaKey, previousMetaRaw);
+      } else {
+        browserStorage.removeItemSilent(metaKey);
+      }
+      window.dispatchEvent(new CustomEvent(TUTORWEB_EVENTS.metaMapUpdated, { detail: { token } }));
+    };
+
+    // metaMap이 초기화된 뒤 세션 날짜를 재계산하되, 실제로 displayAt이나 수업 길이(durationMin)가 달라진 회차만 선별 전송한다.
+    const prevSessionById = new Map(
+      localSessions
+        .filter((s) => s.studentId === updatedStudent.id)
+        .map((s) => [s.id, s] as const)
     );
+    const { list: rawNextSessions } = buildSyncedSessionsForStudent(
+      updatedStudent,
+      localSessions,
+      { force: false }
+    );
+    const changedOwnSessions: Session[] = [];
+    const nextSessions = rawNextSessions.map((s) => {
+      if (s.studentId !== updatedStudent.id || s.id.startsWith("virtual_")) return s;
+      const prevSession = prevSessionById.get(s.id);
+      const displayAtChanged = prevSession?.displayAt !== s.displayAt;
+      const prevDur =
+        student && prevSession
+          ? resolveDurationMinForSessionWithMeta(
+              prevSession.displayAt,
+              resolveRulesForIndex(student, s.index),
+              localMetaMap[s.index]
+            )
+          : null;
+      const nextDur = resolveDurationMinForSessionWithMeta(
+        s.displayAt,
+        resolveRulesForIndex(updatedStudent, s.index),
+        nextMetaMap[s.index]
+      );
+      const durationChanged = prevDur !== null && prevDur !== nextDur;
+
+      if (!displayAtChanged && !durationChanged) return s;
+
+      const updated: Session =
+        durationChanged && !displayAtChanged
+          ? { ...s, googleCalendarStatus: "pending" as const }
+          : s;
+      changedOwnSessions.push(updated);
+      return updated;
+    });
 
     try {
-      await pushSharedSnapshot({
-        students: nextStudents,
-        ...(sessionsChanged ? { sessions: nextSessions } : {}),
-        ...(metaChanged
-          ? { stateKv: { [metaMapKey(token)]: JSON.stringify(nextMetaMap) } }
+      const result = await pushSharedSnapshot({
+        students: [updatedStudent],
+        studentsMergeMode: "merge",
+        ...(changedOwnSessions.length > 0
+          ? { sessions: changedOwnSessions, sessionsMergeMode: "merge" as const }
           : {}),
+        ...(metaChanged ? { stateKv: { [metaKey]: JSON.stringify(nextMetaMap) } } : {}),
       });
 
-      saveStudents(nextStudents, { skipSharedSnapshot: true });
-      if (sessionsChanged) {
-        saveSessions(nextSessions, { skipSharedSnapshot: true });
+      const syncedOk =
+        result.stateKvSynced && (changedOwnSessions.length === 0 || result.sessionsSynced);
+      if (!syncedOk) {
+        rollbackMetaIfChanged();
+        return false;
+      }
+
+      if (hasFullLocalStudents) {
+        saveStudents(nextStudents, { skipSharedSnapshot: true });
+      } else {
+        window.dispatchEvent(new CustomEvent(TUTORWEB_EVENTS.studentsUpdated));
+      }
+      if (changedOwnSessions.length > 0) {
+        saveSessions(nextSessions, {
+          skipSharedSnapshot: true,
+          previousOverride: localSessions,
+        });
         setSessions(
           buildStudentSessionsFromRows({
             student: updatedStudent,
@@ -955,10 +1037,10 @@ export default function StudentHubCore({
         );
       }
       setStudent(updatedStudent);
-      void refreshStudentContext();
       return true;
     } catch (err) {
       console.error("시간 변경 서버 저장 실패:", err);
+      rollbackMetaIfChanged();
       return false;
     }
   }
@@ -1268,7 +1350,7 @@ export default function StudentHubCore({
 
       saveStudents(nextStudents, { skipSharedSnapshot: true });
       if (!skipSessions) {
-        browserStorage.setItem(metaMapKey(token), JSON.stringify(nextMetaMap));
+        browserStorage.setItemSilent(metaMapKey(token), JSON.stringify(nextMetaMap));
         window.dispatchEvent(new CustomEvent(TUTORWEB_EVENTS.metaMapUpdated, { detail: { token } }));
         saveSessions(nextAllSessions, { skipSharedSnapshot: true });
       }
@@ -1282,7 +1364,6 @@ export default function StudentHubCore({
           })
         );
       }
-      void refreshStudentContext();
       return true;
     } catch (err) {
       console.error("결제/환불 서버 저장 실패:", err);

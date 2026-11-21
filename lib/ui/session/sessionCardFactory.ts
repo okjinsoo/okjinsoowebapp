@@ -66,25 +66,19 @@ export function normalizeDurationMin(value: number): number {
   return 180;
 }
 
+const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
+
 function kstWeekdayHourMinuteFromISO(iso: string): { weekday: number; hour: number; minute: number } | null {
   try {
     const dt = new Date(iso);
-    if (!Number.isFinite(dt.getTime())) return null;
-    const parts = new Intl.DateTimeFormat("en-US", {
-      timeZone: "Asia/Seoul",
-      weekday: "short",
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: false,
-    }).formatToParts(dt);
-    const wk = parts.find((p) => p.type === "weekday")?.value ?? "";
-    let hh = Number(parts.find((p) => p.type === "hour")?.value ?? "0");
-    if (hh === 24) hh = 0;
-    const mm = Number(parts.find((p) => p.type === "minute")?.value ?? "0");
-    const map: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
-    const weekday = map[wk];
-    if (weekday === undefined || !Number.isFinite(weekday) || !Number.isFinite(hh) || !Number.isFinite(mm)) return null;
-    return { weekday, hour: hh, minute: mm };
+    const ms = dt.getTime();
+    if (!Number.isFinite(ms)) return null;
+    const kst = new Date(ms + KST_OFFSET_MS);
+    return {
+      weekday: kst.getUTCDay(),
+      hour: kst.getUTCHours(),
+      minute: kst.getUTCMinutes(),
+    };
   } catch {
     return null;
   }

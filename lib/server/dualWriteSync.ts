@@ -99,6 +99,34 @@ function chunkArray<T>(items: T[], size: number): T[][] {
 }
 
 /**
+ * 이전 배열과 다음 배열을 ID 기준으로 비교하여 실제로 추가되거나 내용이 변경된 행만 선별합니다.
+ * - 세션 1개 날짜 변경 시 전교생 수백 행 전체를 DB에 덮어쓰는 불필요한 부하를 제거합니다.
+ */
+export function computeChangedRowsById<T extends { id: string }>(
+  previous: T[] | undefined,
+  next: T[] | undefined
+): T[] {
+  if (!Array.isArray(next) || next.length === 0) return [];
+  if (!Array.isArray(previous) || previous.length === 0) return next;
+
+  const prevSerializedById = new Map<string, string>();
+  for (const row of previous) {
+    if (!row?.id) continue;
+    prevSerializedById.set(row.id, JSON.stringify(row));
+  }
+
+  const changed: T[] = [];
+  for (const row of next) {
+    if (!row?.id) continue;
+    const prevSerialized = prevSerializedById.get(row.id);
+    if (prevSerialized === undefined || prevSerialized !== JSON.stringify(row)) {
+      changed.push(row);
+    }
+  }
+  return changed;
+}
+
+/**
  * 스냅샷 패치 시 정규화 테이블(students, sessions)로 무중단 듀얼 라이트를 비동기 실행합니다.
  * 에러가 발생해도 기존 스냅샷 저장 흐름을 방해하지 않도록 안전하게 격리됩니다.
  */

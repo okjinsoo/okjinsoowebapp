@@ -1,9 +1,16 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+vi.mock("server-only", () => ({}));
 import type { Session, Student } from "@/lib/types/index";
 import {
+  computeChangedRowsById,
   mapSessionToNormalizedRow,
   mapStudentToNormalizedRow,
 } from "./dualWriteSync";
+import {
+  filterTeacherAllowedSessionMergePatch,
+  filterTeacherAllowedStudentMergePatch,
+  mergeSnapshotEntitiesById,
+} from "./supabaseSnapshotApi";
 
 describe("Phase 3: dualWriteSync mapping tests", () => {
   it("converts a Student domain object into a clean normalized row with proper fields and defaults", () => {
@@ -144,5 +151,75 @@ describe("Phase 3: dualWriteSync mapping tests", () => {
     expect(backfillRes.studentsTotal).toBe(0);
     expect(backfillRes.sessionsTotal).toBe(0);
     expect(backfillRes.elapsedMs).toBeGreaterThanOrEqual(0);
+  });
+
+  it("B단계: computeChangedRowsById returns only newly added or modified rows", () => {
+    const prev = [
+      { id: "s1", displayAt: "2026-03-02T08:00:00.000Z" },
+      { id: "s2", displayAt: "2026-03-04T08:00:00.000Z" },
+      { id: "s3", displayAt: "2026-03-09T08:00:00.000Z" },
+    ];
+    const next = [
+      { id: "s1", displayAt: "2026-03-02T08:00:00.000Z" },
+      { id: "s2", displayAt: "2026-03-05T08:00:00.000Z" }, // modified
+      { id: "s3", displayAt: "2026-03-09T08:00:00.000Z" },
+      { id: "s4", displayAt: "2026-03-11T08:00:00.000Z" }, // added
+    ];
+
+    const changed = computeChangedRowsById(prev, next);
+    expect(changed.map((r) => r.id)).toEqual(["s2", "s4"]);
+  });
+
+  it("B단계: mergeSnapshotEntitiesById preserves concurrent edits on untouched items", () => {
+    const serverLatest = [
+      { id: "s1", studentId: "stu-a", displayAt: "2026-03-02T08:00:00.000Z" },
+      { id: "s2", studentId: "stu-b", displayAt: "2026-03-06T10:00:00.000Z" }, // edited concurrently by another teacher
+    ];
+    const partialPatch = [
+      { id: "s1", studentId: "stu-a", displayAt: "2026-03-03T09:00:00.000Z" },
+    ];
+
+    const merged = mergeSnapshotEntitiesById(serverLatest, partialPatch);
+    expect(merged).toEqual([
+      { id: "s1", studentId: "stu-a", displayAt: "2026-03-03T09:00:00.000Z" },
+      { id: "s2", studentId: "stu-b", displayAt: "2026-03-06T10:00:00.000Z" },
+    ]);
+  });
+
+  it("C-2 보완: filterTeacherAllowedStudentMergePatch blocks hijacking another teacher's existing student", () => {
+    const existing = [
+      { id: "stu-mine", teacherId: "t-1", name: "내학생" },
+      { id: "stu-other", teacherId: "t-2", name: "타선생학생" },
+    ] as unknown as Student[];
+
+    const incoming = [
+      { id: "stu-mine", teacherId: "t-1", name: "내학생(수정)" },
+      // 타 선생님 학생 ID에 자기 teacherId("t-1")를 넣어 탈취 시도 -> 반드시 차단!
+      { id: "stu-other", teacherId: "t-1", name: "탈취시도" },
+      // 신규 학생 등록(본인 담당) -> 허용
+      { id: "stu-new", teacherId: "t-1", name: "신규학생" },
+    ] as unknown as Student[];
+
+    const allowed = filterTeacherAllowedStudentMergePatch(existing, incoming, "t-1");
+    expect(allowed.map((s) => s.id)).toEqual(["stu-mine", "stu-new"]);
+  });
+
+  it("최종 보안 점검: filterTeacherAllowedSessionMergePatch blocks overwriting another teacher's existing session ID", () => {
+    const existingSessions = [
+      { id: "sess-mine", studentId: "stu-mine", index: 1, displayAt: "", state: "normal" },
+      { id: "sess-other", studentId: "stu-other", index: 1, displayAt: "", state: "normal" },
+    ] as unknown as Session[];
+    const myStudentIds = new Set(["stu-mine"]);
+
+    const incoming = [
+      { id: "sess-mine", studentId: "stu-mine", index: 1, displayAt: "2026-03-03T08:00:00.000Z", state: "normal" },
+      // 타 선생님 세션 ID에 본인 학생 ID를 덮어씌워 탈취 시도 -> 반드시 차단!
+      { id: "sess-other", studentId: "stu-mine", index: 1, displayAt: "2026-03-03T08:00:00.000Z", state: "normal" },
+      // 신규 세션(본인 학생 소속) -> 허용
+      { id: "sess-new", studentId: "stu-mine", index: 2, displayAt: "2026-03-05T08:00:00.000Z", state: "normal" },
+    ] as unknown as Session[];
+
+    const allowed = filterTeacherAllowedSessionMergePatch(existingSessions, incoming, myStudentIds);
+    expect(allowed.map((s) => s.id)).toEqual(["sess-mine", "sess-new"]);
   });
 });

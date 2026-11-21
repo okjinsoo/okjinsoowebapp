@@ -38,34 +38,27 @@ type SyncArgs = {
 
 const GOOGLE_CALENDAR_BASE_URL = "https://www.googleapis.com/calendar/v3";
 const SYNC_DEBOUNCE_MS = 900;
+const SYNC_CONCURRENCY_LIMIT = 3;
+const RATE_LIMIT_BACKOFF_MS = [400, 1000] as const;
 const CREATE_PAST_GRACE_MS = 6 * 60 * 60 * 1000; // 6h
 const DUPLICATE_TIME_WINDOW_MS = 5 * 60 * 1000;
 const RECENT_CREATED_TTL_MS = 60 * 1000;
 const APP_CALENDAR_SUMMARY = "옥진수학";
 
+const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
+
 function formatKstRfc3339(isoOrYmd: string): string | null {
   try {
     const dt = new Date(isoOrYmd);
-    if (!Number.isFinite(dt.getTime())) return null;
-    const parts = new Intl.DateTimeFormat("en-CA", {
-      timeZone: "Asia/Seoul",
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
-      hour12: false,
-    }).formatToParts(dt);
-
-    const y = parts.find((p) => p.type === "year")?.value ?? "1970";
-    const m = parts.find((p) => p.type === "month")?.value ?? "01";
-    const d = parts.find((p) => p.type === "day")?.value ?? "01";
-    let hh = parts.find((p) => p.type === "hour")?.value ?? "00";
-    if (hh === "24") hh = "00";
-    const mm = parts.find((p) => p.type === "minute")?.value ?? "00";
-    const ss = parts.find((p) => p.type === "second")?.value ?? "00";
-
+    const ms = dt.getTime();
+    if (!Number.isFinite(ms)) return null;
+    const kst = new Date(ms + KST_OFFSET_MS);
+    const y = String(kst.getUTCFullYear()).padStart(4, "0");
+    const m = String(kst.getUTCMonth() + 1).padStart(2, "0");
+    const d = String(kst.getUTCDate()).padStart(2, "0");
+    const hh = String(kst.getUTCHours()).padStart(2, "0");
+    const mm = String(kst.getUTCMinutes()).padStart(2, "0");
+    const ss = String(kst.getUTCSeconds()).padStart(2, "0");
     return `${y}-${m}-${d}T${hh}:${mm}:${ss}+09:00`;
   } catch {
     return null;
@@ -353,6 +346,63 @@ async function ensureAppCalendarId(args: {
   return foundId;
 }
 
+export function isGoogleRateLimitError(status: number, message: string): boolean {
+  if (status === 429) return true;
+  if (status !== 403) return false;
+  const lower = text(message).toLowerCase();
+  return (
+    lower.includes("ratelimitexceeded") ||
+    lower.includes("userratelimitexceeded") ||
+    lower.includes("quotaexceeded") ||
+    lower.includes("rate limit")
+  );
+}
+
+export async function runWithConcurrencyLimit<T>(
+  items: T[],
+  limit: number,
+  worker: (item: T) => Promise<void>
+): Promise<void> {
+  if (items.length === 0) return;
+  const maxWorkers = Math.max(1, Math.min(Math.floor(limit) || 1, items.length));
+  let cursor = 0;
+  const runners = Array.from({ length: maxWorkers }, async () => {
+    while (cursor < items.length) {
+      const idx = cursor;
+      cursor += 1;
+      await worker(items[idx]);
+    }
+  });
+  await Promise.all(runners);
+}
+
+/**
+ * 학생에게 아직 영구 Meet 링크(permanentMeetUrl)가 없는 경우,
+ * 첫 회차 1개만 먼저 직렬 실행(seedTargets)해 단일 Meet 링크를 안전하게 발급·고정한 뒤
+ * 나머지 회차들(parallelTargets)을 소규모 병렬 처리하도록 분리합니다.
+ */
+export function partitionSyncTargetsForMeetSafety(
+  orderedTargets: Session[],
+  studentById: Map<string, Student>
+): { seedTargets: Session[]; parallelTargets: Session[] } {
+  const seedTargets: Session[] = [];
+  const parallelTargets: Session[] = [];
+  const seededStudents = new Set<string>();
+
+  for (const session of orderedTargets) {
+    const student = studentById.get(session.studentId);
+    const hasPermanentMeet = Boolean(text(student?.permanentMeetUrl));
+    if (!hasPermanentMeet && student && !seededStudents.has(student.id)) {
+      seededStudents.add(student.id);
+      seedTargets.push(session);
+    } else {
+      parallelTargets.push(session);
+    }
+  }
+
+  return { seedTargets, parallelTargets };
+}
+
 export async function requestGoogle(args: {
   token: string;
   method: "GET" | "POST" | "PATCH" | "DELETE";
@@ -360,6 +410,7 @@ export async function requestGoogle(args: {
   query?: Record<string, string>;
   body?: unknown;
   _retry?: boolean;
+  _rateLimitAttempt?: number;
 }): Promise<unknown> {
   const url = new URL(`${GOOGLE_CALENDAR_BASE_URL}${args.path}`);
   for (const [k, v] of Object.entries(args.query ?? {})) {
@@ -386,6 +437,14 @@ export async function requestGoogle(args: {
  
   if (!res.ok) {
     const msg = parseErrorText(body);
+    const rateLimitAttempt = args._rateLimitAttempt ?? 0;
+    if (isGoogleRateLimitError(res.status, msg) && rateLimitAttempt < RATE_LIMIT_BACKOFF_MS.length) {
+      await delay(RATE_LIMIT_BACKOFF_MS[rateLimitAttempt]);
+      return requestGoogle({
+        ...args,
+        _rateLimitAttempt: rateLimitAttempt + 1,
+      });
+    }
     if (res.status === 401 && !args._retry) {
       // [보안] 게스트 계정(미등록 사용자)은 캘린더 리커버리를 시도하지 않음
       const { resolveUserRole } = await import("@/lib/auth/roleAuth");
@@ -1458,13 +1517,23 @@ async function runSync(args: SyncArgs): Promise<void> {
   const studentById = new Map(students.map((s) => [s.id, s] as const));
   const stateKv = snapshot.stateKv;
 
-  // 모든 세션에 대해 실시간 계산된 '진짜 날짜'를 먼저 입힙니다.
+  // [성능 최적화] 학생당 baseDatesISO와 metaMap을 단 1회만 계산하여 세션 개수만큼 중복 계산하던 CPU 병목 제거
+  const baseDatesByStudentId = new Map<string, string[]>();
+  const metaMapByStudentId = new Map<string, Record<number, SessionMeta>>();
+
   const correctedNext = args.next.map((s) => {
     const student = studentById.get(s.studentId);
     if (!student) return s;
-    // [성능] 각 세션마다 rebuild하는 대신 캐싱을 고려할 수 있으나, 일단 정확성을 위해 매번 계산
-    const baseDatesISO = buildBaseDatesISO(student, 120);
-    const effectiveMetaMap = getEffectiveMetaMap({ token: student.token, stateKv });
+    let baseDatesISO = baseDatesByStudentId.get(student.id);
+    if (!baseDatesISO) {
+      baseDatesISO = buildBaseDatesISO(student, 120);
+      baseDatesByStudentId.set(student.id, baseDatesISO);
+    }
+    let effectiveMetaMap = metaMapByStudentId.get(student.id);
+    if (!effectiveMetaMap) {
+      effectiveMetaMap = getEffectiveMetaMap({ token: student.token, stateKv });
+      metaMapByStudentId.set(student.id, effectiveMetaMap);
+    }
     const { effectiveISO } = computeEffectiveISO({
       token: student.token,
       index: s.index,
@@ -1595,8 +1664,26 @@ async function runSync(args: SyncArgs): Promise<void> {
 
   const studentPermanentMeetMap = new Map<string, string>();
   const studentConferenceDataMap = new Map<string, Record<string, unknown>>();
+  // 토큰이 중간에 자동 갱신(401 복구)되면 병렬 워커들이 즉시 새 토큰을 쓰도록 동적 조회
+  const getActiveProviderToken = (): string =>
+    text(loadAuthSession()?.providerAccessToken) || providerToken;
+  // [C단계 최적화] 같은 선생님 캘린더 존재 확인(GET /calendars/:id)은 동기화 배치당 1회만 수행하고 Promise 공유
+  const verifiedCalendarPromiseByOwner = new Map<string, Promise<string>>();
+  const getVerifiedTargetCalendarId = (ownerEmail: string): Promise<string> => {
+    const existing = verifiedCalendarPromiseByOwner.get(ownerEmail);
+    if (existing) return existing;
+    const promise = ensureAppCalendarIdWithRecovery({
+      token: getActiveProviderToken(),
+      ownerEmail,
+    }).catch((err) => {
+      verifiedCalendarPromiseByOwner.delete(ownerEmail);
+      throw err;
+    });
+    verifiedCalendarPromiseByOwner.set(ownerEmail, promise);
+    return promise;
+  };
 
-  for (const next of orderedTargets) {
+  const syncSingleTarget = async (next: Session): Promise<void> => {
     const prev = previousById.get(next.id);
     const student = studentById.get(next.studentId);
     if (!student) {
@@ -1607,7 +1694,7 @@ async function runSync(args: SyncArgs): Promise<void> {
           googleCalendarError: "학생 정보를 찾지 못해 캘린더 동기화가 중단되었습니다.",
         },
       });
-      continue;
+      return;
     }
 
     const teacher = student.teacherId ? teacherById.get(student.teacherId) ?? null : null;
@@ -1629,7 +1716,7 @@ async function runSync(args: SyncArgs): Promise<void> {
           googleCalendarError: "담당 선생님 이메일이 없어서 Meet를 만들 수 없습니다. 관리자에게 문의해주세요.",
         },
       });
-      continue;
+      return;
     }
 
     if (ownerEmail !== currentEmail) {
@@ -1657,7 +1744,7 @@ async function runSync(args: SyncArgs): Promise<void> {
       // 비소유자 계정에서도 "변경 없음 + 이미 동기화 완료 + 영구 링크 일치"인 경우만 그대로 둡니다.
       // 일정이 바뀌었거나 Meet 링크가 영구 링크와 다르면 반드시 pending으로 내려서 담당 선생님 재동기화를 유도합니다.
       if (!ownerMismatch && hasReadyMeet && isSyncedStatus && !scheduleChanged && meetMatchesPermanent) {
-        continue;
+        return;
       }
 
       patches.push({
@@ -1671,14 +1758,12 @@ async function runSync(args: SyncArgs): Promise<void> {
           googleCalendarError: "이 회차 Meet는 담당 선생님 계정으로 로그인해야 생성됩니다.",
         },
       });
-      continue;
+      return;
     }
 
     try {
-      const targetCalendarId = await ensureAppCalendarIdWithRecovery({
-        token: providerToken,
-        ownerEmail,
-      });
+      const targetCalendarId = await getVerifiedTargetCalendarId(ownerEmail);
+      const activeToken = getActiveProviderToken();
 
       const permanentFromStudent = text(student.permanentMeetUrl);
       let effectivePermanentMeet = studentPermanentMeetMap.get(student.id) || permanentFromStudent;
@@ -1706,7 +1791,7 @@ async function runSync(args: SyncArgs): Promise<void> {
         if (canCleanupCurrentCalendar) {
           try {
             const staleEvents = await findSignatureEvents({
-              token: providerToken,
+              token: activeToken,
               calendarId: sessionCalendarId,
               session: sessionForOwner,
               student,
@@ -1717,7 +1802,7 @@ async function runSync(args: SyncArgs): Promise<void> {
             for (const stale of staleEvents) {
               try {
                 await deleteEvent({
-                  token: providerToken,
+                  token: activeToken,
                   calendarId: sessionCalendarId,
                   eventId: stale.eventId,
                   sendUpdates: "none",
@@ -1734,7 +1819,7 @@ async function runSync(args: SyncArgs): Promise<void> {
         if (canCleanupCurrentCalendar && !cleanedBySignature && sessionForOwner.googleCalendarEventId) {
           try {
             await deleteEvent({
-              token: providerToken,
+              token: activeToken,
               calendarId: sessionCalendarId,
               eventId: sessionForOwner.googleCalendarEventId,
               sendUpdates: "none",
@@ -1752,11 +1837,7 @@ async function runSync(args: SyncArgs): Promise<void> {
         sessionCalendarId = targetCalendarId;
       }
 
-      // 시간표 변경 등으로 회차 시간이 바뀐 경우:
-      // 과거에는 여기서 강제로 deleteEvent() 호출 및 eventId를 undefined로 리셋했으나,
-      // 이제는 삭제하지 않고 뒤쪽의 updateEvent가 해당 eventId를 그대로 호출해 새 시간대로 PATCH 이동시키도록 유도함.
       if (prev && hasDisplayAtChanged(prev, next)) {
-        // 단지 로깅만 남기고 진행 (기존 eventId 보존)
         console.log(`[Google Calendar] 일정 변경 감지됨: ${student.name} ${next.index}회차. PATCH 이동 처리 예정.`);
       }
 
@@ -1773,57 +1854,64 @@ async function runSync(args: SyncArgs): Promise<void> {
         }
       }
 
-      // 1. 강제 청소 및 입양 (Purge & Adopt): 
-      // 현재 세션 ID 또는 시그니처(이름+회차)를 가진 모든 일정을 찾습니다. (시간 창에 구애받지 않음)
-      const allSessionEvents = await findSessionEvents({
-        token: providerToken,
-        calendarId: sessionCalendarId,
-        session: sessionForOwner,
-        student,
-      });
+      // [C단계 핵심 가속] 동일 소유자·동일 캘린더에 이미 eventId가 정상 연결되어 있으면
+      // 불필요한 사전 검색(findSessionEvents GET + 100ms 대기)을 생략하고 바로 PATCH로 직행한다.
+      // (404/403이 발생할 경우 아래 catch 분기에서 자동 복구)
+      const canDirectPatchExistingEvent =
+        !ownerMismatch &&
+        sessionCalendarId === targetCalendarId &&
+        Boolean(sessionForOwner.googleCalendarEventId) &&
+        text(next.googleCalendarStatus) !== "error";
 
-      if (allSessionEvents.length > 0) {
-        await delay(100);
-        const currentStartMs = new Date(safeIso(sessionForOwner.displayAt) ?? 0).getTime();
-
-        // 1-1. 기준(Canonical) 일정 선정
-        // - 이미 세션에 기록된 eventId가 있다면 그것을 최우선으로 사용
-        // - 없다면, 현재 시간(new date)에 가장 근접한(±5분) 일정을 입양
-        // - 그것도 없다면, 그냥 발견된 첫 번째 일정을 입양 (나중에 PATCH로 새 시간에 옮길 것임)
-        let canonicalId = sessionForOwner.googleCalendarEventId;
-        const matchingCurrentTime = allSessionEvents.find(ev => {
-          const evStartMs = new Date(ev.startIso ?? 0).getTime();
-          return Math.abs(evStartMs - currentStartMs) <= DUPLICATE_TIME_WINDOW_MS;
+      if (!canDirectPatchExistingEvent) {
+        // 1. 강제 청소 및 입양 (Purge & Adopt):
+        // 현재 세션 ID 또는 시그니처(이름+회차)를 가진 모든 일정을 찾습니다. (시간 창에 구애받지 않음)
+        const allSessionEvents = await findSessionEvents({
+          token: activeToken,
+          calendarId: sessionCalendarId,
+          session: sessionForOwner,
+          student,
         });
 
-        if (!canonicalId) {
-          canonicalId = matchingCurrentTime?.eventId ?? allSessionEvents[0].eventId;
-          sessionForOwner = {
-            ...sessionForOwner,
-            googleCalendarEventId: canonicalId ?? undefined,
-            // [방향 B]: 과거 일정의 meetUrl을 입양하지 않고 학생 영구 링크를 사용
-            googleMeetUrl: hasStudentPermanentMeet ? effectivePermanentMeet : undefined,
-          };
-        }
+        if (allSessionEvents.length > 0) {
+          await delay(100);
+          const currentStartMs = new Date(safeIso(sessionForOwner.displayAt) ?? 0).getTime();
 
-        // 1-2. 기준 이외의 모든 유령/중복 일정 청소
-        const duplicates = allSessionEvents.filter(ev => ev.eventId !== canonicalId);
-        for (const dup of duplicates) {
-          try {
-            await deleteEvent({
-              token: providerToken,
-              calendarId: sessionCalendarId,
-              eventId: dup.eventId,
-              sendUpdates: "none",
-            });
-            console.log(`[Purge] 중복/유령 일정 삭제 성공: ${student.name} ${next.index}회차 (${dup.startIso})`);
-          } catch (err) {
-            console.error(`[Purge] 중복/유령 일정 삭제 실패: ${dup.eventId}`, err);
+          let canonicalId = sessionForOwner.googleCalendarEventId;
+          const matchingCurrentTime = allSessionEvents.find(ev => {
+            const evStartMs = new Date(ev.startIso ?? 0).getTime();
+            return Math.abs(evStartMs - currentStartMs) <= DUPLICATE_TIME_WINDOW_MS;
+          });
+
+          if (!canonicalId) {
+            canonicalId = matchingCurrentTime?.eventId ?? allSessionEvents[0].eventId;
+            sessionForOwner = {
+              ...sessionForOwner,
+              googleCalendarEventId: canonicalId ?? undefined,
+              googleMeetUrl: hasStudentPermanentMeet ? effectivePermanentMeet : undefined,
+            };
+          }
+
+          const duplicates = allSessionEvents.filter(ev => ev.eventId !== canonicalId);
+          for (const dup of duplicates) {
+            try {
+              await deleteEvent({
+                token: activeToken,
+                calendarId: sessionCalendarId,
+                eventId: dup.eventId,
+                sendUpdates: "none",
+              });
+              console.log(`[Purge] 중복/유령 일정 삭제 성공: ${student.name} ${next.index}회차 (${dup.startIso})`);
+            } catch (err) {
+              console.error(`[Purge] 중복/유령 일정 삭제 실패: ${dup.eventId}`, err);
+            }
           }
         }
       }
 
-      const studentMetaMap = getEffectiveMetaMap({ token: student.token, stateKv });
+      const studentMetaMap =
+        metaMapByStudentId.get(student.id) ??
+        getEffectiveMetaMap({ token: student.token, stateKv });
       const currentMeta = studentMetaMap[next.index];
 
       let result: {
@@ -1834,7 +1922,7 @@ async function runSync(args: SyncArgs): Promise<void> {
       if (sessionForOwner.googleCalendarEventId) {
         try {
           result = await updateEvent({
-            token: providerToken,
+            token: activeToken,
             calendarId: sessionCalendarId,
             session: sessionForOwner,
             student,
@@ -1845,9 +1933,9 @@ async function runSync(args: SyncArgs): Promise<void> {
         } catch (err) {
           const message = err instanceof Error ? err.message : "Google Calendar 동기화 실패";
           if (isPermissionOrNotFound(message)) {
-            // 과거 다른 계정에서 만든 eventId 또는 권한 변경으로 접근 불가면 새 이벤트로 복구
+            // 과거 다른 계정에서 만든 eventId 또는 삭제된 일정이면 새 이벤트로 안전 복구
             result = await createEvent({
-              token: providerToken,
+              token: activeToken,
               calendarId: sessionCalendarId,
               session: {
                 ...sessionForOwner,
@@ -1865,7 +1953,7 @@ async function runSync(args: SyncArgs): Promise<void> {
         }
       } else {
         result = await createEvent({
-          token: providerToken,
+          token: activeToken,
           calendarId: sessionCalendarId,
           session: {
             ...sessionForOwner,
@@ -1915,7 +2003,7 @@ async function runSync(args: SyncArgs): Promise<void> {
       for (const staleCalendarId of staleCalendarIds) {
         try {
           const staleEvents = await findSignatureEvents({
-            token: providerToken,
+            token: activeToken,
             calendarId: staleCalendarId,
             session: sessionForOwner,
             student,
@@ -1923,7 +2011,7 @@ async function runSync(args: SyncArgs): Promise<void> {
           for (const stale of staleEvents) {
             try {
               await deleteEvent({
-                token: providerToken,
+                token: activeToken,
                 calendarId: staleCalendarId,
                 eventId: stale.eventId,
                 sendUpdates: "none",
@@ -1959,6 +2047,35 @@ async function runSync(args: SyncArgs): Promise<void> {
         },
       });
     }
+  };
+
+  // [C단계 안전 병렬 실행]
+  // 1) 영구 Meet 링크가 아직 없는 학생의 첫 회차(seedTargets)만 먼저 직렬 실행해 단일 Meet 링크 확보
+  // 2) 나머지 모든 회차(parallelTargets)는 동시 3개 제한으로 병렬 처리하여 캘린더 반영 속도 대폭 단축
+  const { seedTargets, parallelTargets } = partitionSyncTargetsForMeetSafety(
+    orderedTargets,
+    studentById
+  );
+  for (const seed of seedTargets) {
+    await syncSingleTarget(seed);
+  }
+  // seed 회차가 일시 오류로 Meet 링크를 못 얻은 학생은 중복 Meet 방 생성을 막기 위해 직렬 폴백으로 처리
+  const readyParallelTargets: Session[] = [];
+  const unseededSerialTargets: Session[] = [];
+  for (const target of parallelTargets) {
+    const st = studentById.get(target.studentId);
+    const hasMeet = Boolean(
+      (st && studentPermanentMeetMap.get(st.id)) || text(st?.permanentMeetUrl)
+    );
+    if (hasMeet || !st) {
+      readyParallelTargets.push(target);
+    } else {
+      unseededSerialTargets.push(target);
+    }
+  }
+  await runWithConcurrencyLimit(readyParallelTargets, SYNC_CONCURRENCY_LIMIT, syncSingleTarget);
+  for (const fallbackTarget of unseededSerialTargets) {
+    await syncSingleTarget(fallbackTarget);
   }
 
   if (patches.length > 0) {

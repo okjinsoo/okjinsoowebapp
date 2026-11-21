@@ -85,6 +85,17 @@ class BrowserStorageImpl implements Storage {
     dispatchStorageChanged({ type: "remove", key, oldValue, newValue: null });
   }
 
+  removeItemSilent(key: string): void {
+    this.cache.delete(key);
+    const storage = getLocalStorage();
+    if (storage) {
+      if (storage.getItem(key) === null) return;
+      storage.removeItem(key);
+      return;
+    }
+    memoryFallback.delete(key);
+  }
+
   setItemSilent(key: string, value: string): void {
     const now = Date.now();
     this.cache.set(key, { value, expiry: now + this.CACHE_TTL });
