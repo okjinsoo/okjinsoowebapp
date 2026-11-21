@@ -1,11 +1,11 @@
 # Project Status (Latest)
 
-기준 시각: 2026-11-21 19:55 (KST)
+기준 시각: 2026-11-21 20:03 (KST)
 대상 프로젝트: `v1`
 
 ## 1분 요약
 
-- 최신 패치 반영: 2026-11-21 19:55 (KST) (로컬 검증 완료, 운영 배포 대기)
+- 최신 패치 반영: 2026-11-21 20:03 (KST) (운영 배포 완료 `dpl_GK3TN1ryTRMLiU5EdjHANHPaNF7s`, 커밋 `0aefd62`)
 - **시간표 조정(변경·이월·수업 시간 변경) 전면 고속화 및 안전성 강화 패치 (A → B-2 → C-2 → C 전 단계 완료)**:
   1) **A단계 — 4연속 왕복 → 단 1회 저장 통합 & 날짜 계산 엔진 초고속화 ([`syncSessionDisplayAt.ts`](file:///Users/okjinsoo/Project/TutorWEB/v1/lib/ui/session/syncSessionDisplayAt.ts), [`sessionEffective.ts`](file:///Users/okjinsoo/Project/TutorWEB/v1/lib/ui/session/sessionEffective.ts), [`SessionQuickActions.tsx`](file:///Users/okjinsoo/Project/TutorWEB/v1/lib/ui/session/SessionQuickActions.tsx), [`SessionTopBarCore.tsx`](file:///Users/okjinsoo/Project/TutorWEB/v1/lib/ui/session/SessionTopBarCore.tsx))**:
      - 개별 회차 조정 시 `POST metaMap → GET snapshot → GET snapshot(forceRemote) → POST sessions` 4연속 왕복을 `saveSessionAdjustmentByToken` 단 1회 `POST /api/snapshot`으로 통합
@@ -259,7 +259,7 @@
   3) **방안 C (구글 토큰 만료 사전 체크 & 401 헛걸음 차단)**: `SharedSnapshotAgent` 및 `googleCalendarSync.ts`(`runSync`, `runTeacherCalendarRebuild`)에 `isProviderTokenExpired` 사전 가드를 추가하여 만료된 구글 토큰으로 구글 API를 호출하며 발생하는 401 에러 연발 및 재시도 루프 차단
 - 홈화면/로그인 화면 푸터 노출 구조 개선: `app/page.tsx` 및 공통 가드 페이지들의 `minHeight: calc(100vh - 56px)` 고정 높이를 `flex: 1` 유연 레이아웃으로 변경하여, 홈화면 접속 시 스크롤 없이도 하단 사업자 정보 푸터(`AppFooter.tsx`)가 화면 하단에 바로 상시 노출되도록 개선
 - 학생 상태 판정 조건 개선: '연장필요' 기준을 기존 잔여 회차(3회 이하) 기준에서 '마지막 수업일로부터 9일 전(D-9)' 기준으로 개편 (`studentStatusFactory.ts`, `useStudentRegistry.ts`, `StudentHubCore.tsx`)
-- 최신 운영 반영본: 2026-11-20 16:28 (KST) (배포 ID `57fs8sCNsPwscT4TuBveZNkH4x9R`)
+- 최신 운영 반영본: 2026-11-21 20:02 (KST) (배포 ID `dpl_GK3TN1ryTRMLiU5EdjHANHPaNF7s`, 커밋 `0aefd62`)
 - 운영 주소: `https://okjinsoowebapp.vercel.app`
 - 하단 푸터 통신판매업신고번호 등록: `2026-서울마포-2150` 등록 완료 (`AppFooter.tsx`)
 - 중복 프로세스 제거 및 안전 캐싱 패치 (방안 A): `useRoleScopedSelection` 쌍둥이 `useEffect` 2중 호출 단일화, `PageTitleAgent` 로컬 스냅샷 직결로 `/api/students` 독립 네트워크 호출 제거, `useAdminStudentsPageData`의 3중 조회 제거 및 `useStudentRegistry` 데이터 직결, `serverRead.ts` 5초 캐시 + 이벤트(`studentsUpdated`/`sessionsUpdated`/`teachersUpdated`/`AUTH_EVENT`/`storage`) 기반 즉시 캐시 무효화 적용
@@ -302,6 +302,7 @@
 - 관리자 계정이 비소유자면 직접 생성 대신 `pending` 요청 저장
 ## 최근 변경(운영 영향 큰 항목)
 
+- 2026-11-21 20:02: 프로덕션 배포 `dpl_GK3TN1ryTRMLiU5EdjHANHPaNF7s` (커밋 `0aefd62`, 운영 주소: `https://okjinsoowebapp.vercel.app`, 배포 URL: `https://okjinsoowebapp-p4u8bjuai-okjinsoos-projects.vercel.app`, 시간표 조정 A/B-2/C 통합 고속화: 개별·일괄 조정 1회 부분 병합 `merge` 저장, 0.7초 중복 POST 제거, KST 날짜 계산·학생별 캐싱 최적화, 실패 롤백, `useServiceRole` 수정 및 변경분 듀얼라이트, 수업 길이 단독 변경 시 캘린더 동기화, 구글 캘린더 동시 3병렬 + 429 백오프 + `eventId` 직행 PATCH)
 - 2026-11-20 16:28: 프로덕션 재배포 `57fs8sCNsPwscT4TuBveZNkH4x9R` (운영 주소: `https://okjinsoowebapp.vercel.app`, 배포 URL: `https://okjinsoowebapp-opmt08xzw-okjinsoos-projects.vercel.app`, Vercel Production 환경변수 `TOSS_SECRET_KEY`(Secret) 및 `NEXT_PUBLIC_TOSS_CLIENT_KEY`(Config) 등록 후 재배포하여 `/api/payments/confirm` `SERVER_CONFIG_MISSING` 오류 해소)
 - 2026-11-14 00:20: 프로덕션 배포 커밋 `58f2df4` (운영 주소: `https://okjinsoowebapp.vercel.app`, CTO 구조 진단 1~3단계 통합 패치: 토스 시크릿키 격리 및 결제 금액 검증, 학생/선생님 `stateKv` 세밀한 권한 분리 및 Direct DB Fallback 제거, `patch_snapshot_state_kv` 원자적 병합 및 교사별 스냅샷 다이어트, 온라인 수강 신청 결제 원장 `payment_orders` 이중 기록 및 조회 API 구축)
 - 2026-11-02 17:44: 프로덕션 배포 커밋 `499a10e` (운영 주소: `https://okjinsoowebapp.vercel.app`, `tmain` 오늘의 수업/다음 수업 학습 진도율(%) 실시간 동기화 누락 해결: 스냅샷 다이제스트 전체 공유 키 SHA-256 해시화, `readSnapshotServerFirst` 수신 즉시 `stateKv` 반영, `sessionProgressUpdated` 이벤트 연동)
