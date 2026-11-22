@@ -5,12 +5,13 @@ import { TUTORWEB_EVENTS } from "@/lib/events/tutorwebEvents";
 
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
+import { buildBaseDatesISO } from "@/lib/storage/sessionMeta";
 import {
-  buildBaseDatesISO,
   computeEffectiveISO,
   buildBadges,
+  getDdayMeta,
 } from "@/lib/factories/sessionFactories";
-import { useMetaMap, getDdayMeta } from "@/lib/factories/sessionFactories";
+import { useMetaMap } from "@/lib/ui/session/useMetaMap";
 import { buildDisplayRecords } from "@/lib/factories/lessonStatusFactory";
 import Badge from "@/lib/ui/common/Badge";
 import SessionCardRow from "@/lib/ui/session/SessionCardRow";

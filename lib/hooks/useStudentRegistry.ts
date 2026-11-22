@@ -5,11 +5,8 @@ import { BROWSER_STORAGE_EVENT } from "@/lib/storage/browserStorage";
 import { isSessionProgressStateKey } from "@/lib/shared/sharedStateKeys";
 import { TEACHERS_EVENT } from "@/lib/storage/teachers";
 import { readSnapshotServerFirst } from "@/lib/storage/serverRead";
-import {
-  buildBaseDatesISO,
-  computeEffectiveISO,
-  readMetaMap,
-} from "@/lib/factories/sessionFactories";
+import { buildBaseDatesISO, readMetaMap } from "@/lib/storage/sessionMeta";
+import { computeEffectiveISO } from "@/lib/factories/sessionFactories";
 import {
   computePauseLifecycle,
   computeStudentStatusFromMetrics,

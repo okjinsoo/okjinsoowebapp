@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { resolveDurationMinForSessionWithMeta, resolveRulesForIndex } from "@/lib/factories/sessionScheduleResolver";
-import { getEffectiveMetaMap, parseMetaMapFromRaw } from "@/lib/ui/session/sessionEffective";
+import { parseMetaMapFromRaw } from "@/lib/factories/sessionEffectiveCore";
+import { getEffectiveMetaMap } from "@/lib/storage/sessionMeta";
 import {
   isGoogleRateLimitError,
   partitionSyncTargetsForMeetSafety,

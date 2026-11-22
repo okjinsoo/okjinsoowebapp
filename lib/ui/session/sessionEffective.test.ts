@@ -546,6 +546,38 @@ describe("sessionEffective schedule change by date", () => {
     expect(resolveActiveScheduleRules({ student: null })).toEqual([]);
   });
 
+  it("resolveActiveScheduleRules: metaMap을 생략하면 browserStorage에서 읽어 이월 반영된 직전 회차 기준으로 전환한다", () => {
+    const student: Student = {
+      ...sampleStudent(),
+      startDate: "2026-02-02",
+      scheduleRules: [
+        { weekday: 1, hour: 17, minute: 0 }, // 월
+        { weekday: 4, hour: 17, minute: 0 }, // 목
+      ],
+      scheduleChangeEvents: [
+        {
+          id: "chg-5-omit",
+          startIndex: 5,
+          startDate: "2026-02-17",
+          newRules: [
+            { weekday: 2, hour: 19, minute: 0 }, // 화
+            { weekday: 4, hour: 19, minute: 0 }, // 목
+          ],
+        },
+      ],
+    };
+
+    // 2회차 이월 +1 -> 4회차가 2026-02-12(목)에서 2026-02-16(월)로 밀림
+    browserStorage.setItem(metaMapKey(student.token), JSON.stringify({ 2: { carry: 1 } }));
+
+    // metaMap 생략 호출: 4회차 당일(2026-02-16)에는 기존 규칙 유지, 익일(2026-02-17)부터 새 규칙 적용
+    expect(resolveActiveScheduleRules({ student, targetYmd: "2026-02-16" })).toEqual(student.scheduleRules);
+    expect(resolveActiveScheduleRules({ student, targetYmd: "2026-02-17" })).toEqual([
+      { weekday: 2, hour: 19, minute: 0 },
+      { weekday: 4, hour: 19, minute: 0 },
+    ]);
+  });
+
   it("buildBaseDatesISO: metaMapOverride를 전달하면 browserStorage 없이도 동일한 결과를 산출한다", () => {
     const student = sampleStudent();
     const overrideMeta = { 3: { carry: 2 }, 5: { carry: 2 } };

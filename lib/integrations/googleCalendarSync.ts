@@ -3,11 +3,8 @@
 import { buildGoogleAuthUrl, isProviderTokenExpired, loadAuthSession } from "@/lib/auth/supabaseAuth";
 import { readSnapshotServerFirst } from "@/lib/storage/serverRead";
 import type { Session, SessionMeta, Student, Teacher } from "@/lib/types/index";
-import {
-  buildBaseDatesISO,
-  computeEffectiveISO,
-  getEffectiveMetaMap,
-} from "@/lib/factories/sessionFactories";
+import { buildBaseDatesISO, getEffectiveMetaMap } from "@/lib/storage/sessionMeta";
+import { computeEffectiveISO } from "@/lib/factories/sessionFactories";
 import {
   resolveRulesForIndex,
   resolveDurationMinForSessionWithMeta,

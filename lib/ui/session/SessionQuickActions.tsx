@@ -7,13 +7,9 @@ import { TUTORWEB_EVENTS } from "@/lib/events/tutorwebEvents";
 import { loadCurrentTeacherId } from "@/lib/storage/teachers";
 import { buildStudentSessionsFromRows, readSnapshotServerFirst } from "@/lib/storage/serverRead";
 import { readLocalSessions, readLocalStudents } from "@/lib/storage/sharedSnapshot";
-import {
-  buildBaseDatesISO,
-  computeEffectiveISO,
-  upsertMeta,
-  useMetaMap,
-  readMetaMap,
-} from "@/lib/factories/sessionFactories";
+import { buildBaseDatesISO, readMetaMap, upsertMeta } from "@/lib/storage/sessionMeta";
+import { computeEffectiveISO } from "@/lib/factories/sessionFactories";
+import { useMetaMap } from "@/lib/ui/session/useMetaMap";
 import { saveSessionAdjustmentByToken } from "@/lib/ui/session/syncSessionDisplayAt";
 import { canEditSessionMeta, type SessionRole } from "@/lib/policies/sessionRolePolicy";
 import type { Session, SessionMeta, Student } from "@/lib/types/index";

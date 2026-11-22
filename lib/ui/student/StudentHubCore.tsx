@@ -13,16 +13,14 @@ import {
   saveSessions,
   syncStudentGoogleCalendarMirrorForStudentIds,
 } from "@/lib/storage/sessions";
+import { buildBaseDatesISO, readMetaMap, resolveActiveScheduleRules } from "@/lib/storage/sessionMeta";
 import {
   buildBadges,
-  buildBaseDatesISO,
   computeEffectiveISO,
   getDdayMeta,
   metaMapKey,
-  readMetaMap,
-  resolveActiveScheduleRules,
-  useMetaMap,
 } from "@/lib/factories/sessionFactories";
+import { useMetaMap } from "@/lib/ui/session/useMetaMap";
 import {
   buildDisplayRecords,
   computeBaseCount,

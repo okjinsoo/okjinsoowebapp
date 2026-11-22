@@ -1,31 +1,24 @@
 // v1/lib/factories/sessionFactories.ts
-// ✅ Session 관련 계산/저장 공장들의 단일 입구
-// 사용법(간단):
-// - 화면에서는 가능하면 이 파일만 import 하세요.
-// - 원본 날짜: buildBaseDatesISO
-// - 기록(출결/변경/이월): readMetaMap / upsertMeta
-// - 최종 날짜: computeEffectiveISO
-// - D-day: getDdayMeta
-// - 반응형 훅: useMetaMap / useMetaSignal
+// ✅ Session 관련 순수 계산 공장들의 단일 입구 (UI/브라우저 저장소 의존 없음)
+// - 브라우저 저장소 읽기/쓰기(readMetaMap, upsertMeta, buildBaseDatesISO 등)는 "@/lib/storage/sessionMeta" 사용
+// - React 훅(useMetaMap, useMetaSignal)은 화면 세션 훅 모듈(useMetaMap.ts)에서 직접 import
 
-export type { SessionMeta, SessionMetaStatus, SessionMetaStatus as SessionState } from "@/lib/types/index";
+export type { SessionMeta, SessionMetaStatus } from "@/lib/types/index";
 
 export {
-  buildBaseDatesISO,
   buildBadges,
+  buildBaseDatesISOFromMetaMap,
+  buildUpdatedMetaMapFromCurrent,
   computeEffectiveISO,
-  getEffectiveMetaMap,
   getStatusStyle,
+  mergeEffectiveMetaMap,
   metaMapKey,
   parseMetaMapFromRaw,
-  readMetaMap,
-  resolveActiveScheduleRules,
-  upsertMeta,
-} from "@/lib/ui/session/sessionEffective";
+  resolveActiveScheduleRulesCore,
+  ymdFromISO_KST,
+} from "@/lib/factories/sessionEffectiveCore";
 
 export { getDdayMeta, type DdayMeta } from "@/lib/factories/ddayMeta";
-
-export { useMetaMap, useMetaSignal } from "@/lib/ui/session/useMetaMap";
 
 export type SessionVisibility = "visible" | "hidden";
 

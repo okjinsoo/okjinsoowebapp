@@ -3,15 +3,13 @@
 import { BROWSER_STORAGE_EVENT } from "@/lib/storage/browserStorage";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { buildBaseDatesISO, readMetaMap, upsertMeta } from "@/lib/storage/sessionMeta";
 import {
-  buildBaseDatesISO,
   computeEffectiveISO,
-  upsertMeta,
   buildBadges,
-  readMetaMap,
-  useMetaMap,
   getDdayMeta,
 } from "@/lib/factories/sessionFactories";
+import { useMetaMap } from "@/lib/ui/session/useMetaMap";
 import {
   buildGoogleAuthUrl,
 } from "@/lib/auth/supabaseAuth";

@@ -6,7 +6,8 @@ export type StudentStatusKind =
 
 import type { Student, Session } from "@/lib/types/index";
 import { sessionsByStudent } from "@/lib/storage/sessions";
-import { buildBaseDatesISO, computeEffectiveISO, readMetaMap } from "@/lib/factories/sessionFactories";
+import { buildBaseDatesISO, readMetaMap } from "@/lib/storage/sessionMeta";
+import { computeEffectiveISO } from "@/lib/factories/sessionFactories";
 import { kstDateMs, todayYmdKST, ymdFromISO_KST } from "@/lib/utils/date";
 
 /**
