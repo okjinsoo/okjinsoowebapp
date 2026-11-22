@@ -27,7 +27,11 @@ vi.mock("@/lib/storage/sessions", () => ({
   saveSessions: hoisted.saveSessionsMock,
 }));
 
-import { saveSessionAdjustmentByToken } from "@/lib/ui/session/syncSessionDisplayAt";
+import { TUTORWEB_EVENTS } from "@/lib/events/tutorwebEvents";
+import {
+  saveSessionAdjustmentByToken,
+  syncSessionDisplayAtByToken,
+} from "@/lib/ui/session/syncSessionDisplayAt";
 
 const originalWindow = (globalThis as { window?: unknown }).window;
 
@@ -217,6 +221,139 @@ describe("saveSessionAdjustmentByToken (Phase A+B2 부분 병합, 롤백, 수업
     // 로컬 metaMap이 이전 값("원래사유", overrideDate 없음)으로 정확히 원복되어야 한다.
     expect(readMetaMap(student.token)[1]?.reason).toBe("원래사유");
     expect(readMetaMap(student.token)[1]?.overrideDate).toBe("");
+    expect(hoisted.saveSessionsMock).not.toHaveBeenCalled();
+  });
+
+  // --- 2-b-1 동작 고정 테스트 (순수 계산 분리 전 안전망) ---
+
+  it("기존 로컬 metaMap이 없던 상태에서 서버 저장이 실패하면 로컬 키를 깔끔히 삭제해 롤백한다", async () => {
+    const student = sampleStudent();
+    const sessions = sampleSessions();
+    hoisted.pushSharedSnapshotMock.mockResolvedValueOnce({
+      sessionsSynced: true,
+      stateKvSynced: false,
+    });
+
+    const saved = await saveSessionAdjustmentByToken({
+      token: student.token,
+      index: 1,
+      patch: { status: "absent", reason: "결석" },
+      students: [student],
+      sessions,
+    });
+
+    expect(saved.ok).toBe(false);
+    expect(saved.meta).toEqual({});
+    expect(browserStorage.getItem(metaMapKey(student.token))).toBeNull();
+    // 낙관적 반영 1회 + 롤백 복원 1회 = 총 2회 metaMapUpdated 이벤트 발생
+    expect(dispatchedEvents.filter((e) => e.type === TUTORWEB_EVENTS.metaMapUpdated)).toHaveLength(2);
+    expect(hoisted.saveSessionsMock).not.toHaveBeenCalled();
+  });
+
+  it("pushSharedSnapshot이 예외를 던져도 이전 로컬 metaMap으로 안전하게 롤백하고 { ok: false } 반환한다", async () => {
+    const student = sampleStudent();
+    const sessions = sampleSessions();
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    browserStorage.setItemSilent(
+      metaMapKey(student.token),
+      JSON.stringify({ 1: { status: "present", reason: "기존기록" } })
+    );
+    hoisted.pushSharedSnapshotMock.mockRejectedValueOnce(new Error("network timeout"));
+
+    const saved = await saveSessionAdjustmentByToken({
+      token: student.token,
+      index: 1,
+      patch: { carry: 1, reason: "네트워크실패" },
+      students: [student],
+      sessions,
+    });
+
+    errSpy.mockRestore();
+    expect(saved.ok).toBe(false);
+    expect(readMetaMap(student.token)[1]?.reason).toBe("기존기록");
+    expect(readMetaMap(student.token)[1]?.carry).toBe(0);
+    expect(hoisted.saveSessionsMock).not.toHaveBeenCalled();
+  });
+
+  it("stateKvSynced만 성공하고 sessionsSynced가 실패한 부분 실패도 롤백 처리한다", async () => {
+    const student = sampleStudent();
+    const sessions = sampleSessions();
+    hoisted.pushSharedSnapshotMock.mockResolvedValueOnce({
+      stateKvSynced: true,
+      sessionsSynced: false,
+    });
+
+    const saved = await saveSessionAdjustmentByToken({
+      token: student.token,
+      index: 1,
+      patch: { carry: 1, reason: "세션저장실패" },
+      students: [student],
+      sessions,
+    });
+
+    expect(saved.ok).toBe(false);
+    expect(browserStorage.getItem(metaMapKey(student.token))).toBeNull();
+    expect(hoisted.saveSessionsMock).not.toHaveBeenCalled();
+  });
+
+  it("인자와 로컬 캐시에 학생/세션이 없으면 readSnapshotServerFirst로 조회하고 virtual_ 세션은 제외한다", async () => {
+    const student = sampleStudent();
+    const sessionsWithVirtual: Session[] = [
+      ...sampleSessions(),
+      { id: "virtual_99", studentId: "stu-a1", index: 5, displayAt: "2026-03-16T08:00:00.000Z", state: "normal" },
+    ];
+    hoisted.readSnapshotServerFirstMock.mockResolvedValueOnce({
+      students: [student],
+      sessions: sessionsWithVirtual,
+    });
+
+    const saved = await saveSessionAdjustmentByToken({
+      token: student.token,
+      index: 1,
+      patch: { carry: 1, reason: "서버조회폴백" },
+    });
+
+    expect(saved.ok).toBe(true);
+    expect(hoisted.readSnapshotServerFirstMock).toHaveBeenCalledTimes(1);
+    const payload = hoisted.pushSharedSnapshotMock.mock.calls[0][0] as { sessions?: Session[] };
+    expect(payload.sessions?.some((s) => s.id === "virtual_99")).toBe(false);
+    expect(payload.sessions?.map((s) => s.id)).toEqual(["s1", "s2", "s3", "s4"]);
+  });
+
+  it("syncSessionDisplayAtByToken: 로컬 metaMap 기준으로 바뀐 실세션만 merge 전송하고 saveSessions를 호출한다", async () => {
+    const student = sampleStudent();
+    const sessions = sampleSessions();
+    hoisted.readLocalStudentsMock.mockReturnValue([student]);
+    hoisted.readLocalSessionsMock.mockReturnValue(sessions);
+    browserStorage.setItemSilent(
+      metaMapKey(student.token),
+      JSON.stringify({
+        1: { overrideDate: "2026-03-06", overrideHour: 19, overrideMinute: 0, overrideSource: "manual" },
+      })
+    );
+
+    await syncSessionDisplayAtByToken(student.token);
+
+    expect(hoisted.pushSharedSnapshotMock).toHaveBeenCalledTimes(1);
+    const payload = hoisted.pushSharedSnapshotMock.mock.calls[0][0] as {
+      sessions?: Session[];
+      sessionsMergeMode?: string;
+    };
+    expect(payload.sessionsMergeMode).toBe("merge");
+    expect(payload.sessions?.map((s) => s.id)).toEqual(["s1"]);
+    expect(payload.sessions?.[0].displayAt).toBe("2026-03-06T10:00:00.000Z");
+    expect(hoisted.saveSessionsMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("syncSessionDisplayAtByToken: 변경된 회차 날짜가 없으면 서버 전송과 로컬 저장을 건너뛴다", async () => {
+    const student = sampleStudent();
+    const sessions = sampleSessions();
+    hoisted.readLocalStudentsMock.mockReturnValue([student]);
+    hoisted.readLocalSessionsMock.mockReturnValue(sessions);
+
+    await syncSessionDisplayAtByToken(student.token);
+
+    expect(hoisted.pushSharedSnapshotMock).not.toHaveBeenCalled();
     expect(hoisted.saveSessionsMock).not.toHaveBeenCalled();
   });
 });
