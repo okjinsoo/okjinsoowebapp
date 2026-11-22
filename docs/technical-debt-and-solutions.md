@@ -103,4 +103,4 @@
 | **Phase 2 (1차 분리 & RBAC)** | **모달 분리 & 관리자 RBAC 정비** | `StudentHubCore` 거대 모달 2종 분리(약 400줄 감량), 관리자 이메일 동적 결합. 단, `StudentHubCore.tsx`(1,814줄) 본체 및 기타 대형 파일(`SessionClientCore`, `syncFactory`, `googleCalendarSync`)은 추가 분해 필요 | 부분 완료 (추가 분해 예정) |
 | **Phase 3 (DB 정규화 & OCC)** | **정규화 테이블 & 듀얼라이트 구축** | 정규화 DDL(`011_normalize_tables_and_occ.sql`), `version` 컬럼 기반 OCC 트리거 및 변경분 듀얼라이트(`dualWriteSync.ts`) 탑재 | 완료 (2026-09-19) |
 | **Phase 4 (읽기 전환 & 보안/속도)** | **정규화 읽기 스위치 & 보안 잠금** | 백필 API, `NEXT_PUBLIC_READ_FROM_NORMALIZED` 스위치, `patch_snapshot_state_kv` 원자적 병합, RLS 잠금, 시간표 조정 1회 부분 병합(`merge`) 고속화 완료 | 완료 (2026-11-21) |
-| **Phase 5 (구조 리팩토링)** | **청소 → 계층 정리 → 대형 파일 안전 분해** | 1단계 대청소/문서 슬림화 → 2단계 계층/공용 경로 정리 → 3단계 동작 고정 테스트 선행 후 대형 파일 4종 순차 분해 → 4단계 데이터 경로 정리 | 진행 중 (1단계 완료) |
+| **Phase 5 (구조 리팩토링)** | **청소 → 계층 정리 → (추후) 대형 파일 분해** | 1단계 대청소/문서 슬림화 및 2단계 계층/공용 경로 정리·순수 계산 분리·ESLint 자동 가드·테스트 95개 확충 완료 (`pre-refactor` 태그 확보). 3단계(대형 파일 4종 분해) 및 `sessions.ts`↔캘린더 결합 완화는 추후 별도 마일스톤으로 진행 | 1~2단계 완료 (3단계 대기) |
