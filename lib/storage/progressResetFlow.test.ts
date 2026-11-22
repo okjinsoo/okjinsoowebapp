@@ -19,7 +19,7 @@ import {
   recordConfirmedPaymentOrder,
   SERVER_PAYMENT_ORDERS_KV_KEY,
 } from "@/lib/server/paymentOrderStore";
-import { isSharedStateKvKey, sessionProgressByLeafIdKey } from "@/lib/storage/sharedStateKeys";
+import { isSharedStateKvKey, sessionProgressByLeafIdKey } from "@/lib/shared/sharedStateKeys";
 import { NextRequest } from "next/server";
 
 describe("Progress state saving flow", () => {

@@ -14,7 +14,7 @@ import { loadAuthSession } from "@/lib/auth/supabaseAuth";
 import {
   readRemoteSharedStateKvValue,
 } from "@/lib/storage/sharedSnapshot";
-import { SHARED_DRIVE_ROOT_ID_KEY } from "@/lib/storage/sharedStateKeys";
+import { SHARED_DRIVE_ROOT_ID_KEY } from "@/lib/shared/sharedStateKeys";
 import type { Student } from "@/lib/types/index";
 import {
   readStudentContextServerRequired,

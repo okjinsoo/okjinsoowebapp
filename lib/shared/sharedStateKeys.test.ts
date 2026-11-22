@@ -7,7 +7,7 @@ import {
   sessionProgressByLeafIdKey,
   SHARED_LECTURE_TREE_KEY,
   SHARED_META_MAP_PREFIX,
-} from "@/lib/storage/sharedStateKeys";
+} from "@/lib/shared/sharedStateKeys";
 
 describe("sharedStateKeys", () => {
   it("builds deterministic session keys", () => {

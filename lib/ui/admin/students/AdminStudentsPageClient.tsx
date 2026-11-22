@@ -16,7 +16,7 @@ import {
 } from "@/lib/storage/sharedSnapshot";
 import {
   SHARED_LECTURE_TREE_KEY,
-} from "@/lib/storage/sharedStateKeys";
+} from "@/lib/shared/sharedStateKeys";
 import type { Session, Student, Teacher } from "@/lib/types/index";
 
 type StudentBackupFileV1 = {

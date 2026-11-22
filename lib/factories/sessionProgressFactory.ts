@@ -3,7 +3,7 @@ import {
   isSessionProgressStateKey,
   sessionLeafIdsKey,
   sessionProgressByLeafIdKey,
-} from "@/lib/storage/sharedStateKeys";
+} from "@/lib/shared/sharedStateKeys";
 
 export type SessionProgressItem = {
   noteDone?: boolean;

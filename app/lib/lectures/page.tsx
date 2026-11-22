@@ -25,7 +25,7 @@ import {
   pushSharedSnapshot,
   readRemoteSharedStateKvValue,
 } from "@/lib/storage/sharedSnapshot";
-import { SHARED_LECTURE_TREE_KEY } from "@/lib/storage/sharedStateKeys";
+import { SHARED_LECTURE_TREE_KEY } from "@/lib/shared/sharedStateKeys";
 import type { LectureTree } from "@/lib/types/index";
 
 // [Phase 24.4] 클라우드 동기화 최적화: 자동 저장 제거 및 수동 저장 도입

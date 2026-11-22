@@ -2,7 +2,7 @@ import {
   isSessionProgressStateKey,
   isSharedStateKvKey,
   SHARED_META_MAP_PREFIX,
-} from "@/lib/storage/sharedStateKeys";
+} from "@/lib/shared/sharedStateKeys";
 
 export function filterStateKvForViewer(
   stateKv: Record<string, string>,

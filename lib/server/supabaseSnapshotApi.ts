@@ -20,7 +20,7 @@ import {
   isSessionProgressStateKey,
   isSharedStateKvKey,
   SHARED_META_MAP_PREFIX,
-} from "@/lib/storage/sharedStateKeys";
+} from "@/lib/shared/sharedStateKeys";
 import { isTeacherAllowedStateKvKey } from "@/lib/server/snapshotFilter";
 import type { Session, Student, Teacher } from "@/lib/types/index";
 import { computeChangedRowsById, executeDualWriteSync } from "@/lib/server/dualWriteSync";

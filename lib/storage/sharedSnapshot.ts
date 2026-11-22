@@ -12,7 +12,7 @@ import {
   isSharedStateKvKey,
   SHARED_LECTURE_TREE_KEY,
   SHARED_META_MAP_PREFIX,
-} from "@/lib/storage/sharedStateKeys";
+} from "@/lib/shared/sharedStateKeys";
 import type { Session, Student, Teacher } from "@/lib/types/index";
 
 export const SNAPSHOT_KEY = "main";

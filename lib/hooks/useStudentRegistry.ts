@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { BROWSER_STORAGE_EVENT } from "@/lib/storage/browserStorage";
-import { isSessionProgressStateKey } from "@/lib/storage/sharedStateKeys";
+import { isSessionProgressStateKey } from "@/lib/shared/sharedStateKeys";
 import { TEACHERS_EVENT } from "@/lib/storage/teachers";
 import { readSnapshotServerFirst } from "@/lib/storage/serverRead";
 import {

@@ -5,7 +5,7 @@ import { loadAuthSession, buildGoogleAuthUrl } from "@/lib/auth/supabaseAuth";
 import { ensureFolder, requestDrive, shareFolderWithEmail } from "@/lib/integrations/googleDriveSync";
 import { pushSharedSnapshot, readRemoteSharedStateKvValue } from "@/lib/storage/sharedSnapshot";
 import { readTeachersServerFirst } from "@/lib/storage/serverRead";
-import { SHARED_DRIVE_ROOT_ID_KEY } from "@/lib/storage/sharedStateKeys";
+import { SHARED_DRIVE_ROOT_ID_KEY } from "@/lib/shared/sharedStateKeys";
 
 export default function DriveControlPanel() {
   const [driveRootId, setDriveRootId] = useState<string | null>(null);

@@ -1,7 +1,7 @@
 import "server-only";
 
 import type { Session, Student, Teacher } from "@/lib/types/index";
-import { isSharedStateKvKey } from "@/lib/storage/sharedStateKeys";
+import { isSharedStateKvKey } from "@/lib/shared/sharedStateKeys";
 
 const SNAPSHOT_KEY = "main";
 

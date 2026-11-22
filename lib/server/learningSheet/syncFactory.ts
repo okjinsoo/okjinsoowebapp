@@ -5,7 +5,7 @@ import type { Session, Student, Teacher } from "@/lib/types/index";
 import {
   sessionLeafIdsKey,
   sessionProgressByLeafIdKey,
-} from "@/lib/storage/sharedStateKeys";
+} from "@/lib/shared/sharedStateKeys";
 import {
   assertOwnerOAuthReady,
   createSpreadsheet,

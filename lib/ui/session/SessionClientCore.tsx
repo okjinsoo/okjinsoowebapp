@@ -12,7 +12,7 @@ import {
   sessionProgressByLeafIdKey,
   SHARED_LECTURE_TREE_KEY,
   SHARED_DRIVE_ROOT_ID_KEY,
-} from "@/lib/storage/sharedStateKeys";
+} from "@/lib/shared/sharedStateKeys";
 import {
   canAssignSessionLectures,
   canSeeSessionInternalFields,

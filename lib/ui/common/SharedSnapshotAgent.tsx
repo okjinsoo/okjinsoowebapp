@@ -17,7 +17,7 @@ import {
   isSharedStateKvKey,
   SHARED_LECTURE_TREE_KEY,
   SHARED_META_MAP_PREFIX,
-} from "@/lib/storage/sharedStateKeys";
+} from "@/lib/shared/sharedStateKeys";
 import { TUTORWEB_EVENTS } from "@/lib/events/tutorwebEvents";
 
 const PUSH_DEBOUNCE_MS = 700;

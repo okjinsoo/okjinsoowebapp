@@ -74,7 +74,7 @@ import {
 import {
   SHARED_DRIVE_ROOT_ID_KEY,
   SHARED_LECTURE_TREE_KEY,
-} from "@/lib/storage/sharedStateKeys";
+} from "@/lib/shared/sharedStateKeys";
 import { ensureFolder, shareFolderWithEmail } from "@/lib/integrations/googleDriveSync";
 import { loadLatestCoreSnapshotBaselineServerRequired } from "@/lib/storage/safeSnapshotMerge";
 import { makeId } from "@/lib/utils/id";

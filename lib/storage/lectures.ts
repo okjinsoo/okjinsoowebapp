@@ -2,7 +2,7 @@
 
 import { browserStorage } from "@/lib/storage/browserStorage";
 import { TUTORWEB_EVENTS } from "@/lib/events/tutorwebEvents";
-import { SHARED_LECTURE_TREE_KEY } from "@/lib/storage/sharedStateKeys";
+import { SHARED_LECTURE_TREE_KEY } from "@/lib/shared/sharedStateKeys";
 import type {
   LectureTree,
   LectureNode,
