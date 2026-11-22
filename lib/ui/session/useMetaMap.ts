@@ -3,7 +3,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { TUTORWEB_EVENTS } from "@/lib/events/tutorwebEvents";
-import { metaMapKey, readMetaMap, type SessionMeta } from "@/lib/ui/session/sessionEffective";
+import { metaMapKey, readMetaMap } from "@/lib/ui/session/sessionEffective";
+import type { SessionMeta } from "@/lib/types/index";
 
 /**
  * 특정 token의 metaMap을 "자동 갱신"으로 제공하는 훅

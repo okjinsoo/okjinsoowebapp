@@ -16,9 +16,8 @@ import {
 } from "@/lib/factories/studentStatusFactory";
 import { TUTORWEB_EVENTS } from "@/lib/events/tutorwebEvents";
 import { todayYmdKST, kstDateMs, ymdFromISO_KST } from "@/lib/utils/date";
-import type { Student, Teacher, Session } from "@/lib/types/index";
+import type { Student, Teacher, Session, SessionMeta } from "@/lib/types/index";
 import type { StudentStatusKind } from "@/lib/factories/studentStatusFactory";
-import { SessionMeta } from "@/lib/ui/session/sessionEffective";
 
 export type EnhancedSession = Session & {
   effectiveISO: string | null;

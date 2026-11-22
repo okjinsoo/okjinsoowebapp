@@ -16,8 +16,7 @@ import {
 } from "@/lib/factories/sessionFactories";
 import { saveSessionAdjustmentByToken } from "@/lib/ui/session/syncSessionDisplayAt";
 import { canEditSessionMeta, type SessionRole } from "@/lib/policies/sessionRolePolicy";
-import type { SessionMeta } from "@/lib/factories/sessionFactories";
-import type { Session, Student } from "@/lib/types/index";
+import type { Session, SessionMeta, Student } from "@/lib/types/index";
 import {
   resolveDurationMinForSessionWithMeta,
   resolveRulesForIndex,

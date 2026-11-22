@@ -6,7 +6,6 @@ import {
   buildUpdatedMetaMap,
   computeEffectiveISO,
   readMetaMap,
-  type SessionMeta,
 } from "@/lib/ui/session/sessionEffective";
 import { browserStorage } from "@/lib/storage/browserStorage";
 import { findStudentByTokenInRows, readSnapshotServerFirst } from "@/lib/storage/serverRead";
@@ -16,7 +15,7 @@ import {
   readLocalSessions,
   readLocalStudents,
 } from "@/lib/storage/sharedSnapshot";
-import type { Session, Student } from "@/lib/types/index";
+import type { Session, SessionMeta, Student } from "@/lib/types/index";
 
 function computeNextSessionsForStudent(args: {
   token: string;

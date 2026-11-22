@@ -6,7 +6,7 @@ import { TUTORWEB_EVENTS } from "@/lib/events/tutorwebEvents";
 import { pushSharedSnapshot } from "@/lib/storage/sharedSnapshot";
 import { todayYmdKST } from "@/lib/utils/date";
 
-import type { ScheduleRule, Student } from "@/lib/types/index";
+import type { ScheduleRule, SessionMeta, SessionMetaStatus, Student } from "@/lib/types/index";
 
 /**
  * ✅ 단일화 규칙(고정)
@@ -30,22 +30,8 @@ import type { ScheduleRule, Student } from "@/lib/types/index";
 
 // -------------------- Meta types --------------------
 
-export type SessionState = "planned" | "present" | "absent";
-
-export type SessionMeta = {
-  status?: SessionState;
-
-  carry?: number;
-
-  overrideDate?: string;
-  overrideHour?: number | null;
-  overrideMinute?: number | null;
-  overrideDurationMin?: number | null;
-  overrideSource?: "manual" | "extension" | "";
-
-  reason?: string;
-  record?: string;
-};
+export type { SessionMeta, SessionMetaStatus };
+export type SessionState = SessionMetaStatus;
 
 const SESSION_STATUS_BADGE_STYLES = {
   present: { bg: "#2563eb", text: "#ffffff", border: "#2563eb" }, // 출석: 파란색

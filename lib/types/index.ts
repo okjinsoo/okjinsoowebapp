@@ -166,6 +166,25 @@ export type Session = {
   googleCalendarSyncedAt?: string; // ISO string
 };
 
+// ===== 회차 출결/조정 메타(SessionMeta) =====
+// Session.state("normal" | "changed" | "carried" | "absent")와 구분되는 출결 상태
+export type SessionMetaStatus = "planned" | "present" | "absent";
+
+export type SessionMeta = {
+  status?: SessionMetaStatus;
+
+  carry?: number;
+
+  overrideDate?: string;
+  overrideHour?: number | null;
+  overrideMinute?: number | null;
+  overrideDurationMin?: number | null;
+  overrideSource?: "manual" | "extension" | "";
+
+  reason?: string;
+  record?: string;
+};
+
 // ===== 강의 트리(Lecture Tree) =====
 export type LectureNodeId = string; // 노드(폴더/leaf) id
 export type LectureLeafId = string; // leafId(영구, 절대 변경 금지)

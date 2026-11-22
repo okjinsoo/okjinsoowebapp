@@ -1,5 +1,4 @@
-import type { SessionMeta } from "@/lib/factories/sessionFactories";
-import type { ScheduleRule, Student } from "@/lib/types/index";
+import type { ScheduleRule, SessionMeta, Student } from "@/lib/types/index";
 
 export function normalizeDurationMin(value: number): number {
   const rounded = Math.round(Number(value) || 60);

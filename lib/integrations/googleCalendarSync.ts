@@ -2,12 +2,11 @@
 
 import { buildGoogleAuthUrl, isProviderTokenExpired, loadAuthSession } from "@/lib/auth/supabaseAuth";
 import { readSnapshotServerFirst } from "@/lib/storage/serverRead";
-import type { Session, Student, Teacher } from "@/lib/types/index";
+import type { Session, SessionMeta, Student, Teacher } from "@/lib/types/index";
 import {
   buildBaseDatesISO,
   computeEffectiveISO,
   getEffectiveMetaMap,
-  type SessionMeta,
 } from "@/lib/factories/sessionFactories";
 import {
   resolveRulesForIndex,

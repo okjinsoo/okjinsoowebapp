@@ -8,6 +8,8 @@
 // - D-day: getDdayMeta
 // - 반응형 훅: useMetaMap / useMetaSignal
 
+export type { SessionMeta, SessionMetaStatus, SessionMetaStatus as SessionState } from "@/lib/types/index";
+
 export {
   buildBaseDatesISO,
   buildBadges,
@@ -19,8 +21,6 @@ export {
   readMetaMap,
   resolveActiveScheduleRules,
   upsertMeta,
-  type SessionMeta,
-  type SessionState,
 } from "@/lib/ui/session/sessionEffective";
 
 export { getDdayMeta, type DdayMeta } from "@/lib/factories/ddayMeta";

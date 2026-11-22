@@ -1,4 +1,4 @@
-import type { SessionState } from "@/lib/factories/sessionFactories";
+import type { SessionMetaStatus } from "@/lib/types/index";
 import { getSessionExtraBadgeStyle } from "@/lib/ui/common/sessionExtraBadge";
 import { getSessionStatusBadge } from "@/lib/ui/common/sessionStatusBadge";
 
@@ -30,7 +30,7 @@ type BuildSessionCardViewArgs = {
   index: number;
   dateTimeText: string;
   dday: SessionCardDday;
-  status: SessionState | undefined;
+  status: SessionMetaStatus | undefined;
   achievementPercent: number | null;
   extraBadges?: string[];
   hiddenBadgeLabels?: string[];
