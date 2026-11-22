@@ -19,6 +19,7 @@
 
 - 배포(특히 프로덕션) 또는 큰 패치가 끝나면 `docs/project-status-latest.md`의 기준 시각과 운영 배포 항목을 즉시 갱신합니다.
 - 운영 배포 이력에는 최소한 배포 시각, 운영 주소, 배포 식별자(있다면)를 함께 남깁니다.
+- `docs/project-status-latest.md`는 최신 상태 요약본으로 가볍게 유지하고, 오래된 상세 패치·배포 이력은 `docs/project-status-archive.md`로 이관합니다.
 
 ## Google 401 복구 패치 기본 방향 (2026-03-24)
 
