@@ -34,6 +34,7 @@ const eslintConfig = defineConfig([
       "lib/shared/**/*.{ts,tsx}",
       "lib/factories/sessionFactories.ts",
       "lib/factories/sessionEffectiveCore.ts",
+      "lib/factories/sessionDisplaySync.ts",
       "lib/factories/sessionScheduleResolver.ts",
       "lib/factories/format.ts",
       "lib/factories/ddayMeta.ts",
