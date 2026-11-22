@@ -12,7 +12,7 @@ import {
   getStudentStatusSectionLabel,
   type StudentStatusKind,
 } from "@/lib/factories/studentStatusFactory";
-import { fmtKST_yyyyMMdd_HHmm_noSeconds } from "@/lib/ui/session/format";
+import { fmtKST_yyyyMMdd_HHmm_noSeconds } from "@/lib/factories/format";
 import Badge from "@/lib/ui/common/Badge";
 import { saveCurrentTeacherId } from "@/lib/storage/teachers";
 import { useStudentRegistry } from "@/lib/hooks/useStudentRegistry";

@@ -23,7 +23,7 @@ export {
   type SessionState,
 } from "@/lib/ui/session/sessionEffective";
 
-export { getDdayMeta, type DdayMeta } from "@/lib/ui/session/ddayMeta";
+export { getDdayMeta, type DdayMeta } from "@/lib/factories/ddayMeta";
 
 export { useMetaMap, useMetaSignal } from "@/lib/ui/session/useMetaMap";
 

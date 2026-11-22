@@ -20,7 +20,7 @@ import {
   calculateSessionProgressSummary,
   isSessionProgressEventKeyForToken,
 } from "@/lib/factories/sessionProgressFactory";
-import { parseDateTime } from "@/lib/ui/session/format";
+import { parseDateTime } from "@/lib/factories/format";
 import { useStudentSessionContext } from "@/lib/hooks/useStudentSessionContext";
 import { buildSessionCardViewModel } from "@/lib/ui/session/sessionCardFactory";
 import {

@@ -30,7 +30,7 @@ import {
 import { GATE_EVENT } from "@/lib/ui/common/roleGateStorage";
 import { calculateSessionAchievementPercent } from "@/lib/factories/sessionProgressFactory";
 import { useStudentRegistry } from "@/lib/hooks/useStudentRegistry";
-import { parseDateTime } from "@/lib/ui/session/format";
+import { parseDateTime } from "@/lib/factories/format";
 import { resolveDurationMinForSessionWithMeta, resolveRulesForIndex } from "@/lib/factories/sessionScheduleResolver";
 import type { TeacherSessionRow } from "@/lib/ui/teacher/teacherSessionCardFactory";
 import { TeacherMainSkeleton } from "@/lib/ui/common/AppSkeleton";

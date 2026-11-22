@@ -1,4 +1,4 @@
-// v1/lib/ui/session/format.ts
+// v1/lib/factories/format.ts
 // Shared date/D-day formatting helpers used by multiple session UI cores.
 
 export function dayDiffLocal(from: Date, to: Date) {

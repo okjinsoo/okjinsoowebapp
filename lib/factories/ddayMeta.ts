@@ -1,7 +1,7 @@
-// v1/lib/ui/session/ddayMeta.ts
+// v1/lib/factories/ddayMeta.ts
 // D-day "계산 + 색 규칙"만 담당하는 레고 (디자인 제외)
 
-import { dayDiffLocal, ddayClass } from "@/lib/ui/session/format";
+import { dayDiffLocal, ddayClass } from "@/lib/factories/format";
 
 export type DdayMeta = {
   /** 날짜 계산이 가능하면 number, 불가하면 null */

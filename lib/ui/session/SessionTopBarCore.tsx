@@ -15,7 +15,7 @@ import {
 import {
   buildGoogleAuthUrl,
 } from "@/lib/auth/supabaseAuth";
-import { fmtKST_yyyyMMdd_TimeRange } from "@/lib/ui/session/format";
+import { fmtKST_yyyyMMdd_TimeRange } from "@/lib/factories/format";
 import Badge from "@/lib/ui/common/Badge";
 import { TUTORWEB_EVENTS } from "@/lib/events/tutorwebEvents";
 import {

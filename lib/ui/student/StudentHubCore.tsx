@@ -39,7 +39,7 @@ import type {
   Student,
   Teacher,
 } from "@/lib/types/index";
-import { fmtKST_yyyyMMdd_TimeRange } from "@/lib/ui/session/format";
+import { fmtKST_yyyyMMdd_TimeRange } from "@/lib/factories/format";
 import Badge from "@/lib/ui/common/Badge";
 import SessionCardRow from "@/lib/ui/session/SessionCardRow";
 import SessionQuickActions from "@/lib/ui/session/SessionQuickActions";
