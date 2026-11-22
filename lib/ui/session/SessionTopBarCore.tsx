@@ -28,11 +28,11 @@ import { canEditSessionMeta, type SessionRole } from "@/lib/policies/sessionRole
 import { Session, Student } from "@/lib/types/index";
 import { useStudentSessionContext } from "@/lib/hooks/useStudentSessionContext";
 import SessionCardRow from "@/lib/ui/session/SessionCardRow";
+import { buildSessionCardViewModel } from "@/lib/ui/session/sessionCardFactory";
 import {
-  buildSessionCardViewModel,
   resolveDurationMinForSessionWithMeta,
   resolveRulesForIndex,
-} from "@/lib/ui/session/sessionCardFactory";
+} from "@/lib/factories/sessionScheduleResolver";
 import { buildStudentSessionsFromRows, readSnapshotServerFirst } from "@/lib/storage/serverRead";
 
 type Props = {

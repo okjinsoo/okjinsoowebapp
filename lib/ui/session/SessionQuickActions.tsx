@@ -21,7 +21,7 @@ import type { Session, Student } from "@/lib/types/index";
 import {
   resolveDurationMinForSessionWithMeta,
   resolveRulesForIndex,
-} from "@/lib/ui/session/sessionCardFactory";
+} from "@/lib/factories/sessionScheduleResolver";
 
 type Props = {
   role: SessionRole;

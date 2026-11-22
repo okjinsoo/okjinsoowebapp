@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { resolveDurationMinForSessionWithMeta, resolveRulesForIndex } from "@/lib/ui/session/sessionCardFactory";
+import { resolveDurationMinForSessionWithMeta, resolveRulesForIndex } from "@/lib/factories/sessionScheduleResolver";
 import { getEffectiveMetaMap, parseMetaMapFromRaw } from "@/lib/ui/session/sessionEffective";
 import {
   isGoogleRateLimitError,

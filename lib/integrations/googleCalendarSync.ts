@@ -12,7 +12,7 @@ import {
 import {
   resolveRulesForIndex,
   resolveDurationMinForSessionWithMeta,
-} from "@/lib/ui/session/sessionCardFactory";
+} from "@/lib/factories/sessionScheduleResolver";
 
 function filterVisibleSessions(student: Student, sessions: Session[]): Session[] {
   void student;

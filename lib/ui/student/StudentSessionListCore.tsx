@@ -22,11 +22,11 @@ import {
 } from "@/lib/factories/sessionProgressFactory";
 import { parseDateTime } from "@/lib/ui/session/format";
 import { useStudentSessionContext } from "@/lib/hooks/useStudentSessionContext";
+import { buildSessionCardViewModel } from "@/lib/ui/session/sessionCardFactory";
 import {
-  buildSessionCardViewModel,
   resolveDurationMinForSessionWithMeta,
   resolveRulesForIndex,
-} from "@/lib/ui/session/sessionCardFactory";
+} from "@/lib/factories/sessionScheduleResolver";
 
 type Props = {
   role: "a" | "t" | "s";

@@ -4,10 +4,10 @@ import {
   resolveDurationMinForSession,
   resolveDurationMinForSessionWithMeta,
   normalizeDurationMin,
-} from "./sessionCardFactory";
+} from "./sessionScheduleResolver";
 import type { Student, ScheduleRule, PaymentRecord } from "@/lib/types/index";
 
-describe("sessionCardFactory - 시간표 규칙 및 수업 시간 복원 엔진", () => {
+describe("sessionScheduleResolver - 시간표 규칙 및 수업 시간 복원 엔진", () => {
   const createMockStudent = (overrides?: Partial<Student>): Student => ({
     id: "st_1",
     token: "tok_1",

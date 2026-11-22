@@ -44,11 +44,11 @@ import Badge from "@/lib/ui/common/Badge";
 import SessionCardRow from "@/lib/ui/session/SessionCardRow";
 import SessionQuickActions from "@/lib/ui/session/SessionQuickActions";
 import { buildSessionContextBadges } from "@/lib/ui/common/sessionExtraBadge";
+import { buildSessionCardViewModel } from "@/lib/ui/session/sessionCardFactory";
 import {
-  buildSessionCardViewModel,
   resolveDurationMinForSessionWithMeta,
   resolveRulesForIndex,
-} from "@/lib/ui/session/sessionCardFactory";
+} from "@/lib/factories/sessionScheduleResolver";
 import { StudentPaymentPanel } from "./panels/StudentPaymentPanel";
 import { StudentSessionAddModal } from "./modals/StudentSessionAddModal";
 import { StudentScheduleChangeModal } from "./modals/StudentScheduleChangeModal";
