@@ -1,14 +1,19 @@
 # Project Status (Latest)
 
-기준 시각: 2026-11-22 19:58 (KST)  
+기준 시각: 2026-11-25 19:05 (KST)  
 대상 프로젝트: `v1`  
 운영 주소: `https://okjinsoowebapp.vercel.app`  
-최신 운영 배포본: `2026-11-22 19:58 (KST)` (`dpl_9nTT2tHC12jcrjHMLczsSgwxEvSE`, 커밋 `37b97fe`)
+최신 운영 배포본: `2026-11-25 19:05 (KST)` (`dpl_YELqr2uY2jbXgPRqV5WYAdirQe1B`, 커밋 `792bb69`)
 
 ---
 
 ## 1분 요약 (현재 확정 상태)
 
+- **Vercel Fast Origin Transfer 9.45GB(Incoming 92.2%) 무한 폭주 긴급 차단 패치 운영 배포 완료 (2026-11-25, 커밋 `792bb69`)**:
+  - `lib/storage/lectures.ts`: `normalizeAnyTree`가 `root.createdAt`을 매번 `nowIso()`로 덮어쓰던 버그 수정 및 읽기 함수 `loadLectureTree()`에서 `persistTree` 대신 `browserStorage.setItemSilent`만 사용하도록 차단(학생 화면 진입 시 `mk3:lectureTree` 원격 POST 유발 원천 제거)
+  - `lib/storage/sharedSnapshot.ts` · `lib/ui/common/SharedSnapshotAgent.tsx`: `400/401/403` 영구 거절 응답에 `nonRetryable: true`를 부여해 즉시 재시도 중단, 일시 오류도 최대 3회 백오프(`3s → 10s → 30s`)로 상한 고정(기존 1.5초 무한 재전송 폭주 영구 봉쇄)
+  - `lib/ui/session/SessionClientCore.tsx`: 서버 수신 직후(`247~256행`) 및 `resetProgress` 저장 직후(`377행`)의 `setItem`을 `setItemSilent`로 교체해 메아리 POST 제거
+  - 회귀 방지 테스트 4건 신설(`lib/storage/incomingTrafficGuard.test.ts`, 총 **20개 파일 99개 테스트 100% 통과**)
 - **리팩토링 1~2단계(대청소·문서 슬림화·계층 정리) 운영 배포 완료 (2026-11-22, 되돌리기 태그 `pre-refactor` = `b9cfc34`)**:
   - **1단계 (`f235705`, `6e38dcd`)**: 미사용 파일 7개 및 임시 스크립트/로그(`refactor.py`, `fix.py`, `dev.log`) 제거, `.gitignore`에 `*.log` 추가, `docs/project-status-latest.md` 과거 이력 무손실 아카이브 이관(`59.6KB → 5.0KB`), `AGENTS.md`·`technical-debt-and-solutions.md` 정합성 정비
   - **2-a단계 (`f2e2a95`, `7d6b13a`, `1a5d59a`)**: 공용 키 규칙 `lib/shared/sharedStateKeys.ts` 이동, `sessionCardFactory.ts` 순수 계산 4개 `lib/factories/sessionScheduleResolver.ts` 분리, `format.ts`·`ddayMeta.ts` `lib/factories/` 이동
@@ -21,7 +26,7 @@
   - 토스페이먼츠 라이브 키/시크릿 환경변수 분리, 금액·주문번호 서버 검증, 결제 장부(`payment_orders`) 이중 기록 및 관리자 조회 API(`/api/payments/orders`) 구축
   - 브라우저 Direct Supabase REST Fallback 제거, 학생/선생님 `stateKv` 권한 분리, `patch_snapshot_state_kv` 원자적 병합, 정규화 테이블(`students`, `sessions`) 듀얼라이트 및 `NEXT_PUBLIC_READ_FROM_NORMALIZED` 읽기 스위치 탑재
   - Vercel 서울 리전(`icn1`) 고정, API별 `select` 컬럼 경량화, 스냅샷 SHA-256 다이제스트 정밀화 및 `tmain` 학습 진도율 실시간 반영
-- **품질 안전망**: 단위 테스트 **19개 파일 95개 100% 통과**, ESLint 오류 0건(계층 가드 포함), Next.js 프로덕션 빌드(`next build --webpack`) 정상
+- **품질 안전망**: 단위 테스트 **20개 파일 99개 100% 통과**, ESLint 오류 0건(계층 가드 포함), Next.js 프로덕션 빌드(`next build --webpack`) 정상
 
 ---
 
@@ -42,11 +47,11 @@
 
 ## 최근 주요 배포 이력 (최신 5건)
 
+- `2026-11-25 19:05` — 프로덕션 배포 `dpl_YELqr2uY2jbXgPRqV5WYAdirQe1B` (커밋 `792bb69`, 운영 주소: `https://okjinsoowebapp.vercel.app`, 배포 URL: `https://okjinsoowebapp-7oxs60gq4-okjinsoos-projects.vercel.app`, Vercel Incoming 9.45GB 무한 POST 폭주 긴급 차단: `lectures.ts` `root.createdAt` 보존 + 읽기 silent화, `SharedSnapshotAgent` 401/403 재시도 즉시 중단 및 최대 3회 백오프, `SessionClientCore` 메아리 POST 제거, 회귀 테스트 +4건 총 99개 통과)
 - `2026-11-22 19:58` — 프로덕션 배포 `dpl_9nTT2tHC12jcrjHMLczsSgwxEvSE` (커밋 `37b97fe`, 운영 주소: `https://okjinsoowebapp.vercel.app`, 배포 URL: `https://okjinsoowebapp-2t64u7naw-okjinsoos-projects.vercel.app`, 리팩토링 1~2단계 완료: 미사용·임시파일 정리, 문서 슬림화, `lib/shared`/`lib/factories`/`lib/storage/sessionMeta` 계층 정리, ESLint 역의존 자동 가드, 단위 테스트 95개 확충, 되돌리기 태그 `pre-refactor`)
 - `2026-11-21 20:03` — 프로덕션 배포 `dpl_GK3TN1ryTRMLiU5EdjHANHPaNF7s` (커밋 `0aefd62`, 시간표 조정 1회 부분 병합 고속화, 실패 롤백, 변경분 듀얼라이트, 구글 캘린더 3병렬+429 백오프)
 - `2026-11-20 16:28` — 프로덕션 재배포 `57fs8sCNsPwscT4TuBveZNkH4x9R` (Vercel Production 토스페이먼츠 환경변수 등록 및 `/api/payments/confirm` 정상화)
 - `2026-11-14 00:20` — 프로덕션 배포 커밋 `58f2df4` (토스 시크릿키 격리·금액 검증, `stateKv` 권한 분리·Direct Fallback 제거, `patch_snapshot_state_kv` 원자적 병합, `payment_orders` 결제 장부 구축)
-- `2026-11-02 17:44` — 프로덕션 배포 커밋 `499a10e` (`tmain` 학습 진도율 실시간 동기화: SHA-256 다이제스트 정밀화, `sessionProgressUpdated` 이벤트 연동)
 
 > 2026-03 ~ 2026-11 전체 상세 패치·배포 로그는 [`docs/project-status-archive.md`](file:///Users/okjinsoo/Project/TutorWEB/v1/docs/project-status-archive.md)에 보관되어 있습니다.
 
