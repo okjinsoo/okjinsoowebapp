@@ -2,6 +2,7 @@
 "use client";
 
 import { BROWSER_STORAGE_EVENT, browserStorage } from "@/lib/storage/browserStorage";
+import { TUTORWEB_EVENTS } from "@/lib/events/tutorwebEvents";
 import {
   pushSharedSnapshot,
   readRemoteSharedStateKvValue,
@@ -250,6 +251,11 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
             const prog = JSON.parse(remoteProgRaw) as ProgressByLeafId;
             setProgressByLeafId(prog);
             browserStorage.setItemSilent(keyProgress(token, sessionIndex), remoteProgRaw);
+            window.dispatchEvent(
+              new CustomEvent(TUTORWEB_EVENTS.sessionProgressUpdated, {
+                detail: { token, sessionIndex },
+              })
+            );
           }
           if (remoteLastRaw) {
             setLastAddedLeafId(remoteLastRaw);
@@ -376,6 +382,11 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
       localWriteTimestampRef.current = Date.now();
       browserStorage.setItemSilent(keyProgress(token, sessionIndex), JSON.stringify(nextProg));
       setProgressByLeafId(nextProg);
+      window.dispatchEvent(
+        new CustomEvent(TUTORWEB_EVENTS.sessionProgressUpdated, {
+          detail: { token, sessionIndex },
+        })
+      );
     } catch (err) {
       console.error(`${label} 실패:`, err);
       window.alert(`${label}에 실패했습니다. 다시 시도해 주세요.`);

@@ -225,8 +225,15 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error("[API Error] Snapshot POST failed:", error);
     const message = error instanceof Error ? error.message : "";
-    const status = message.includes("unauthorized") ? 401 : 500;
-    const clientMessage = status === 401 ? "unauthorized" : "update_failed";
+    const isForbidden =
+      message.startsWith("unauthorized_") || message === "server_blocked_mass_deletion";
+    const isUnauthorized = !isForbidden && message === "unauthorized";
+    const status = isForbidden ? 403 : isUnauthorized ? 401 : 500;
+    const clientMessage = isForbidden
+      ? "forbidden"
+      : isUnauthorized
+        ? "unauthorized"
+        : "update_failed";
     logPerf({
       event: "error",
       route,

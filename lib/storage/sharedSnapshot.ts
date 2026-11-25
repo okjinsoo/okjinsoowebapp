@@ -2,6 +2,7 @@
 
 import {
   AUTH_STORAGE_KEY,
+  forceRefreshAuthSession,
   loadAuthSession,
 } from "@/lib/auth/supabaseAuth";
 import { TUTORWEB_EVENTS } from "@/lib/events/tutorwebEvents";
@@ -496,8 +497,22 @@ export async function pushSharedSnapshot(args?: PushSharedSnapshotArgs): Promise
     return { sessionsSynced: true, stateKvSynced: true };
   }
 
-  const { data: internal, httpStatus } = await fetchInternalSnapshotWithStatus({ body });
-  
+  let { data: internal, httpStatus } = await fetchInternalSnapshotWithStatus({ body });
+
+  // 401(토큰 만료)은 즉시 폐기하지 않고 세션을 갱신해 1회 재시도한다.
+  if (httpStatus === 401) {
+    try {
+      const refreshed = await forceRefreshAuthSession();
+      if (refreshed?.accessToken) {
+        const retried = await fetchInternalSnapshotWithStatus({ body });
+        internal = retried.data;
+        httpStatus = retried.httpStatus;
+      }
+    } catch {
+      // 갱신 실패 시 401 상태를 유지해 호출자가 큐를 안전하게 보존·일시정지할 수 있게 한다.
+    }
+  }
+
   if (
     internal &&
     typeof internal.sessionsSynced === "boolean" &&
@@ -510,8 +525,9 @@ export async function pushSharedSnapshot(args?: PushSharedSnapshotArgs): Promise
     };
   }
 
-  // 400/401/403 등 영구 거절 응답은 무한 재시도 폭주를 막기 위해 nonRetryable로 표시한다.
-  const nonRetryable = httpStatus === 400 || httpStatus === 401 || httpStatus === 403;
+  // 403(권한/금지 키 거절) 및 400(잘못된 요청)만 영구 거절(nonRetryable)로 표시해 큐를 폐기한다.
+  // 일반 401(토큰 만료)이나 5xx/네트워크 오류는 편집 유실 방지를 위해 큐를 보존·일시정지한다.
+  const nonRetryable = httpStatus === 400 || httpStatus === 403;
 
   // [보안 패치: Direct DB Upsert Fallback 제거]
   // 서버 문지기(/api/snapshot)가 거절했거나 통신에 실패했을 때 브라우저가 직접 DB를 덮어쓰면

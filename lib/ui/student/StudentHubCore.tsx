@@ -323,13 +323,20 @@ export default function StudentHubCore({
       if (!isSessionProgressEventKeyForToken(key, token)) return;
       setProgressTick((x) => x + 1);
     };
+    const onSessionProgressUpdated: EventListener = (event) => {
+      const ce = event as CustomEvent<{ token?: string }>;
+      if (ce.detail?.token && ce.detail.token !== token) return;
+      setProgressTick((x) => x + 1);
+    };
 
     window.addEventListener("storage", onStorage);
     window.addEventListener(BROWSER_STORAGE_EVENT, onProgressChanged);
+    window.addEventListener(TUTORWEB_EVENTS.sessionProgressUpdated, onSessionProgressUpdated);
 
     return () => {
       window.removeEventListener("storage", onStorage);
       window.removeEventListener(BROWSER_STORAGE_EVENT, onProgressChanged);
+      window.removeEventListener(TUTORWEB_EVENTS.sessionProgressUpdated, onSessionProgressUpdated);
     };
   }, [token, refreshStudentContext]);
 

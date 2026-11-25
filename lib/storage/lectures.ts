@@ -522,43 +522,6 @@ export function createLectureLeaf(input?: {
   };
 }
 
-export type SessionItem = {
-  id: string;
-  lectureId: string;
-  noteDone: boolean;
-  solveDone: boolean;
-  noteLink?: string;
-  solveLink?: string;
-};
-
-function legacyItemsKey(token: string, sessionIndex: number) {
-  return `mk3:${token}:session:${sessionIndex}:items`;
-}
-
-export function getSessionItemsDefault(token: string, sessionIndex: number): SessionItem[] {
-  const key = legacyItemsKey(token, sessionIndex);
-  const raw = typeof window !== "undefined" ? browserStorage.getItem(key) : null;
-  const parsed = safeParseJson<SessionItem[]>(raw);
-  if (parsed && Array.isArray(parsed)) return parsed;
-
-  const leaves = loadLectureCatalog().slice(0, 3);
-  const base = leaves.map((leaf, i) => ({
-    id: `${token}:${sessionIndex}:${i + 1}`,
-    lectureId: leaf.leafId,
-    noteDone: false,
-    solveDone: false,
-    noteLink: "",
-    solveLink: "",
-  }));
-
-  if (typeof window !== "undefined") {
-    browserStorage.setItem(key, JSON.stringify(base));
-  }
-  return base;
-}
-
-export const getSessionItemsMock = getSessionItemsDefault;
-
 export function getLectureById(lectureId: string): LectureLeafNode | null {
   return findLeafById(loadLectureTree(), lectureId);
 }

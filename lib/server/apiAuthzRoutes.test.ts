@@ -12,7 +12,7 @@ vi.mock("@/lib/server/supabaseSnapshotApi", () => ({
 }));
 
 import * as snapshotApi from "@/lib/server/supabaseSnapshotApi";
-import { GET as getSnapshot } from "@/app/api/snapshot/route";
+import { GET as getSnapshot, POST as postSnapshot } from "@/app/api/snapshot/route";
 import { GET as getTeachers } from "@/app/api/teachers/route";
 import { GET as getStudentSessions } from "@/app/api/students/[id]/sessions/route";
 
@@ -66,5 +66,33 @@ describe("API authz route guards", () => {
       ok: true,
       teachers,
     });
+  });
+
+  test("POST /api/snapshot 토큰 만료/비로그인(unauthorized)은 401, 금지 키/권한 거절은 403으로 구분 응답", async () => {
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    vi.mocked(snapshotApi.upsertSnapshotPatch).mockRejectedValueOnce(new Error("unauthorized"));
+    const req401 = new NextRequest("http://localhost:3000/api/snapshot", {
+      method: "POST",
+      body: JSON.stringify({ stateKv: { "mk3:tok:session:1:progressByLeafId": "{}" } }),
+      headers: { "Content-Type": "application/json" },
+    });
+    const res401 = await postSnapshot(req401);
+    expect(res401.status).toBe(401);
+    expect(await res401.json()).toEqual({ error: "unauthorized" });
+
+    vi.mocked(snapshotApi.upsertSnapshotPatch).mockRejectedValueOnce(
+      new Error("unauthorized_metadata_manipulation")
+    );
+    const req403 = new NextRequest("http://localhost:3000/api/snapshot", {
+      method: "POST",
+      body: JSON.stringify({ stateKv: { "mk3:lectureTree": "{}" } }),
+      headers: { "Content-Type": "application/json" },
+    });
+    const res403 = await postSnapshot(req403);
+    expect(res403.status).toBe(403);
+    expect(await res403.json()).toEqual({ error: "forbidden" });
+
+    errSpy.mockRestore();
   });
 });
