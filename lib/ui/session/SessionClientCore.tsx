@@ -244,16 +244,16 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
           if (remoteIdsRaw) {
             const ids = JSON.parse(remoteIdsRaw) as string[];
             setLectureLeafIds(ids);
-            browserStorage.setItem(keyLeafIds(token, sessionIndex), remoteIdsRaw);
+            browserStorage.setItemSilent(keyLeafIds(token, sessionIndex), remoteIdsRaw);
           }
           if (remoteProgRaw) {
             const prog = JSON.parse(remoteProgRaw) as ProgressByLeafId;
             setProgressByLeafId(prog);
-            browserStorage.setItem(keyProgress(token, sessionIndex), remoteProgRaw);
+            browserStorage.setItemSilent(keyProgress(token, sessionIndex), remoteProgRaw);
           }
           if (remoteLastRaw) {
             setLastAddedLeafId(remoteLastRaw);
-            browserStorage.setItem(keyLastAdded(token, sessionIndex), remoteLastRaw);
+            browserStorage.setItemSilent(keyLastAdded(token, sessionIndex), remoteLastRaw);
           }
         } catch (err) {
           console.error("초기 원격 데이터 동기화 실패:", err);
@@ -374,7 +374,7 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
       }
 
       localWriteTimestampRef.current = Date.now();
-      browserStorage.setItem(keyProgress(token, sessionIndex), JSON.stringify(nextProg));
+      browserStorage.setItemSilent(keyProgress(token, sessionIndex), JSON.stringify(nextProg));
       setProgressByLeafId(nextProg);
     } catch (err) {
       console.error(`${label} 실패:`, err);

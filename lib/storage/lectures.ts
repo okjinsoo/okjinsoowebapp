@@ -341,7 +341,7 @@ function normalizeAnyTree(raw: unknown): LectureTree {
         type: "folder",
         id: typeof rootRec.id === "string" ? rootRec.id : "lecture_root_v2",
         title: ROOT_TITLE,
-        createdAt: nowIso(),
+        createdAt: typeof rootRec.createdAt === "string" ? rootRec.createdAt : nowIso(),
         children: normalizedChildren,
       },
     };
@@ -390,7 +390,8 @@ export function loadLectureTree(): LectureTree {
 
   const parsed = safeParseJson<unknown>(raw);
   if (JSON.stringify(parsed) !== JSON.stringify(normalized)) {
-    persistTree(normalized);
+    // 읽기 경로(loadLectureTree)는 절대 BROWSER_STORAGE_EVENT(원격 POST)를 유발하지 않도록 silent 로컬 정규화만 수행한다.
+    browserStorage.setItemSilent(KEY_LECTURE_TREE, JSON.stringify(normalized));
   }
   return normalized;
 }

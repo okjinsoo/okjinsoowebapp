@@ -21,12 +21,24 @@ import {
 import { TUTORWEB_EVENTS } from "@/lib/events/tutorwebEvents";
 
 const PUSH_DEBOUNCE_MS = 700;
-const PUSH_RETRY_MS = 1500;
+const PUSH_RETRY_BACKOFF_MS = [3000, 10000, 30000] as const;
+const MAX_PUSH_RETRIES = PUSH_RETRY_BACKOFF_MS.length;
 const AUTH_KEY = "tutorweb_auth_session_v1";
 const LEGACY_CONSULT_STORE_KEY = "tutorweb_consultations_v1";
 const CALENDAR_SYNC_INITIAL_DELAY_MS = 1500;
 
-const PENING_LOCK_TIMEOUT_MS = 5000; 
+const PENING_LOCK_TIMEOUT_MS = 5000;
+
+export function decideNextPushRetryDelayMs(args: {
+  stateKvSynced: boolean;
+  nonRetryable?: boolean;
+  attemptCount: number;
+}): number | null {
+  if (args.stateKvSynced) return null;
+  if (args.nonRetryable) return null;
+  if (args.attemptCount >= MAX_PUSH_RETRIES) return null;
+  return PUSH_RETRY_BACKOFF_MS[args.attemptCount] ?? PUSH_RETRY_BACKOFF_MS[PUSH_RETRY_BACKOFF_MS.length - 1];
+}
 
 function shouldSkipAutoHydrateOnCurrentPath(): boolean {
   if (typeof window === "undefined") return false;
@@ -44,7 +56,8 @@ export default function SharedSnapshotAgent() {
   const pushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const calendarSyncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingStateKvRef = useRef<Record<string, string>>({});
-  const pendingLockedAtRef = useRef<number | null>(null); 
+  const pendingLockedAtRef = useRef<number | null>(null);
+  const pushRetryCountRef = useRef(0);
   const calendarSyncKeyRef = useRef("");
 
   useEffect(() => {
@@ -87,7 +100,7 @@ export default function SharedSnapshotAgent() {
         const lockedAt = pendingLockedAtRef.current;
         if (lockedAt !== null && Date.now() - lockedAt > PENING_LOCK_TIMEOUT_MS) {
           pendingLockedAtRef.current = null;
-          schedulePush(PUSH_RETRY_MS);
+          schedulePush(PUSH_RETRY_BACKOFF_MS[0]);
         } else {
           return;
         }
@@ -108,21 +121,37 @@ export default function SharedSnapshotAgent() {
       pendingLockedAtRef.current = null;
       if (Object.keys(pending).length === 0) return;
 
+      const handleFailure = (nonRetryable?: boolean, httpStatus?: number) => {
+        const nextDelay = decideNextPushRetryDelayMs({
+          stateKvSynced: false,
+          nonRetryable,
+          attemptCount: pushRetryCountRef.current,
+        });
+        if (nextDelay === null) {
+          pushRetryCountRef.current = 0;
+          console.warn(
+            `[SharedSnapshotAgent] stateKv 동기화 재시도 중단 (${nonRetryable ? `HTTP ${httpStatus ?? "4xx"} 권한/요청 거절` : `최대 재시도 ${MAX_PUSH_RETRIES}회 초과`})`
+          );
+          return;
+        }
+        pushRetryCountRef.current += 1;
+        if (Object.keys(pendingStateKvRef.current).length === 0) {
+          pendingLockedAtRef.current = Date.now();
+        }
+        pendingStateKvRef.current = { ...pending, ...pendingStateKvRef.current };
+        schedulePush(nextDelay);
+      };
+
       void pushSharedSnapshot({ stateKv: pending })
         .then((result) => {
-          if (result.stateKvSynced) return;
-          if (Object.keys(pendingStateKvRef.current).length === 0) {
-            pendingLockedAtRef.current = Date.now();
+          if (result.stateKvSynced) {
+            pushRetryCountRef.current = 0;
+            return;
           }
-          pendingStateKvRef.current = { ...pending, ...pendingStateKvRef.current };
-          schedulePush(PUSH_RETRY_MS);
+          handleFailure(result.nonRetryable, result.httpStatus);
         })
         .catch(() => {
-          if (Object.keys(pendingStateKvRef.current).length === 0) {
-            pendingLockedAtRef.current = Date.now();
-          }
-          pendingStateKvRef.current = { ...pending, ...pendingStateKvRef.current };
-          schedulePush(PUSH_RETRY_MS);
+          handleFailure(false);
         });
     };
 
@@ -138,6 +167,7 @@ export default function SharedSnapshotAgent() {
       if (key === AUTH_KEY || !isSharedStateKvKey(key)) return;
       const newValue = ce.detail?.newValue;
       if (typeof newValue !== "string") return;
+      pushRetryCountRef.current = 0;
       if (Object.keys(pendingStateKvRef.current).length === 0) {
         pendingLockedAtRef.current = Date.now();
       }

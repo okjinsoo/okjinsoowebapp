@@ -50,6 +50,8 @@ type InternalSnapshotBody = {
 export type PushSharedSnapshotResult = {
   sessionsSynced: boolean;
   stateKvSynced: boolean;
+  httpStatus?: number;
+  nonRetryable?: boolean;
 };
 
 let lastPullSnapshotAt = 0;
@@ -149,11 +151,16 @@ function buildInternalSnapshotUrl(args?: { stateKey?: string; digest?: string })
   return qs ? `/api/snapshot?${qs}` : "/api/snapshot";
 }
 
-async function fetchInternalSnapshot(args?: {
+type InternalSnapshotFetchOutcome = {
+  data: InternalSnapshotResponse | null;
+  httpStatus?: number;
+};
+
+async function fetchInternalSnapshotWithStatus(args?: {
   stateKey?: string;
   body?: InternalSnapshotBody;
-}): Promise<InternalSnapshotResponse | null> {
-  if (typeof window === "undefined") return null;
+}): Promise<InternalSnapshotFetchOutcome> {
+  if (typeof window === "undefined") return { data: null };
 
   try {
     const digest = !args?.stateKey && !args?.body ? (browserStorage.getItem(DIGEST_STORAGE_KEY) ?? undefined) : undefined;
@@ -168,11 +175,19 @@ async function fetchInternalSnapshot(args?: {
       body: args?.body ? JSON.stringify(args.body) : undefined,
       credentials: "same-origin",
     });
-    if (!res.ok) return null;
-    return (await res.json()) as InternalSnapshotResponse;
+    if (!res.ok) return { data: null, httpStatus: res.status };
+    return { data: (await res.json()) as InternalSnapshotResponse, httpStatus: res.status };
   } catch {
-    return null;
+    return { data: null };
   }
+}
+
+async function fetchInternalSnapshot(args?: {
+  stateKey?: string;
+  body?: InternalSnapshotBody;
+}): Promise<InternalSnapshotResponse | null> {
+  const outcome = await fetchInternalSnapshotWithStatus(args);
+  return outcome.data;
 }
 
 export function readLocalTeachers(): Teacher[] {
@@ -481,7 +496,7 @@ export async function pushSharedSnapshot(args?: PushSharedSnapshotArgs): Promise
     return { sessionsSynced: true, stateKvSynced: true };
   }
 
-  const internal = await fetchInternalSnapshot({ body });
+  const { data: internal, httpStatus } = await fetchInternalSnapshotWithStatus({ body });
   
   if (
     internal &&
@@ -491,8 +506,12 @@ export async function pushSharedSnapshot(args?: PushSharedSnapshotArgs): Promise
     return {
       sessionsSynced: internal.sessionsSynced,
       stateKvSynced: internal.stateKvSynced,
+      httpStatus,
     };
   }
+
+  // 400/401/403 등 영구 거절 응답은 무한 재시도 폭주를 막기 위해 nonRetryable로 표시한다.
+  const nonRetryable = httpStatus === 400 || httpStatus === 401 || httpStatus === 403;
 
   // [보안 패치: Direct DB Upsert Fallback 제거]
   // 서버 문지기(/api/snapshot)가 거절했거나 통신에 실패했을 때 브라우저가 직접 DB를 덮어쓰면
@@ -500,6 +519,8 @@ export async function pushSharedSnapshot(args?: PushSharedSnapshotArgs): Promise
   return {
     sessionsSynced: false,
     stateKvSynced: false,
+    httpStatus,
+    nonRetryable,
   };
 }
 
