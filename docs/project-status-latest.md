@@ -1,14 +1,19 @@
 # Project Status (Latest)
 
-기준 시각: 2026-11-25 19:05 (KST)  
+기준 시각: 2026-11-25 19:22 (KST)  
 대상 프로젝트: `v1`  
 운영 주소: `https://okjinsoowebapp.vercel.app`  
-최신 운영 배포본: `2026-11-25 19:05 (KST)` (`dpl_YELqr2uY2jbXgPRqV5WYAdirQe1B`, 커밋 `792bb69`)
+최신 운영 배포본: `2026-11-25 19:22 (KST)` (`dpl_ENszGc6ukVfQipcaD24TLstUZbs5`, 커밋 `af8c76e`)
 
 ---
 
 ## 1분 요약 (현재 확정 상태)
 
+- **동기화 데이터 보호 및 401/403 정밀 분리 보완 패치 운영 배포 완료 (2026-11-25, 커밋 `af8c76e`)**:
+  - `app/api/snapshot/route.ts`: 권한/금지 키 거절(`unauthorized_*`, `server_blocked_mass_deletion`)은 `403 forbidden`, 로그인/토큰 만료(`unauthorized`)는 `401 unauthorized`로 응답 분리
+  - `lib/storage/sharedSnapshot.ts` · `lib/ui/common/SharedSnapshotAgent.tsx`: `403`만 큐 폐기(`drop`), `401`은 `forceRefreshAuthSession()` 토큰 갱신 후 1회 재시도, 일시 장애 3회 초과 시 큐를 버리지 않고 일시정지(`pause`) 보관 후 탭 복귀·온라인 복귀·인증 변경·새 입력 시 안전 재개, 학생 계정의 금지 키(`mk3:lectureTree`, `mk3:driveRootId`, 타 학생 키) 사전 큐잉 차단
+  - `lib/ui/session/SessionClientCore.tsx` · `SessionTopBarCore.tsx` · `StudentHubCore.tsx`: `TUTORWEB_EVENTS.sessionProgressUpdated` 발행/구독 연결로 중복 POST 없이 진도 초기화·동기화 시 상단 바/허브 진도율 즉시 갱신
+  - `lib/storage/lectures.ts`: 미사용 레거시 쓰기 함수(`getSessionItemsDefault`/`getSessionItemsMock`) 삭제
 - **Vercel Fast Origin Transfer 9.45GB(Incoming 92.2%) 무한 폭주 긴급 차단 패치 운영 배포 완료 (2026-11-25, 커밋 `792bb69`)**:
   - `lib/storage/lectures.ts`: `normalizeAnyTree`가 `root.createdAt`을 매번 `nowIso()`로 덮어쓰던 버그 수정 및 읽기 함수 `loadLectureTree()`에서 `persistTree` 대신 `browserStorage.setItemSilent`만 사용하도록 차단(학생 화면 진입 시 `mk3:lectureTree` 원격 POST 유발 원천 제거)
   - `lib/storage/sharedSnapshot.ts` · `lib/ui/common/SharedSnapshotAgent.tsx`: `400/401/403` 영구 거절 응답에 `nonRetryable: true`를 부여해 즉시 재시도 중단, 일시 오류도 최대 3회 백오프(`3s → 10s → 30s`)로 상한 고정(기존 1.5초 무한 재전송 폭주 영구 봉쇄)
@@ -26,7 +31,7 @@
   - 토스페이먼츠 라이브 키/시크릿 환경변수 분리, 금액·주문번호 서버 검증, 결제 장부(`payment_orders`) 이중 기록 및 관리자 조회 API(`/api/payments/orders`) 구축
   - 브라우저 Direct Supabase REST Fallback 제거, 학생/선생님 `stateKv` 권한 분리, `patch_snapshot_state_kv` 원자적 병합, 정규화 테이블(`students`, `sessions`) 듀얼라이트 및 `NEXT_PUBLIC_READ_FROM_NORMALIZED` 읽기 스위치 탑재
   - Vercel 서울 리전(`icn1`) 고정, API별 `select` 컬럼 경량화, 스냅샷 SHA-256 다이제스트 정밀화 및 `tmain` 학습 진도율 실시간 반영
-- **품질 안전망**: 단위 테스트 **20개 파일 99개 100% 통과**, ESLint 오류 0건(계층 가드 포함), Next.js 프로덕션 빌드(`next build --webpack`) 정상
+- **품질 안전망**: 단위 테스트 **20개 파일 101개 100% 통과**, ESLint 오류 0건(계층 가드 포함), Next.js 프로덕션 빌드(`next build --webpack`) 정상
 
 ---
 
@@ -47,11 +52,11 @@
 
 ## 최근 주요 배포 이력 (최신 5건)
 
+- `2026-11-25 19:22` — 프로덕션 배포 `dpl_ENszGc6ukVfQipcaD24TLstUZbs5` (커밋 `af8c76e`, 운영 주소: `https://okjinsoowebapp.vercel.app`, 배포 URL: `https://okjinsoowebapp-klip8rnjz-okjinsoos-projects.vercel.app`, 401/403 응답 분리, 401 토큰 갱신 1회 재시도 및 3회 초과 시 큐 보존 일시정지, 학생 금지 키 사전 차단, `sessionProgressUpdated` 상단 바·허브 즉시 갱신 연결, `getSessionItemsDefault` 죽은 코드 삭제, 단위 테스트 101개 통과)
 - `2026-11-25 19:05` — 프로덕션 배포 `dpl_YELqr2uY2jbXgPRqV5WYAdirQe1B` (커밋 `792bb69`, 운영 주소: `https://okjinsoowebapp.vercel.app`, 배포 URL: `https://okjinsoowebapp-7oxs60gq4-okjinsoos-projects.vercel.app`, Vercel Incoming 9.45GB 무한 POST 폭주 긴급 차단: `lectures.ts` `root.createdAt` 보존 + 읽기 silent화, `SharedSnapshotAgent` 401/403 재시도 즉시 중단 및 최대 3회 백오프, `SessionClientCore` 메아리 POST 제거, 회귀 테스트 +4건 총 99개 통과)
 - `2026-11-22 19:58` — 프로덕션 배포 `dpl_9nTT2tHC12jcrjHMLczsSgwxEvSE` (커밋 `37b97fe`, 운영 주소: `https://okjinsoowebapp.vercel.app`, 배포 URL: `https://okjinsoowebapp-2t64u7naw-okjinsoos-projects.vercel.app`, 리팩토링 1~2단계 완료: 미사용·임시파일 정리, 문서 슬림화, `lib/shared`/`lib/factories`/`lib/storage/sessionMeta` 계층 정리, ESLint 역의존 자동 가드, 단위 테스트 95개 확충, 되돌리기 태그 `pre-refactor`)
 - `2026-11-21 20:03` — 프로덕션 배포 `dpl_GK3TN1ryTRMLiU5EdjHANHPaNF7s` (커밋 `0aefd62`, 시간표 조정 1회 부분 병합 고속화, 실패 롤백, 변경분 듀얼라이트, 구글 캘린더 3병렬+429 백오프)
 - `2026-11-20 16:28` — 프로덕션 재배포 `57fs8sCNsPwscT4TuBveZNkH4x9R` (Vercel Production 토스페이먼츠 환경변수 등록 및 `/api/payments/confirm` 정상화)
-- `2026-11-14 00:20` — 프로덕션 배포 커밋 `58f2df4` (토스 시크릿키 격리·금액 검증, `stateKv` 권한 분리·Direct Fallback 제거, `patch_snapshot_state_kv` 원자적 병합, `payment_orders` 결제 장부 구축)
 
 > 2026-03 ~ 2026-11 전체 상세 패치·배포 로그는 [`docs/project-status-archive.md`](file:///Users/okjinsoo/Project/TutorWEB/v1/docs/project-status-archive.md)에 보관되어 있습니다.
 
