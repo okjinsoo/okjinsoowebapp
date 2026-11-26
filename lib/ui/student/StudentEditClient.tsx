@@ -10,6 +10,7 @@ import { pushSharedSnapshot } from "@/lib/storage/sharedSnapshot";
 import { loadLatestCoreSnapshotBaselineServerRequired } from "@/lib/storage/safeSnapshotMerge";
 import { saveStudents } from "@/lib/storage/students";
 import { saveSessions } from "@/lib/storage/sessions";
+import { saveSessionsAndSyncCalendar } from "@/lib/integrations/sessionCalendarActions";
 import { clearCurrentStudentToken } from "@/lib/ui/common/roleGateStorage";
 import { buildBaseDatesISO, metaMapKey, readMetaMap, computeEffectiveISO } from "@/lib/ui/session/sessionEffective";
 import { makeId } from "@/lib/utils/id";
@@ -241,7 +242,7 @@ export default function StudentEditClient(props: {
         sessions: nextSessions,
       });
       saveStudents(nextStudents, { skipSharedSnapshot: true });
-      saveSessions(nextSessions, { skipSharedSnapshot: true });
+      saveSessionsAndSyncCalendar(nextSessions, { skipSharedSnapshot: true });
       router.push(onDoneGoTo);
     } catch (err) {
       console.error("학생 수정 서버 저장 실패:", err);
@@ -270,7 +271,7 @@ export default function StudentEditClient(props: {
         dropStateKeys: droppedKeys,
       });
       saveStudents(nextStudents, { skipSharedSnapshot: true });
-      saveSessions(nextSessions, { skipSharedSnapshot: true, suppressCalendarSync: true });
+      saveSessions(nextSessions, { skipSharedSnapshot: true });
       removeStorageKeys(droppedKeys);
       clearCurrentStudentToken();
       succeeded = true;

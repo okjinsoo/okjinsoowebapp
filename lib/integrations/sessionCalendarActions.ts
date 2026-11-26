@@ -22,8 +22,25 @@ import {
   applyStudentPatches,
   loadSessions,
   saveSessions,
+  type SaveSessionsOptions,
 } from "@/lib/storage/sessions";
 import type { Session } from "@/lib/types/index";
+
+/**
+ * 회차를 저장하고, 바뀐 내용을 구글 캘린더에도 반영하도록 예약합니다.
+ * (예전 `saveSessions()`의 기본 동작과 똑같습니다.)
+ */
+export function saveSessionsAndSyncCalendar(list: Session[], options?: SaveSessionsOptions): void {
+  const previous = saveSessions(list, options);
+  if (!previous) return;
+
+  scheduleGoogleCalendarSync({
+    previous,
+    next: list,
+    applyPatches: applySessionPatches,
+    applyStudentPatch: applyStudentPatches,
+  });
+}
 
 function applyCalendarResyncPatch(args: {
   studentIds: Set<string>;
@@ -65,7 +82,7 @@ function applyCalendarResyncPatch(args: {
   });
 
   if (!changed) return;
-  saveSessions(next, { serverRequired: true });
+  saveSessionsAndSyncCalendar(next, { serverRequired: true });
 }
 
 export function syncGoogleCalendarForExistingSessions(): void {

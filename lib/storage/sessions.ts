@@ -3,7 +3,6 @@
 
 import { browserStorage } from "@/lib/storage/browserStorage";
 import { pushSharedSnapshot, readLocalStudents, readLocalTeachers, STUDENTS_KEY } from "@/lib/storage/sharedSnapshot";
-import { scheduleGoogleCalendarSync } from "@/lib/integrations/googleCalendarSync";
 import { safeParseJson } from "@/lib/storage/safeParse";
 import {
   loadLatestCoreSnapshotBaseline,
@@ -14,8 +13,7 @@ import type { Session, Student } from "@/lib/types/index";
 
 const KEY = "tutorweb_sessions_v1";
 
-type SaveSessionsOptions = {
-  suppressCalendarSync?: boolean;
+export type SaveSessionsOptions = {
   skipSharedSnapshot?: boolean;
   snapshotMode?: "merge" | "replace";
   serverRequired?: boolean;
@@ -84,8 +82,14 @@ async function syncSharedSnapshot(
   });
 }
 
-export function saveSessions(list: Session[], options?: SaveSessionsOptions): void {
-  if (typeof window === "undefined") return;
+/**
+ * 회차 목록을 저장합니다. (저장만 합니다. 구글 캘린더는 건드리지 않습니다.)
+ * 캘린더 동기화까지 필요하면 `saveSessionsAndSyncCalendar`(lib/integrations/sessionCalendarActions)를 쓰세요.
+ *
+ * @returns 저장 직전의 회차 목록(캘린더 동기화가 "무엇이 바뀌었는지" 비교할 때 사용). 브라우저가 아니면 null.
+ */
+export function saveSessions(list: Session[], options?: SaveSessionsOptions): Session[] | null {
+  if (typeof window === "undefined") return null;
   sessionsCache = null; // 저장 시 캐시 무효화
   const previous = options?.previousOverride ?? loadSessions();
   
@@ -100,34 +104,24 @@ export function saveSessions(list: Session[], options?: SaveSessionsOptions): vo
     });
   }
 
-  if (options?.suppressCalendarSync) return;
-
-  scheduleGoogleCalendarSync({
-    previous,
-    next: list,
-    applyPatches: applySessionPatches,
-    applyStudentPatch: applyStudentPatches,
-  });
+  return previous;
 }
 
+/**
+ * 서버 저장이 성공한 뒤에만 로컬에 반영합니다. (저장만 합니다. 구글 캘린더는 건드리지 않습니다.)
+ * @returns 저장 직전의 회차 목록
+ */
 export async function saveSessionsServerFirst(
   list: Session[],
   options?: SaveSessionsOptions
-): Promise<void> {
+): Promise<Session[]> {
   sessionsCache = null; // 저장 시 캐시 무효화
   const previous = loadSessions();
   
   await syncSharedSnapshot(list, options?.snapshotMode ?? "merge", true);
   replaceSessionsLocal(list);
 
-  if (options?.suppressCalendarSync) return;
-
-  scheduleGoogleCalendarSync({
-    previous,
-    next: list,
-    applyPatches: applySessionPatches,
-    applyStudentPatch: applyStudentPatches,
-  });
+  return previous;
 }
 
 /** 캘린더 동기화 엔진이 회차에 결과(eventId/meetUrl 등)를 기록할 때 쓰는 패치 함수 */

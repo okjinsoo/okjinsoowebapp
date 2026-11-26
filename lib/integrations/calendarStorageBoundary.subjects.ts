@@ -8,12 +8,10 @@ import { saveTeachers } from "@/lib/storage/teachers";
 
 type SessionOpts = Parameters<typeof saveSessions>[1];
 
-export function saveSessionsAndSyncCalendar(list: Session[], options?: SessionOpts): void {
-  saveSessions(list, options);
-}
+export { saveSessionsAndSyncCalendar } from "@/lib/integrations/sessionCalendarActions";
 
 export function saveSessionsWithoutCalendar(list: Session[], options?: SessionOpts): void {
-  saveSessions(list, { ...options, suppressCalendarSync: true });
+  saveSessions(list, options);
 }
 
 export function saveStudentsAndResyncCalendar(

@@ -5,7 +5,7 @@ import { computeNextSessionsForStudent } from "@/lib/factories/sessionDisplaySyn
 import { buildUpdatedMetaMap, readMetaMap } from "@/lib/storage/sessionMeta";
 import { browserStorage } from "@/lib/storage/browserStorage";
 import { findStudentByTokenInRows, readSnapshotServerFirst } from "@/lib/storage/serverRead";
-import { saveSessions } from "@/lib/storage/sessions";
+import { saveSessionsAndSyncCalendar } from "@/lib/integrations/sessionCalendarActions";
 import {
   pushSharedSnapshot,
   readLocalSessions,
@@ -122,7 +122,7 @@ export async function saveSessionAdjustmentByToken(args: {
     }
 
     if (sessionsChanged) {
-      saveSessions(nextSessions, {
+      saveSessionsAndSyncCalendar(nextSessions, {
         skipSharedSnapshot: true,
         previousOverride: sourceSessions,
       });
@@ -157,7 +157,7 @@ export async function syncSessionDisplayAtByToken(token: string): Promise<void> 
       sessionsMergeMode: "merge",
     });
     if (result.sessionsSynced) {
-      saveSessions(nextSessions, {
+      saveSessionsAndSyncCalendar(nextSessions, {
         skipSharedSnapshot: true,
         previousOverride: sourceSessions,
       });

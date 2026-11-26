@@ -7,10 +7,10 @@ import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { useRouter } from "next/navigation";
 import { saveStudents, saveStudentsServerFirst } from "@/lib/storage/students";
 import { formatGrade, formatPhone, formatSchedule } from "@/lib/ui/student/formatters";
-import { saveSessions } from "@/lib/storage/sessions";
 import {
   rebuildTeacherGoogleCalendarForStudentIds,
   requestCalendarResyncForStudentIdsByAdmin,
+  saveSessionsAndSyncCalendar,
   syncStudentGoogleCalendarMirrorForStudentIds,
 } from "@/lib/integrations/sessionCalendarActions";
 import { buildBaseDatesISO, readMetaMap, resolveActiveScheduleRules } from "@/lib/storage/sessionMeta";
@@ -1030,7 +1030,7 @@ export default function StudentHubCore({
         window.dispatchEvent(new CustomEvent(TUTORWEB_EVENTS.studentsUpdated));
       }
       if (changedOwnSessions.length > 0) {
-        saveSessions(nextSessions, {
+        saveSessionsAndSyncCalendar(nextSessions, {
           skipSharedSnapshot: true,
           previousOverride: localSessions,
         });
@@ -1357,7 +1357,7 @@ export default function StudentHubCore({
       if (!skipSessions) {
         browserStorage.setItemSilent(metaMapKey(token), JSON.stringify(nextMetaMap));
         window.dispatchEvent(new CustomEvent(TUTORWEB_EVENTS.metaMapUpdated, { detail: { token } }));
-        saveSessions(nextAllSessions, { skipSharedSnapshot: true });
+        saveSessionsAndSyncCalendar(nextAllSessions, { skipSharedSnapshot: true });
       }
 
       setStudent(updatedStudent);

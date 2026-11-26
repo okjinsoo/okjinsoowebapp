@@ -120,9 +120,7 @@ describe("server-required save guards", () => {
     );
 
     await expect(
-      saveSessionsServerFirst([makeSession({ id: "sess-new", studentId: "stu-old", index: 1 })], {
-        suppressCalendarSync: true,
-      })
+      saveSessionsServerFirst([makeSession({ id: "sess-new", studentId: "stu-old", index: 1 })])
     ).rejects.toThrow("server_snapshot_unavailable");
 
     expect(hoisted.pushSharedSnapshotMock).not.toHaveBeenCalled();
