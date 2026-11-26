@@ -130,3 +130,31 @@ class BrowserStorageImpl implements Storage {
 }
 
 export const browserStorage = new BrowserStorageImpl();
+
+const keyWatchersByWindow = new WeakMap<object, Set<() => void>>();
+
+/**
+ * 특정 저장소 키가 바뀌거나(set/remove) 저장소 전체가 지워지면(clear) `onChange`를 부릅니다.
+ *
+ * 쉽게 말해: 각 저장 파일이 가진 "50ms 단기 기억"에게
+ * "공책 내용이 바뀌었으니 기억을 지워"라고 알려주는 초인종입니다.
+ * 같은 창(window)·같은 함수로 여러 번 불러도 한 번만 등록됩니다.
+ */
+export function watchBrowserStorageKey(key: string, onChange: () => void): void {
+  if (typeof window === "undefined") return;
+  if (typeof window.addEventListener !== "function") return; // 테스트용 가짜 window 등
+  const target = window as unknown as object;
+  let registered = keyWatchersByWindow.get(target);
+  if (!registered) {
+    registered = new Set();
+    keyWatchersByWindow.set(target, registered);
+  }
+  if (registered.has(onChange)) return;
+  registered.add(onChange);
+
+  window.addEventListener(BROWSER_STORAGE_EVENT, (event: Event) => {
+    const detail = (event as CustomEvent<BrowserStorageEventDetail>).detail;
+    if (!detail) return;
+    if (detail.type === "clear" || detail.key === key) onChange();
+  });
+}

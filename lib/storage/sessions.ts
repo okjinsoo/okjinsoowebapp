@@ -1,7 +1,7 @@
 // lib/storage/sessions.ts
 "use client";
 
-import { browserStorage } from "@/lib/storage/browserStorage";
+import { browserStorage, watchBrowserStorageKey } from "@/lib/storage/browserStorage";
 import { pushSharedSnapshot, readLocalStudents, readLocalTeachers, STUDENTS_KEY } from "@/lib/storage/sharedSnapshot";
 import { safeParseJson } from "@/lib/storage/safeParse";
 import {
@@ -23,8 +23,14 @@ export type SaveSessionsOptions = {
 let sessionsCache: { value: Session[]; expiry: number } | null = null;
 const SESSIONS_CACHE_TTL = 50;
 
+/** 저장소의 회차 키가 (어디서든) 바뀌면 단기 기억을 즉시 지웁니다. */
+function invalidateSessionsCache(): void {
+  sessionsCache = null;
+}
+
 export function loadSessions(): Session[] {
   if (typeof window === "undefined") return [];
+  watchBrowserStorageKey(KEY, invalidateSessionsCache);
   
   const now = Date.now();
   if (sessionsCache && sessionsCache.expiry > now) {

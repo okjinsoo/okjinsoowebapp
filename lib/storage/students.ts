@@ -1,7 +1,7 @@
 // lib/storage/students.ts
 "use client";
 
-import { browserStorage } from "@/lib/storage/browserStorage";
+import { browserStorage, watchBrowserStorageKey } from "@/lib/storage/browserStorage";
 import { syncRoleBindingEmails } from "@/lib/auth/roleBindings";
 
 import { pushSharedSnapshot, readLocalTeachers } from "@/lib/storage/sharedSnapshot";
@@ -76,10 +76,16 @@ function syncStudentRoleBindings(previous: Student[], next: Student[]): void {
 
 
 let studentsCache: { value: Student[]; expiry: number } | null = null;
+
+/** 저장소의 학생 키가 (어디서든) 바뀌면 단기 기억을 즉시 지웁니다. */
+function invalidateStudentsCache(): void {
+  studentsCache = null;
+}
 const STUDENTS_CACHE_TTL = 50;
 
 export function loadStudents(options?: LoadStudentsOptions): Student[] {
   if (typeof window === "undefined") return [];
+  watchBrowserStorageKey(KEY, invalidateStudentsCache);
 
   if (options?.forceFresh) {
     studentsCache = null;
