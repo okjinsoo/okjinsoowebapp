@@ -5,7 +5,6 @@ import { browserStorage } from "@/lib/storage/browserStorage";
 import { syncRoleBindingEmails } from "@/lib/auth/roleBindings";
 
 import { pushSharedSnapshot, readLocalTeachers } from "@/lib/storage/sharedSnapshot";
-import { requestCalendarResyncForStudentIds } from "@/lib/integrations/sessionCalendarActions"; // 3단계에서 제거 예정
 import { safeParseJson } from "@/lib/storage/safeParse";
 import {
   loadLatestCoreSnapshotBaseline,
@@ -104,8 +103,15 @@ function dispatchStudentsUpdated() {
   window.dispatchEvent(new CustomEvent("tutorweb:studentsUpdated"));
 }
 
-export function saveStudents(list: Student[], options?: SaveStudentsOptions): void {
-  if (typeof window === "undefined") return;
+/**
+ * 학생 목록을 저장합니다. (저장만 합니다. 구글 캘린더는 건드리지 않습니다.)
+ * 이메일이 바뀐 학생의 Meet 재동기화까지 필요하면
+ * `saveStudentsAndResyncCalendar`(lib/integrations/rosterCalendarActions)를 쓰세요.
+ *
+ * @returns 구글 이메일이 바뀐 학생 ID 목록
+ */
+export function saveStudents(list: Student[], options?: SaveStudentsOptions): string[] {
+  if (typeof window === "undefined") return [];
   studentsCache = null; // 저장 시 캐시 무효화
   const normalizedList = normalizeStudents(list);
   const previous = loadStudents();
@@ -116,12 +122,11 @@ export function saveStudents(list: Student[], options?: SaveStudentsOptions): vo
   if (!options?.skipSharedSnapshot) {
     syncSharedSnapshot(normalizedList, options?.snapshotMode ?? "merge", options?.serverRequired ?? false);
   }
-  if (changedEmailIds.length > 0) {
-    requestCalendarResyncForStudentIds(changedEmailIds);
-  }
+  return changedEmailIds;
 }
 
-export async function saveStudentsServerFirst(list: Student[]): Promise<void> {
+/** @returns 구글 이메일이 바뀐 학생 ID 목록 */
+export async function saveStudentsServerFirst(list: Student[]): Promise<string[]> {
   studentsCache = null; // 저장 시 캐시 무효화
   const normalizedList = normalizeStudents(list);
   const baseline = await loadLatestCoreSnapshotBaselineServerRequired();
@@ -129,7 +134,7 @@ export async function saveStudentsServerFirst(list: Student[]): Promise<void> {
     teachers: baseline.teachers,
     students: normalizedList,
   });
-  saveStudents(normalizedList, { skipSharedSnapshot: true });
+  return saveStudents(normalizedList, { skipSharedSnapshot: true });
 }
 
 export function upsertStudent(student: Student): Student[] {

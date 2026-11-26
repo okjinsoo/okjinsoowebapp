@@ -8,7 +8,7 @@ import { useRouter } from "next/navigation";
 import type { Id, Student, Teacher } from "@/lib/types/index";
 import { pushSharedSnapshot } from "@/lib/storage/sharedSnapshot";
 import { loadLatestCoreSnapshotBaselineServerRequired } from "@/lib/storage/safeSnapshotMerge";
-import { saveStudents } from "@/lib/storage/students";
+import { saveStudentsAndResyncCalendar } from "@/lib/integrations/rosterCalendarActions";
 import { saveSessions } from "@/lib/storage/sessions";
 import { saveSessionsAndSyncCalendar } from "@/lib/integrations/sessionCalendarActions";
 import { clearCurrentStudentToken } from "@/lib/ui/common/roleGateStorage";
@@ -241,7 +241,7 @@ export default function StudentEditClient(props: {
         students: nextStudents,
         sessions: nextSessions,
       });
-      saveStudents(nextStudents, { skipSharedSnapshot: true });
+      saveStudentsAndResyncCalendar(nextStudents, { skipSharedSnapshot: true });
       saveSessionsAndSyncCalendar(nextSessions, { skipSharedSnapshot: true });
       router.push(onDoneGoTo);
     } catch (err) {
@@ -270,7 +270,7 @@ export default function StudentEditClient(props: {
         sessions: nextSessions,
         dropStateKeys: droppedKeys,
       });
-      saveStudents(nextStudents, { skipSharedSnapshot: true });
+      saveStudentsAndResyncCalendar(nextStudents, { skipSharedSnapshot: true });
       saveSessions(nextSessions, { skipSharedSnapshot: true });
       removeStorageKeys(droppedKeys);
       clearCurrentStudentToken();

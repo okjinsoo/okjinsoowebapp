@@ -4,7 +4,7 @@
 import React, { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Id, Student, Teacher, ScheduleRule, Weekday } from "@/lib/types/index";
-import { saveStudents } from "@/lib/storage/students";
+import { saveStudentsAndResyncCalendar } from "@/lib/integrations/rosterCalendarActions";
 import { pushSharedSnapshot } from "@/lib/storage/sharedSnapshot";
 import { loadLatestCoreSnapshotBaselineServerRequired } from "@/lib/storage/safeSnapshotMerge";
 import { makeId, makeToken } from "@/lib/utils/id";
@@ -422,7 +422,7 @@ export default function StudentNewClient(props: {
         students: nextStudents,
         sessions: baseSessions, // 신규 세션 추가 없이 학생만 추가
       });
-      saveStudents(nextStudents, { skipSharedSnapshot: true });
+      saveStudentsAndResyncCalendar(nextStudents, { skipSharedSnapshot: true });
       router.push(onDoneGoTo);
     } catch (err) {
       console.error("학생 생성 서버 저장 실패:", err);

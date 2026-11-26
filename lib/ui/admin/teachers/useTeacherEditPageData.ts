@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import type { Teacher } from "@/lib/types/index";
 import { isLocalOnlySnapshotMode } from "@/lib/storage/sharedSnapshot";
-import { saveTeachersServerFirst } from "@/lib/storage/teachers";
+import { saveTeachersServerFirstAndResyncCalendar } from "@/lib/integrations/rosterCalendarActions";
 import { loadLatestCoreSnapshotBaselineServerRequired } from "@/lib/storage/safeSnapshotMerge";
 import { readTeachersServerFirst } from "@/lib/storage/serverRead";
 import { todayYmdLocal } from "@/lib/utils/date";
@@ -121,7 +121,7 @@ export function useTeacherEditPageData(args: UseTeacherEditPageDataArgs): UseTea
         setError("수정 대상 선생님을 최신 목록에서 찾지 못했습니다. 목록에서 다시 선택해주세요.");
         return;
       }
-      await saveTeachersServerFirst(nextTeachers);
+      await saveTeachersServerFirstAndResyncCalendar(nextTeachers);
       onSaved?.();
     } catch (err) {
       console.error("선생님 수정 서버 저장 실패:", err);

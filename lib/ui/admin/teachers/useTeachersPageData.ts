@@ -2,8 +2,11 @@
 
 import { useCallback, useEffect, useState } from "react";
 import type { Student, Teacher } from "@/lib/types/index";
-import { saveTeachers, TEACHERS_EVENT } from "@/lib/storage/teachers";
-import { saveStudents } from "@/lib/storage/students";
+import { TEACHERS_EVENT } from "@/lib/storage/teachers";
+import {
+  saveStudentsAndResyncCalendar,
+  saveTeachersAndResyncCalendar,
+} from "@/lib/integrations/rosterCalendarActions";
 import { isLocalOnlySnapshotMode } from "@/lib/storage/sharedSnapshot";
 import { pushSharedSnapshot } from "@/lib/storage/sharedSnapshot";
 import { loadLatestCoreSnapshotBaselineServerRequired } from "@/lib/storage/safeSnapshotMerge";
@@ -87,8 +90,8 @@ export function useTeachersPageData(): UseTeachersPageDataResult {
         teachers: nextTeachers,
         students: nextStudents,
       });
-      saveStudents(nextStudents, { skipSharedSnapshot: true });
-      saveTeachers(nextTeachers, { skipSharedSnapshot: true });
+      saveStudentsAndResyncCalendar(nextStudents, { skipSharedSnapshot: true });
+      saveTeachersAndResyncCalendar(nextTeachers, { skipSharedSnapshot: true });
       setTeachers(nextTeachers);
     } catch (err) {
       console.error("선생님 삭제 서버 저장 실패:", err);

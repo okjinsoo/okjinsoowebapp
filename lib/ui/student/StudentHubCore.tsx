@@ -5,7 +5,10 @@ import { loadAuthSession } from "@/lib/auth/supabaseAuth";
 
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { useRouter } from "next/navigation";
-import { saveStudents, saveStudentsServerFirst } from "@/lib/storage/students";
+import {
+  saveStudentsAndResyncCalendar,
+  saveStudentsServerFirstAndResyncCalendar,
+} from "@/lib/integrations/rosterCalendarActions";
 import { formatGrade, formatPhone, formatSchedule } from "@/lib/ui/student/formatters";
 import {
   rebuildTeacherGoogleCalendarForStudentIds,
@@ -564,7 +567,7 @@ export default function StudentHubCore({
         { ...student, driveFolderId: fid },
         baseline.students
       );
-      await saveStudentsServerFirst(nextStudents);
+      await saveStudentsServerFirstAndResyncCalendar(nextStudents);
       setStudent((prev) => (prev ? { ...prev, driveFolderId: fid } : prev));
       
       window.alert(`사물함 정비 완료! ✨\n\n- 폴더 이름: ${folderName}\n- 배정 ID: ${fid}\n\n이제 사진을 제출하면 이 폴더로 안전하게 배달됩니다.`);
@@ -1025,7 +1028,7 @@ export default function StudentHubCore({
       }
 
       if (hasFullLocalStudents) {
-        saveStudents(nextStudents, { skipSharedSnapshot: true });
+        saveStudentsAndResyncCalendar(nextStudents, { skipSharedSnapshot: true });
       } else {
         window.dispatchEvent(new CustomEvent(TUTORWEB_EVENTS.studentsUpdated));
       }
@@ -1353,7 +1356,7 @@ export default function StudentHubCore({
         ...(Object.keys(nextStateKv).length > 0 ? { stateKv: nextStateKv } : {}),
       });
 
-      saveStudents(nextStudents, { skipSharedSnapshot: true });
+      saveStudentsAndResyncCalendar(nextStudents, { skipSharedSnapshot: true });
       if (!skipSessions) {
         browserStorage.setItemSilent(metaMapKey(token), JSON.stringify(nextMetaMap));
         window.dispatchEvent(new CustomEvent(TUTORWEB_EVENTS.metaMapUpdated, { detail: { token } }));

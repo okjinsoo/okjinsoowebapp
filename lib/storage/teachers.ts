@@ -7,7 +7,6 @@ import { syncRoleBindingEmails } from "@/lib/auth/roleBindings";
 
 import { pushSharedSnapshot, readLocalStudents } from "@/lib/storage/sharedSnapshot";
 import { safeParseJson } from "@/lib/storage/safeParse";
-import { requestCalendarResyncForTeacherIds } from "@/lib/integrations/sessionCalendarActions"; // 3단계에서 제거 예정
 import {
   loadLatestCoreSnapshotBaseline,
   loadLatestCoreSnapshotBaselineServerRequired,
@@ -125,8 +124,15 @@ export function loadTeachers(): Teacher[] {
 
 
 
-export function saveTeachers(list: Teacher[], options?: SaveTeachersOptions): void {
-  if (typeof window === "undefined") return;
+/**
+ * 선생님 목록을 저장합니다. (저장만 합니다. 구글 캘린더는 건드리지 않습니다.)
+ * 이메일이 바뀐 선생님의 Meet 재생성까지 필요하면
+ * `saveTeachersAndResyncCalendar`(lib/integrations/rosterCalendarActions)를 쓰세요.
+ *
+ * @returns 이메일이 바뀐 선생님 ID 목록
+ */
+export function saveTeachers(list: Teacher[], options?: SaveTeachersOptions): string[] {
+  if (typeof window === "undefined") return [];
   const previous = loadTeachers();
   const changedEmailIds = changedTeacherEmailIds(previous, list);
   browserStorage.setItem(KEY, JSON.stringify(list));
@@ -135,18 +141,17 @@ export function saveTeachers(list: Teacher[], options?: SaveTeachersOptions): vo
   if (!options?.skipSharedSnapshot) {
     syncSharedSnapshot(list, options?.snapshotMode ?? "merge", options?.serverRequired ?? false);
   }
-  if (changedEmailIds.length > 0) {
-    requestCalendarResyncForTeacherIds(changedEmailIds);
-  }
+  return changedEmailIds;
 }
 
-export async function saveTeachersServerFirst(list: Teacher[]): Promise<void> {
+/** @returns 이메일이 바뀐 선생님 ID 목록 */
+export async function saveTeachersServerFirst(list: Teacher[]): Promise<string[]> {
   const baseline = await loadLatestCoreSnapshotBaselineServerRequired();
   await pushSharedSnapshot({
     teachers: list,
     students: baseline.students,
   });
-  saveTeachers(list, { skipSharedSnapshot: true });
+  return saveTeachers(list, { skipSharedSnapshot: true });
 }
 
 export function upsertTeacher(t: Teacher): Teacher[] {

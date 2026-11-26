@@ -3,7 +3,7 @@
 import { useCallback, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import type { Teacher } from "@/lib/types/index";
-import { saveTeachersServerFirst } from "@/lib/storage/teachers";
+import { saveTeachersServerFirstAndResyncCalendar } from "@/lib/integrations/rosterCalendarActions";
 import { loadLatestCoreSnapshotBaselineServerRequired } from "@/lib/storage/safeSnapshotMerge";
 import { makeId, makeToken } from "@/lib/utils/id";
 import { nowIso, todayYmdLocal } from "@/lib/utils/date";
@@ -62,7 +62,7 @@ export function useTeacherNewPageData(args: UseTeacherNewPageDataArgs): UseTeach
     setSaving(true);
     try {
       const baseline = await loadLatestCoreSnapshotBaselineServerRequired();
-      await saveTeachersServerFirst([...baseline.teachers, teacher]);
+      await saveTeachersServerFirstAndResyncCalendar([...baseline.teachers, teacher]);
       onSaved?.();
     } catch (err) {
       console.error("선생님 생성 서버 저장 실패:", err);
