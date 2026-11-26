@@ -122,8 +122,6 @@ export function loadTeachers(): Teacher[] {
   return safeParseJson<Teacher[]>(browserStorage.getItem(KEY), []);
 }
 
-
-
 /**
  * 선생님 목록을 저장합니다. (저장만 합니다. 구글 캘린더는 건드리지 않습니다.)
  * 이메일이 바뀐 선생님의 Meet 재생성까지 필요하면
@@ -154,30 +152,3 @@ export async function saveTeachersServerFirst(list: Teacher[]): Promise<string[]
   return saveTeachers(list, { skipSharedSnapshot: true });
 }
 
-export function upsertTeacher(t: Teacher): Teacher[] {
-  const list = loadTeachers();
-  const idx = list.findIndex((x) => x.id === t.id);
-  if (idx >= 0) list[idx] = t;
-  else list.push(t);
-  saveTeachers(list, { serverRequired: true });
-  return list;
-}
-
-export function removeTeacher(teacherId: string): Teacher[] {
-  const list = loadTeachers().filter((t) => t.id !== teacherId);
-  saveTeachers(list, { snapshotMode: "replace", serverRequired: true });
-  return list;
-}
-
-export function findTeacherById(teacherId: string): Teacher | null {
-  return loadTeachers().find((t) => t.id === teacherId) ?? null;
-}
-
-export function clearTeachers(): void {
-  if (typeof window === "undefined") return;
-  const previous = loadTeachers();
-  browserStorage.removeItem(KEY);
-  dispatchTeachersUpdated();
-  syncTeacherRoleBindings(previous, []);
-  syncSharedSnapshot([], "replace", false);
-}

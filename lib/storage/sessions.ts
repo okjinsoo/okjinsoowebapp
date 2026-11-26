@@ -220,25 +220,6 @@ export function applyStudentPatches(patches: Array<{ id: string; patch: Partial<
   });
 }
 
-export function removeSessionsByStudentId(studentId: string): Session[] {
-  const list = loadSessions().filter((s) => s.studentId !== studentId);
-  saveSessions(list, { snapshotMode: "replace", serverRequired: true });
-  return list;
-}
-
-export function removeSessionsByStudentIds(studentIds: string[]): Session[] {
-  const set = new Set(studentIds);
-  const list = loadSessions().filter((s) => !set.has(s.studentId));
-  saveSessions(list, { snapshotMode: "replace", serverRequired: true });
-  return list;
-}
-
-export function removeSession(sessionId: string): Session[] {
-  const list = loadSessions().filter((x) => x.id !== sessionId);
-  saveSessions(list, { snapshotMode: "replace", serverRequired: true });
-  return list;
-}
-
 export function sessionsByStudent(studentId: string): Session[] {
   const allSessions = loadSessions();
   const realSessions = allSessions
@@ -270,59 +251,4 @@ export function sessionsByStudent(studentId: string): Session[] {
   }
 
   return results;
-}
-
-// -------------------- Student progress (mk3:* items) --------------------
-
-type SessionItem = {
-  noteDone: boolean;
-  solveDone: boolean;
-  [key: string]: unknown;
-};
-
-/**
- * 학생 성취도 items 전체 로드
- * [최적화] planCount번 순차 조회 → 전체 키 1회 스캔으로 개선
- * - 수업이 아무리 많아도 순회 횟수는 Storage 전체 키 수로 고정
- * - JSON 파싱 실패/손상 데이터는 해당 회차를 건너뜀
- */
-export function loadSessionItemsMap(
-  token: string,
-  planCount: number
-): Record<number, SessionItem[]> {
-  if (typeof window === "undefined") return {};
-
-  const prefix = `mk3:${token}:session:`;
-  const suffix = ":items";
-  const map: Record<number, SessionItem[]> = {};
-
-  // Storage 전체 키를 1번만 순회 (N번 getItem 호출 대신)
-  for (let i = 0; i < browserStorage.length; i++) {
-    const key = browserStorage.key(i);
-    if (!key || !key.startsWith(prefix) || !key.endsWith(suffix)) continue;
-
-    // prefix와 suffix 사이에서 index 추출
-    const mid = key.slice(prefix.length, key.length - suffix.length);
-    const index = parseInt(mid, 10);
-    if (!Number.isFinite(index) || index < 1 || index > planCount) continue;
-
-    try {
-      const raw = browserStorage.getItem(key);
-      if (!raw) continue;
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) map[index] = parsed as SessionItem[];
-    } catch {
-      // ignore
-    }
-  }
-  return map;
-}
-
-/** (선택) 디버그용 초기화 */
-export function clearSessions(): void {
-  if (typeof window === "undefined") return;
-  browserStorage.removeItem(KEY);
-  void syncSharedSnapshot([], "replace", false).catch((err) => {
-    console.error("공유 스냅샷 동기화 실패(sessions):", err);
-  });
 }

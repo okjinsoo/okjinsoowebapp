@@ -11,7 +11,7 @@ import {
   loadLatestCoreSnapshotBaselineServerRequired,
   mergeById,
 } from "@/lib/storage/safeSnapshotMerge";
-import type { Student, StudentStatus } from "@/lib/types/index";
+import type { Student } from "@/lib/types/index";
 
 const KEY = "tutorweb_students_v1";
 
@@ -73,7 +73,6 @@ function syncStudentRoleBindings(previous: Student[], next: Student[]): void {
     console.error("학생 권한 동기화 실패:", err);
   });
 }
-
 
 let studentsCache: { value: Student[]; expiry: number } | null = null;
 
@@ -152,35 +151,6 @@ export function upsertStudent(student: Student): Student[] {
   else list.push(normalized);
   saveStudents(list, { serverRequired: true });
   return list;
-}
-
-export function removeStudent(studentId: string): Student[] {
-  studentsCache = null; // 저장 시 캐시 무효화
-  const list = loadStudents().filter((s) => s.id !== studentId);
-  saveStudents(list, { snapshotMode: "replace", serverRequired: true });
-  return list;
-}
-
-export function setStudentStatus(studentId: string, status: StudentStatus): Student[] {
-  studentsCache = null; // 저장 시 캐시 무효화
-  const list = loadStudents().map((s) => (s.id === studentId ? { ...s, status } : s));
-  saveStudents(list, { serverRequired: true });
-  return list;
-}
-
-/** 링크용 token으로 학생 찾기 */
-export function findStudentByToken(token: string): Student | null {
-  const list = loadStudents();
-  return list.find((s) => s.token === token) ?? null;
-}
-
-/** (선택) 디버그용: 스토리지 초기화 */
-export function clearStudents(): void {
-  if (typeof window === "undefined") return;
-  const previous = loadStudents();
-  browserStorage.removeItem(KEY);
-  syncStudentRoleBindings(previous, []);
-  syncSharedSnapshot([], "replace", false);
 }
 
 function syncSharedSnapshot(
