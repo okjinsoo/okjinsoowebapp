@@ -39,6 +39,7 @@ const eslintConfig = defineConfig([
       "lib/factories/format.ts",
       "lib/factories/ddayMeta.ts",
       "lib/factories/lessonStatusFactory.ts",
+      "lib/integrations/googleCalendarCore.ts",
     ],
     ignores: ["**/*.test.{ts,tsx}"],
     rules: {
