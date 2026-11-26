@@ -53,15 +53,17 @@ vi.mock("@/lib/auth/roleBindings", () => ({
   syncRoleBindingEmails: vi.fn().mockResolvedValue(undefined),
 }));
 
-// ── 테스트 대상 (리팩토링 후에는 이 import 줄만 바뀝니다) ──
-import { loadSessions } from "@/lib/storage/sessions";
+// ── 테스트 대상 ──
+// saveSessions = 저장만 / *AndSyncCalendar, *AndResyncCalendar = 저장 + 캘린더 연동
+import { loadSessions, saveSessions as saveSessionsWithoutCalendar } from "@/lib/storage/sessions";
 import {
+  requestResetAndResyncMeetForStudentIds,
   saveSessionsAndSyncCalendar,
-  saveSessionsWithoutCalendar,
+} from "@/lib/integrations/sessionCalendarActions";
+import {
   saveStudentsAndResyncCalendar,
   saveTeachersAndResyncCalendar,
-  requestResetAndResyncMeetForStudentIds,
-} from "./calendarStorageBoundary.subjects";
+} from "@/lib/integrations/rosterCalendarActions";
 
 const originalWindow = (globalThis as { window?: unknown }).window;
 // 저장소 함수에 50ms 단기 캐시가 있어서, 테스트끼리 캐시가 섞이지 않도록 매 테스트마다 시계를 1분씩 넘깁니다.

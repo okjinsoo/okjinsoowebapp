@@ -59,6 +59,30 @@ const eslintConfig = defineConfig([
       ],
     },
   },
+  {
+    // 저장소 계층은 "적기만" 합니다. 구글 캘린더/드라이브 같은 외부 연동을 직접 부르면 안 됩니다.
+    // 연동이 필요하면 lib/integrations 쪽 함수(예: saveSessionsAndSyncCalendar)를 화면에서 부르세요.
+    files: ["lib/storage/**/*.{ts,tsx}"],
+    ignores: ["**/*.test.{ts,tsx}"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            {
+              group: ["@/lib/ui/*", "@/lib/ui/**"],
+              message: "저장소 계층(lib/storage)에서는 lib/ui를 직접 참조할 수 없습니다.",
+            },
+            {
+              group: ["@/lib/integrations/*", "@/lib/integrations/**"],
+              message:
+                "저장소 계층(lib/storage)에서는 외부 연동(lib/integrations)을 직접 부를 수 없습니다. 연동은 lib/integrations 쪽 래퍼 함수를 사용하세요.",
+            },
+          ],
+        },
+      ],
+    },
+  },
   // Override default ignores of eslint-config-next.
   globalIgnores([
     // Default ignores of eslint-config-next:
