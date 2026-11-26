@@ -19,7 +19,7 @@ import {
   requestCalendarResyncForStudentIdsByAdmin,
   requestResetAndResyncMeetForStudentIds,
   requestResetAndResyncMeetForStudentIdsByAdmin,
-} from "@/lib/storage/sessions";
+} from "@/lib/integrations/sessionCalendarActions";
 import TodaySessionsCard from "@/lib/ui/teacher/TodaySessionsCard";
 import TeacherStudentListCard from "@/lib/ui/teacher/TeacherStudentListCard";
 import RoleGateCard from "@/lib/ui/common/RoleGateCard";

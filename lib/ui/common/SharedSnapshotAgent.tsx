@@ -12,7 +12,7 @@ import {
   SESSIONS_KEY,
   dispatchLocalSnapshotUpdated
 } from "@/lib/storage/sharedSnapshot";
-import { syncGoogleCalendarForExistingSessions } from "@/lib/storage/sessions";
+import { syncGoogleCalendarForExistingSessions } from "@/lib/integrations/sessionCalendarActions";
 import {
   isSessionProgressStateKey,
   isSharedStateKvKey,

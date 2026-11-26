@@ -7,7 +7,7 @@ import { syncRoleBindingEmails } from "@/lib/auth/roleBindings";
 
 import { pushSharedSnapshot, readLocalStudents } from "@/lib/storage/sharedSnapshot";
 import { safeParseJson } from "@/lib/storage/safeParse";
-import { requestCalendarResyncForTeacherIds } from "@/lib/storage/sessions";
+import { requestCalendarResyncForTeacherIds } from "@/lib/integrations/sessionCalendarActions"; // 3단계에서 제거 예정
 import {
   loadLatestCoreSnapshotBaseline,
   loadLatestCoreSnapshotBaselineServerRequired,

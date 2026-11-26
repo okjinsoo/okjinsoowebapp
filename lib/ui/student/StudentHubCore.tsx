@@ -7,12 +7,12 @@ import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { useRouter } from "next/navigation";
 import { saveStudents, saveStudentsServerFirst } from "@/lib/storage/students";
 import { formatGrade, formatPhone, formatSchedule } from "@/lib/ui/student/formatters";
+import { saveSessions } from "@/lib/storage/sessions";
 import {
   rebuildTeacherGoogleCalendarForStudentIds,
   requestCalendarResyncForStudentIdsByAdmin,
-  saveSessions,
   syncStudentGoogleCalendarMirrorForStudentIds,
-} from "@/lib/storage/sessions";
+} from "@/lib/integrations/sessionCalendarActions";
 import { buildBaseDatesISO, readMetaMap, resolveActiveScheduleRules } from "@/lib/storage/sessionMeta";
 import {
   buildBadges,
