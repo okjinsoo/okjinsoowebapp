@@ -13,7 +13,10 @@
   - `saveSessions`/`saveStudents`/`saveTeachers`는 저장만 담당(캘린더 호출 제거). 캘린더까지 필요한 곳은 `saveSessionsAndSyncCalendar`, `saveStudentsAndResyncCalendar`, `saveTeachersAndResyncCalendar` 등을 명시적으로 호출
   - 캘린더/Meet 재동기화 함수 8종 `lib/integrations/sessionCalendarActions.ts`로 이동, 명단 저장+재동기화 래퍼 `lib/integrations/rosterCalendarActions.ts` 신설, `suppressCalendarSync` 옵션 제거
   - ESLint 가드: `lib/storage`에서 `lib/integrations`·`lib/ui` import 금지
-  - 동작 고정 테스트 +8 (`lib/integrations/calendarStorageBoundary.test.ts`), **21개 파일 109개 테스트 통과**, lint 0건, 프로덕션 빌드 정상
+  - 50ms 단기 캐시 무효화: 저장소 키가 다른 경로로 바뀌면 `loadSessions`/`loadStudents` 캐시 즉시 폐기 (`watchBrowserStorageKey`)
+  - 미사용 저장 함수 13종 삭제 (`upsertStudent`는 미병합 브랜치 `codex/session-prev-next-buttons` 사용으로 유지)
+  - 연습용 모드(`npm run dev:isolated`) 브라우저 확인: 관리자 로그인, 선생님·학생 생성/수정, 시간표 변경, 회차 상세 화면 정상·콘솔 오류 0건
+  - **22개 파일 113개 테스트 통과**, lint 0건, 프로덕션 빌드 정상
 - **동기화 데이터 보호 및 401/403 정밀 분리 보완 패치 운영 배포 완료 (2026-11-25, 커밋 `af8c76e`)**:
   - `app/api/snapshot/route.ts`: 권한/금지 키 거절(`unauthorized_*`, `server_blocked_mass_deletion`)은 `403 forbidden`, 로그인/토큰 만료(`unauthorized`)는 `401 unauthorized`로 응답 분리
   - `lib/storage/sharedSnapshot.ts` · `lib/ui/common/SharedSnapshotAgent.tsx`: `403`만 큐 폐기(`drop`), `401`은 `forceRefreshAuthSession()` 토큰 갱신 후 1회 재시도, 일시 장애 3회 초과 시 큐를 버리지 않고 일시정지(`pause`) 보관 후 탭 복귀·온라인 복귀·인증 변경·새 입력 시 안전 재개, 학생 계정의 금지 키(`mk3:lectureTree`, `mk3:driveRootId`, 타 학생 키) 사전 큐잉 차단

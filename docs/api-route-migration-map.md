@@ -3,6 +3,8 @@
 작성일: 2026-02-05  
 목적: 지금 화면에서 일어나는 저장/조회 동작을, 배포용 서버 API로 1:1 옮기기 위한 지도
 
+> 2026-11-27 메모: 미사용 저장 함수(`removeStudent`, `removeSessionsByStudentId(s)`, `removeSession`, `upsertTeacher`, `removeTeacher` 등)는 삭제되었습니다. 표의 '현재 구현' 열은 삭제된 함수만 현재 경로로 고쳤습니다.
+
 ## 0) 이 문서가 하는 일 (쉬운 설명)
 - 지금은 각 화면이 `localStorage`에 직접 쓰고 읽습니다.
 - 배포 후에는 화면이 직접 장부를 만지면 안 되고, **API 창구**로만 요청해야 안전합니다.
@@ -32,12 +34,12 @@
 | 내 정보 확인 | local key 로 현재 사용자 판별 | `GET /api/auth/me` | a/t/s | - |
 | 학생 생성(`/a/students/new`, `/t/tmain/new`) | `upsertStudent`, `upsertSession` | `POST /api/students` (+서버에서 초기 회차 생성) | a, t(정책) | `STUDENT_CREATE` + `SESSION_REBUILD` |
 | 학생 수정(`/role/smain/edit`) | `upsertStudent`, 재계산 후 `saveSessions` | `PATCH /api/students/:id` | a, t(제한) | `STUDENT_UPDATE` |
-| 학생 삭제(`/role/smain/edit`) | `removeStudent`, `removeSessionsByStudentId`, 상담 삭제 | `DELETE /api/students/:id`(soft) | a | `STUDENT_DISABLE` |
+| 학생 삭제(`/role/smain/edit`) | 서버 기준 목록에서 제외 후 `saveStudentsAndResyncCalendar` + `saveSessions` (2026-11-27 갱신) | `DELETE /api/students/:id`(soft) | a | `STUDENT_DISABLE` |
 | 학생 목록(`/a/students`) | `loadStudents` | `GET /api/students` | a, t(담당만) | - |
 | 선생 목록(`/a/teachers`) | `loadTeachers` | `GET /api/teachers` | a | - |
-| 선생 생성(`/a/teachers/new`) | `upsertTeacher` | `POST /api/teachers` | a | `TEACHER_CREATE` |
-| 선생 수정(`/a/teachers/edit`) | `upsertTeacher` | `PATCH /api/teachers/:id` | a | `TEACHER_UPDATE` |
-| 선생 삭제(`/a/teachers`) | `removeTeacher` + 학생 teacherId 해제 | `DELETE /api/teachers/:id`(soft) | a | `TEACHER_DISABLE` |
+| 선생 생성(`/a/teachers/new`) | `saveTeachersServerFirstAndResyncCalendar` (2026-11-27 갱신) | `POST /api/teachers` | a | `TEACHER_CREATE` |
+| 선생 수정(`/a/teachers/edit`) | `saveTeachersServerFirstAndResyncCalendar` (2026-11-27 갱신) | `PATCH /api/teachers/:id` | a | `TEACHER_UPDATE` |
+| 선생 삭제(`/a/teachers`) | 화면 훅 `useTeachersPageData.removeTeacher` + 학생 teacherId 해제 (2026-11-27 갱신) | `DELETE /api/teachers/:id`(soft) | a | `TEACHER_DISABLE` |
 | 담당관계 설정 | 학생 객체의 `teacherId` 직접 저장 | `POST /api/teacher-students` | a | `TEACHER_STUDENT_ATTACH` |
 | 담당관계 해제 | 학생 객체에서 `teacherId` 제거 | `DELETE /api/teacher-students/:teacherId/:studentId` | a | `TEACHER_STUDENT_DETACH` |
 | 회차 목록(`/role/smain/session`) | `sessionsByStudent`, `readMetaMap` | `GET /api/students/:id/sessions` | a/t/s(소유권) | - |

@@ -243,7 +243,7 @@
 아래 계열 함수는 결국 서버 호출로 바뀌어야 합니다.
 
 - `loadStudents`, `saveStudents`, `upsertStudent`
-- `loadTeachers`, `saveTeachers`, `upsertTeacher`
+- `loadTeachers`, `saveTeachers` (`upsertTeacher`는 미사용으로 2026-11-27 삭제)
 - `loadSessions`, `saveSessions`, `upsertSession`
 - `loadConsultationsByStudent`, `saveConsultationsByStudent`
 - `readMetaMap`, `upsertMeta`
