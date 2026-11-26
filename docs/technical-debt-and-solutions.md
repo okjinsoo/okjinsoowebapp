@@ -95,6 +95,17 @@
 
 ---
 
+## 6. 저장소 50ms 단기 캐시의 '오래된 값' 위험 (2026-11-27 발견, 미조치)
+
+### 🔴 문제점 (As-Is)
+- **현상**: `loadSessions()`/`loadStudents()`는 50ms 동안 직전 결과를 기억합니다. 이 함수들을 거치지 않고 저장소에 직접 쓴 값(예: 다른 경로의 `browserStorage.setItem`)은 50ms 안에는 무시될 수 있습니다.
+- **부작용**: 그 50ms 사이에 `읽기 → 수정 → 저장`이 일어나면, 방금 들어온 회차가 저장에서 빠질 수 있습니다(동작 고정 테스트 작성 중 재현됨).
+
+### 🟢 해결 방향 (To-Be)
+- 캐시를 `browserStorage` 변경 이벤트(`BROWSER_STORAGE_EVENT`)에 연결해 해당 키가 바뀌면 즉시 무효화하거나, 쓰기 직전 읽기에서는 캐시를 건너뛰는 옵션 추가.
+
+---
+
 ## 🗓️ 실행 로드맵 및 실제 진행 현황 (2026-11-22 기준)
 
 | 단계 | 목표 | 세부 작업 및 현재 상태 | 상태 |
@@ -103,4 +114,4 @@
 | **Phase 2 (1차 분리 & RBAC)** | **모달 분리 & 관리자 RBAC 정비** | `StudentHubCore` 거대 모달 2종 분리(약 400줄 감량), 관리자 이메일 동적 결합. 단, `StudentHubCore.tsx`(1,814줄) 본체 및 기타 대형 파일(`SessionClientCore`, `syncFactory`, `googleCalendarSync`)은 추가 분해 필요 | 부분 완료 (추가 분해 예정) |
 | **Phase 3 (DB 정규화 & OCC)** | **정규화 테이블 & 듀얼라이트 구축** | 정규화 DDL(`011_normalize_tables_and_occ.sql`), `version` 컬럼 기반 OCC 트리거 및 변경분 듀얼라이트(`dualWriteSync.ts`) 탑재 | 완료 (2026-09-19) |
 | **Phase 4 (읽기 전환 & 보안/속도)** | **정규화 읽기 스위치 & 보안 잠금** | 백필 API, `NEXT_PUBLIC_READ_FROM_NORMALIZED` 스위치, `patch_snapshot_state_kv` 원자적 병합, RLS 잠금, 시간표 조정 1회 부분 병합(`merge`) 고속화 완료 | 완료 (2026-11-21) |
-| **Phase 5 (구조 리팩토링)** | **청소 → 계층 정리 → (추후) 대형 파일 분해** | 1단계 대청소/문서 슬림화 및 2단계 계층/공용 경로 정리·순수 계산 분리·ESLint 자동 가드·테스트 95개 확충 완료 (`pre-refactor` 태그 확보). 3단계(대형 파일 4종 분해) 및 `sessions.ts`↔캘린더 결합 완화는 추후 별도 마일스톤으로 진행 | 1~2단계 완료 (3단계 대기) |
+| **Phase 5 (구조 리팩토링)** | **청소 → 계층 정리 → (추후) 대형 파일 분해** | 1단계 대청소/문서 슬림화 및 2단계 계층/공용 경로 정리·순수 계산 분리·ESLint 자동 가드·테스트 95개 확충 완료 (`pre-refactor` 태그 확보). 3단계 사전 정리(저장소↔구글 캘린더 결합 분리) 완료(2026-11-27, 브랜치 `refactor/decouple-calendar-from-storage`, 미배포): `lib/storage`는 저장만, 캘린더 연동은 `lib/integrations/sessionCalendarActions.ts`·`rosterCalendarActions.ts`로 이동, ESLint `lib/storage → lib/integrations` 금지 가드, 동작 고정 테스트 +8(총 109). 다음: 대형 파일 4종 분해 | 1~2단계 + 3단계 사전 정리 완료 |
