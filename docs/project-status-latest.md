@@ -1,13 +1,20 @@
 # Project Status (Latest)
 
-기준 시각: 2026-11-27 20:32 (KST)  
+기준 시각: 2026-11-27 23:05 (KST)  
 대상 프로젝트: `v1`  
 운영 주소: `https://okjinsoowebapp.vercel.app`  
-최신 운영 배포본: `2026-11-27 20:30 (KST)` (`dpl_GNE1ySyqmK1ycZDQdmbvq72nSvY8`, 커밋 `ecaed9c`)
+최신 운영 배포본: `2026-11-27 23:02 (KST)` (`dpl_GztdTQixRRgZTkoM8czRVjrd2heM`, 커밋 `d719323`)
 
 ---
 
 ## 1분 요약 (현재 확정 상태)
+
+- **디자인 기획 확정 + 1단계 바닥 깔기 (2026-11-27, 브랜치 `design/phase1-foundation` → `main`, 운영 배포 완료 `dpl_GztdTQixRRgZTkoM8czRVjrd2heM`)**:
+  - 디자인 기획서(Claude 문서): https://claude.ai/artifact/LCvTUirMd8A2Ruyeg73z6j — 선생님=수업 운영판, 학생=성장 기록. 학생 기기 휴대폰:패드 50:50, 선생님 노트북 우선
+  - `globals.css` 상태 색 토큰 5종(`--brand/--ok/--wait/--alert/--quiet`), 배지는 이 색만 사용
+  - 제출률 배지: 빨강 제거(시작 전 회색, 지난 수업 미완료 노랑, 완료 초록), 과제 없음 `미정`·공지만 있음 `공지`. 출석 배지 초록, 마지막 수업 노랑
+  - 글꼴 Pretendard(jsDelivr CDN) 통일, 숫자 폭 고정. 단위 테스트 140개 통과, 운영 선생님 메인 화면 확인
+  - 다음: 자정 자동 출석(매일 00:00 KST, 결석 아닌 지난 회차 → 출석), 2단계 선생님 메인(뷰포트 1024px 고정 해제 포함)
 
 - **보안 점검(ponytail-audit) Must fix 6건 패치 (2026-11-27, 브랜치 `fix/security-must-fix` → `main`, 운영 배포 완료 `dpl_GNE1ySyqmK1ycZDQdmbvq72nSvY8`)**:
   - `app/api/snapshot/route.ts`: 미등록(guest)·명단 미연결 학생/선생님 GET은 `403 forbidden`(이전엔 전체 명단·회차 반환). `?stateKey=` 단일 조회도 `filterStateKvForViewer`를 거쳐 결제 장부(`server:payment_orders_v1`)·타 학생 키 차단
@@ -75,11 +82,11 @@
 
 ## 최근 주요 배포 이력 (최신 5건)
 
+- `2026-11-27 23:02` — 프로덕션 배포 `dpl_GztdTQixRRgZTkoM8czRVjrd2heM` (커밋 `d719323`, `git push origin main` 자동 배포, 운영 주소: `https://okjinsoowebapp.vercel.app`, 디자인 1단계 바닥 깔기: 상태 색 토큰 5종, 제출률 배지 색 규칙(빨강 제거·미정/공지), 출석 초록·마지막 수업 노랑, Pretendard, 단위 테스트 140개 통과)
 - `2026-11-27 20:30` — 프로덕션 배포 `dpl_GNE1ySyqmK1ycZDQdmbvq72nSvY8` (커밋 `ecaed9c`, `git push origin main` 자동 배포, 운영 주소: `https://okjinsoowebapp.vercel.app`, 보안 점검 Must fix: `/api/snapshot` guest 403·stateKey 필터, proxy 역할 대체 조회 service role, 결제 새로고침 장부 훼손 수정, DB 잠금 SQL 015 추가(같은 날 Supabase 수동 적용), 단위 테스트 139개 통과)
 - `2026-11-27 16:22` — 프로덕션 배포 `dpl_2tAtf3Z1HoZkcp5B2j9Wj13SjENZ` (커밋 `3a69afa`, `git push origin main` 자동 배포, 운영 주소: `https://okjinsoowebapp.vercel.app`, 배포 URL: `https://okjinsoowebapp-f16eip7u4-okjinsoos-projects.vercel.app`, 리팩토링 3단계 3차: `syncSingleTarget`을 `googleCalendarSyncTarget.ts`로 분리, 동작 고정 테스트 +9, 단위 테스트 137개 통과)
 - `2026-11-27 15:58` — 프로덕션 배포 `dpl_8PkGtcpTL5QnSXRhvkbPk2qHxqmj` (커밋 `f713313`, `git push origin main` 자동 배포, 운영 주소: `https://okjinsoowebapp.vercel.app`, 배포 URL: `https://okjinsoowebapp-l84d9vx8d-okjinsoos-projects.vercel.app`, 리팩토링 3단계 1차: `googleCalendarSync.ts` → `googleCalendarCore`·`googleCalendarApi` 분리, `runSync` 대상 고르기 순수 함수 분리, 단위 테스트 128개 통과)
 - `2026-11-27 02:52` — 프로덕션 배포 `dpl_4Ua4NHmYtxZgmrXq3EUKUx1jtN7C` (커밋 `188e326`, 운영 주소: `https://okjinsoowebapp.vercel.app`, 배포 URL: `https://okjinsoowebapp-pvpxowshw-okjinsoos-projects.vercel.app`, 저장소↔구글 캘린더 결합 분리(`sessionCalendarActions`·`rosterCalendarActions`, ESLint 가드), 50ms 캐시 무효화, 미사용 저장 함수 13종 삭제, 연습용 모드 브라우저 확인, 단위 테스트 113개 통과)
-- `2026-11-25 19:22` — 프로덕션 배포 `dpl_ENszGc6ukVfQipcaD24TLstUZbs5` (커밋 `af8c76e`, 운영 주소: `https://okjinsoowebapp.vercel.app`, 배포 URL: `https://okjinsoowebapp-klip8rnjz-okjinsoos-projects.vercel.app`, 401/403 응답 분리, 401 토큰 갱신 1회 재시도 및 3회 초과 시 큐 보존 일시정지, 학생 금지 키 사전 차단, `sessionProgressUpdated` 상단 바·허브 즉시 갱신 연결, `getSessionItemsDefault` 죽은 코드 삭제, 단위 테스트 101개 통과)
 
 > 2026-03 ~ 2026-11 전체 상세 패치·배포 로그는 [`docs/project-status-archive.md`](file:///Users/okjinsoo/Project/TutorWEB/v1/docs/project-status-archive.md)에 보관되어 있습니다.
 
