@@ -484,3 +484,97 @@ export function buildStudentMirrorPayload(args: {
     },
   };
 }
+
+// ───────────────────────── 동기화 대상 고르기 (runSync에서 분리) ─────────────────────────
+
+/** 화면에 보이는(동기화 대상이 될 수 있는) 회차만 남깁니다. 현재는 모든 회차를 그대로 돌려줍니다. */
+export function filterVisibleSessions(student: Student, sessions: Session[]): Session[] {
+  void student;
+  return sessions;
+}
+
+/**
+ * 1차 후보: 로그인 확인 전에 "오류 표시를 붙일 수도 있는" 회차들.
+ * pending/error 상태이거나, 바뀐 내용이 있으면서 (이미 일정이 있거나 아직 지나지 않은) 회차.
+ */
+export function selectProvisionalSyncTargets(
+  previousById: Map<string, Session>,
+  correctedNext: Session[]
+): Session[] {
+  return correctedNext.filter((next) => {
+    const prev = previousById.get(next.id);
+    const status = text(next.googleCalendarStatus);
+    if (status === "pending" || status === "error") return true;
+    if (!sessionNeedsUpsert(prev, next)) return false;
+    if (!next.googleCalendarEventId && !shouldCreateFor(next)) return false;
+    return true;
+  });
+}
+
+/**
+ * 최종 대상: 상태(pending/error), 내용 변경, 담당 선생님 이메일 불일치(ownerDrift),
+ * 학생 영구 Meet 링크 불일치(meetDrift) 중 하나라도 있으면 다시 올립니다.
+ */
+export function selectSyncTargets(args: {
+  visibleNextSessions: Session[];
+  previousById: Map<string, Session>;
+  studentById: Map<string, Student>;
+  teacherById: Map<string, Teacher>;
+}): Session[] {
+  const { previousById, studentById, teacherById } = args;
+  return args.visibleNextSessions.filter((next) => {
+    const prev = previousById.get(next.id);
+    const status = text(next.googleCalendarStatus);
+    const statusDriven = status === "pending" || status === "error";
+    const diffDriven = sessionNeedsUpsert(prev, next);
+
+    const student = studentById.get(next.studentId);
+    const teacher = student?.teacherId ? teacherById.get(student.teacherId) ?? null : null;
+    const expectedOwnerEmail = normalizeEmail(teacher?.email);
+    const savedOwnerEmail = normalizeEmail(next.googleCalendarOwnerEmail);
+    const ownerDrift = Boolean(expectedOwnerEmail) && expectedOwnerEmail !== savedOwnerEmail;
+
+    const permanentMeet = text(student?.permanentMeetUrl);
+    const sessionMeet = text(next.googleMeetUrl);
+    const meetDrift = Boolean(permanentMeet) && permanentMeet !== sessionMeet;
+
+    if (!statusDriven && !diffDriven && !ownerDrift && !meetDrift) return false;
+    if (!next.googleCalendarEventId && !shouldCreateFor(next) && !statusDriven && !ownerDrift && !meetDrift) return false;
+    return true;
+  });
+}
+
+/**
+ * 사라진 회차 중 구글 일정을 지워야 하는 것만 고릅니다. (실제 삭제 요청은 호출하는 쪽에서)
+ * 조건: 이번 목록에 없음 + 일정 ID 있음 + 담당 선생님 = 지금 로그인한 사람 + 기본(primary) 캘린더가 아님
+ */
+export function selectRemovedEventsToDelete(args: {
+  previous: Session[];
+  visibleIds: Set<string>;
+  studentById: Map<string, Student>;
+  teacherById: Map<string, Teacher>;
+  currentEmail: string;
+}): Session[] {
+  const out: Session[] = [];
+  for (const prev of args.previous) {
+    if (args.visibleIds.has(prev.id)) continue;
+    if (!prev.googleCalendarEventId) continue;
+    const prevStudent = args.studentById.get(prev.studentId);
+    const prevTeacher = prevStudent?.teacherId ? args.teacherById.get(prevStudent.teacherId) ?? null : null;
+    const expectedOwnerEmail = normalizeEmail(prevTeacher?.email);
+    if (!expectedOwnerEmail || expectedOwnerEmail !== args.currentEmail) continue;
+    if (isPrimaryCalendarId(calendarIdOf(prev))) continue;
+    out.push(prev);
+  }
+  return out;
+}
+
+/** 수업 시각이 빠른 순서(같으면 회차 번호 순)로 정렬한 새 배열을 돌려줍니다. */
+export function orderSyncTargets(targets: Session[]): Session[] {
+  return [...targets].sort((a, b) => {
+    const ta = new Date(a.displayAt).getTime();
+    const tb = new Date(b.displayAt).getTime();
+    if (Number.isFinite(ta) && Number.isFinite(tb) && ta !== tb) return ta - tb;
+    return a.index - b.index;
+  });
+}

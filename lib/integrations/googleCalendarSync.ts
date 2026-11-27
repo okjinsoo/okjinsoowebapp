@@ -8,16 +8,20 @@ import { computeEffectiveISO } from "@/lib/factories/sessionFactories";
 import {
   calendarIdOf,
   delay,
+  filterVisibleSessions,
   hasDisplayAtChanged,
   isPermissionOrNotFound,
   isPrimaryCalendarId,
   isValidEmail,
   normalizeEmail,
+  orderSyncTargets,
   partitionSyncTargetsForMeetSafety,
   runWithConcurrencyLimit,
   safeIso,
+  selectProvisionalSyncTargets,
+  selectRemovedEventsToDelete,
+  selectSyncTargets,
   sessionNeedsUpsert,
-  shouldCreateFor,
   text,
 } from "@/lib/integrations/googleCalendarCore";
 import {
@@ -42,11 +46,6 @@ export {
   runWithConcurrencyLimit,
 } from "@/lib/integrations/googleCalendarCore";
 export { requestGoogle } from "@/lib/integrations/googleCalendarApi";
-
-function filterVisibleSessions(student: Student, sessions: Session[]): Session[] {
-  void student;
-  return sessions;
-}
 
 type SessionPatch = {
   id: string;
@@ -343,17 +342,19 @@ export function rebuildTeacherGoogleCalendar(args: {
   void runTeacherCalendarRebuild(args);
 }
 
-async function runSync(args: SyncArgs): Promise<void> {
-  const snapshot = await readSnapshotServerFirst();
-  const students = snapshot.students;
-  const studentById = new Map(students.map((s) => [s.id, s] as const));
-  const stateKv = snapshot.stateKv;
-
-  // [성능 최적화] 학생당 baseDatesISO와 metaMap을 단 1회만 계산하여 세션 개수만큼 중복 계산하던 CPU 병목 제거
+/**
+ * 동기화 직전에 각 회차의 실제 수업 시각(출결·이월·시간 변경 반영)을 다시 계산합니다.
+ * [성능 최적화] 학생당 baseDatesISO와 metaMap을 단 1회만 계산하여 세션 개수만큼 중복 계산하던 CPU 병목 제거
+ */
+function correctNextDisplayTimes(
+  next: Session[],
+  studentById: Map<string, Student>,
+  stateKv: Parameters<typeof getEffectiveMetaMap>[0]["stateKv"]
+): { sessions: Session[]; metaMapByStudentId: Map<string, Record<number, SessionMeta>> } {
   const baseDatesByStudentId = new Map<string, string[]>();
   const metaMapByStudentId = new Map<string, Record<number, SessionMeta>>();
 
-  const correctedNext = args.next.map((s) => {
+  const sessions = next.map((s) => {
     const student = studentById.get(s.studentId);
     if (!student) return s;
     let baseDatesISO = baseDatesByStudentId.get(student.id);
@@ -374,17 +375,21 @@ async function runSync(args: SyncArgs): Promise<void> {
     });
     return { ...s, displayAt: effectiveISO || s.displayAt };
   });
+  // 회차별 수업 길이 계산에서도 같은 metaMap을 다시 쓰므로 함께 돌려줍니다.
+  return { sessions, metaMapByStudentId };
+}
+
+async function runSync(args: SyncArgs): Promise<void> {
+  const snapshot = await readSnapshotServerFirst();
+  const students = snapshot.students;
+  const studentById = new Map(students.map((s) => [s.id, s] as const));
+  const stateKv = snapshot.stateKv;
+
+  const { sessions: correctedNext, metaMapByStudentId } = correctNextDisplayTimes(args.next, studentById, stateKv);
 
   const previousById = new Map(args.previous.map((s) => [s.id, s] as const));
   const nextById = new Map(correctedNext.map((s) => [s.id, s] as const));
-  const provisionalTargets = correctedNext.filter((next) => {
-    const prev = previousById.get(next.id);
-    const status = text(next.googleCalendarStatus);
-    if (status === "pending" || status === "error") return true;
-    if (!sessionNeedsUpsert(prev, next)) return false;
-    if (!next.googleCalendarEventId && !shouldCreateFor(next)) return false;
-    return true;
-  });
+  const provisionalTargets = selectProvisionalSyncTargets(previousById, correctedNext);
 
   const applySyncErrorToTargets = (message: string) => {
     if (provisionalTargets.length === 0) return;
@@ -433,41 +438,22 @@ async function runSync(args: SyncArgs): Promise<void> {
   }
   const visibleSet = new Set(visibleNextSessions.map((s) => s.id));
 
-  const targetSessions = visibleNextSessions.filter((next) => {
-    const prev = previousById.get(next.id);
-    const status = text(next.googleCalendarStatus);
-    const statusDriven = status === "pending" || status === "error";
-    const diffDriven = sessionNeedsUpsert(prev, next);
+  const targetSessions = selectSyncTargets({ visibleNextSessions, previousById, studentById, teacherById });
 
-    const student = studentById.get(next.studentId);
-    const teacher = student?.teacherId ? teacherById.get(student.teacherId) ?? null : null;
-    const expectedOwnerEmail = normalizeEmail(teacher?.email);
-    const savedOwnerEmail = normalizeEmail(next.googleCalendarOwnerEmail);
-    const ownerDrift = Boolean(expectedOwnerEmail) && expectedOwnerEmail !== savedOwnerEmail;
-
-    const permanentMeet = text(student?.permanentMeetUrl);
-    const sessionMeet = text(next.googleMeetUrl);
-    const meetDrift = Boolean(permanentMeet) && permanentMeet !== sessionMeet;
-
-    if (!statusDriven && !diffDriven && !ownerDrift && !meetDrift) return false;
-    if (!next.googleCalendarEventId && !shouldCreateFor(next) && !statusDriven && !ownerDrift && !meetDrift) return false;
-    return true;
+  const removedToDelete = selectRemovedEventsToDelete({
+    previous: args.previous,
+    visibleIds: visibleSet,
+    studentById,
+    teacherById,
+    currentEmail,
   });
-
-  for (const prev of args.previous) {
-    if (visibleSet.has(prev.id)) continue;
-    if (!prev.googleCalendarEventId) continue;
-    const prevStudent = studentById.get(prev.studentId);
-    const prevTeacher = prevStudent?.teacherId ? teacherById.get(prevStudent.teacherId) ?? null : null;
-    const expectedOwnerEmail = normalizeEmail(prevTeacher?.email);
-    if (!expectedOwnerEmail || expectedOwnerEmail !== currentEmail) continue;
+  for (const prev of removedToDelete) {
     const prevCalendarId = calendarIdOf(prev);
-    if (isPrimaryCalendarId(prevCalendarId)) continue;
     try {
       await deleteEvent({
         token: providerToken,
         calendarId: prevCalendarId,
-        eventId: prev.googleCalendarEventId,
+        eventId: prev.googleCalendarEventId as string,
       });
       if (nextById.has(prev.id)) {
         patches.push({
@@ -487,12 +473,7 @@ async function runSync(args: SyncArgs): Promise<void> {
     }
   }
 
-  const orderedTargets = [...targetSessions].sort((a, b) => {
-    const ta = new Date(a.displayAt).getTime();
-    const tb = new Date(b.displayAt).getTime();
-    if (Number.isFinite(ta) && Number.isFinite(tb) && ta !== tb) return ta - tb;
-    return a.index - b.index;
-  });
+  const orderedTargets = orderSyncTargets(targetSessions);
 
   const studentPermanentMeetMap = new Map<string, string>();
   const studentConferenceDataMap = new Map<string, Record<string, unknown>>();

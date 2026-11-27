@@ -6,7 +6,11 @@ import {
   extractMeetUrl,
   formatKstRfc3339,
   isManagedStudentEvent,
+  orderSyncTargets,
   parseCandidateEvents,
+  selectProvisionalSyncTargets,
+  selectRemovedEventsToDelete,
+  selectSyncTargets,
   sessionNeedsUpsert,
 } from "@/lib/integrations/googleCalendarCore";
 import type { Session, Student, Teacher } from "@/lib/types/index";
@@ -169,5 +173,92 @@ describe("sessionNeedsUpsert", () => {
     expect(sessionNeedsUpsert(synced, synced)).toBe(false);
     expect(sessionNeedsUpsert(synced, { ...synced, displayAt: "2026-11-30T10:00:00.000Z" })).toBe(true);
     expect(sessionNeedsUpsert(synced, { ...synced, memo: "준비물" })).toBe(true);
+  });
+});
+
+describe("동기화 대상 고르기 (runSync에서 분리한 계산)", () => {
+  const FUTURE = "2030-01-07T09:00:00.000Z";
+  const PAST = "2020-01-06T09:00:00.000Z";
+  const s = (id: string, extra: Partial<Session> = {}): Session => ({
+    id,
+    studentId: "stu1",
+    index: 1,
+    displayAt: FUTURE,
+    state: "normal",
+    ...extra,
+  });
+  const synced = (id: string, extra: Partial<Session> = {}) =>
+    s(id, {
+      googleCalendarEventId: `evt-${id}`,
+      googleCalendarOwnerEmail: "t@example.com",
+      googleCalendarStatus: "synced",
+      ...extra,
+    });
+  const studentById = new Map([["stu1", { ...student, teacherId: "t1" }]]);
+  const teacherById = new Map([["t1", teacher]]);
+
+  it("selectProvisionalSyncTargets: pending/error는 항상, 변화 없는 synced는 제외, 지난 회차 신규 생성은 제외", () => {
+    const prev = [synced("a"), synced("b")];
+    const next = [
+      synced("a"), // 변화 없음
+      synced("b", { googleCalendarStatus: "error" }), // 오류 → 대상
+      s("c"), // 새 회차(미래) → 대상
+      s("d", { displayAt: PAST }), // 새 회차(과거) → 제외
+    ];
+    const ids = selectProvisionalSyncTargets(new Map(prev.map((x) => [x.id, x])), next).map((x) => x.id);
+    expect(ids).toEqual(["b", "c"]);
+  });
+
+  it("selectSyncTargets: 선생님 이메일·영구 Meet 불일치도 다시 올린다", () => {
+    const prevList = [synced("a"), synced("b"), synced("c")];
+    const next = [
+      synced("a"), // 변화 없음 → 제외
+      synced("b", { googleCalendarOwnerEmail: "old-teacher@example.com" }), // ownerDrift
+      synced("c", { googleMeetUrl: "https://meet.google.com/old" }), // meetDrift (학생 영구 Meet와 다름)
+    ];
+    const ids = selectSyncTargets({
+      visibleNextSessions: next,
+      previousById: new Map(prevList.map((x) => [x.id, x])),
+      studentById: new Map([["stu1", { ...student, teacherId: "t1", permanentMeetUrl: "https://meet.google.com/perm" }]]),
+      teacherById,
+    }).map((x) => x.id);
+    // a도 Meet 링크가 영구 링크와 달라 meetDrift 대상 → 영구 Meet가 있으면 모든 회차가 맞춰진다
+    expect(ids).toEqual(["a", "b", "c"]);
+  });
+
+  it("selectSyncTargets: 영구 Meet가 없고 아무것도 안 바뀌면 대상이 아니다", () => {
+    const prevList = [synced("a")];
+    const ids = selectSyncTargets({
+      visibleNextSessions: [synced("a")],
+      previousById: new Map(prevList.map((x) => [x.id, x])),
+      studentById,
+      teacherById,
+    });
+    expect(ids).toEqual([]);
+  });
+
+  it("selectRemovedEventsToDelete: 사라졌고, 일정 ID가 있고, 내 담당이고, 앱 캘린더인 것만 지운다", () => {
+    const previous = [
+      synced("kept"), // 아직 목록에 있음
+      s("no-event"), // 일정 없음
+      synced("primary", { googleCalendarId: "primary" }), // 기본 캘린더
+      synced("gone", { googleCalendarId: "app-cal" }), // ✅ 삭제 대상
+    ];
+    const pick = (currentEmail: string) =>
+      selectRemovedEventsToDelete({
+        previous,
+        visibleIds: new Set(["kept"]),
+        studentById,
+        teacherById,
+        currentEmail,
+      }).map((x) => x.id);
+    expect(pick("t@example.com")).toEqual(["gone"]);
+    expect(pick("someone-else@example.com")).toEqual([]); // 내 담당이 아니면 안 지움
+  });
+
+  it("orderSyncTargets: 시각 순, 같으면 회차 번호 순 (원본 배열은 그대로)", () => {
+    const list = [s("x", { index: 2 }), s("y", { displayAt: PAST }), s("z", { index: 1 })];
+    expect(orderSyncTargets(list).map((x) => x.id)).toEqual(["y", "z", "x"]);
+    expect(list.map((x) => x.id)).toEqual(["x", "y", "z"]);
   });
 });
