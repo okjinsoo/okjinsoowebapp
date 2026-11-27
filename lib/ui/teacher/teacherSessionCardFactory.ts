@@ -68,7 +68,6 @@ export function buildTeacherSessionCardViewModel(args: {
     dday: null,
     status: row.status,
     submission: row.submission,
-    startISO: row.effectiveISO,
     extraBadges: badges,
     hiddenBadgeLabels: ["마지막 수업"],
   });

@@ -240,7 +240,6 @@ export default function SessionTopBarCore({ role, token, index }: Props) {
       dday: dday && dday.diff !== null ? dday : null,
       status: meta.status ?? "planned",
       submission,
-      startISO: effectiveISO,
       extraBadges: mounted ? badges : [],
     });
   }, [index, mounted, effectiveISO, durationMin, dday, meta.status, submission, badges]);

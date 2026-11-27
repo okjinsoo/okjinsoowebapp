@@ -20,7 +20,6 @@ export type SessionCardViewModel = {
   dateTimeText: string;
   dday: SessionCardDday;
   submission: SubmissionSummary | null;
-  isPast: boolean;
   statusBadge: {
     label: "출석" | "결석" | "예정";
     style: { background: string; color: string };
@@ -34,8 +33,6 @@ type BuildSessionCardViewArgs = {
   dday: SessionCardDday;
   status: SessionMetaStatus | undefined;
   submission: SubmissionSummary | null;
-  /** 수업 시작 시각. 지났으면 미제출을 노랑으로 표시 */
-  startISO?: string | null;
   extraBadges?: string[];
   hiddenBadgeLabels?: string[];
 };
@@ -54,7 +51,6 @@ export function buildSessionCardViewModel(args: BuildSessionCardViewArgs): Sessi
     dateTimeText: args.dateTimeText,
     dday: args.dday,
     submission: args.submission,
-    isPast: Boolean(args.startISO) && Date.parse(args.startISO as string) < Date.now(),
     statusBadge: getSessionStatusBadge(args.status),
     extraBadges,
   };

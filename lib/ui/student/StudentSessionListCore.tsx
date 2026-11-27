@@ -211,7 +211,6 @@ export default function StudentSessionListCore({ role, token, prefix, hideTokenI
               dday: r.dday,
               status: r.status as "present" | "absent" | "planned",
               submission: r.progress,
-              startISO: r.effectiveISO,
               extraBadges: r.badges,
               hiddenBadgeLabels: ["마지막 수업"],
             });
@@ -268,7 +267,6 @@ export default function StudentSessionListCore({ role, token, prefix, hideTokenI
               dday: r.dday,
               status: r.status as "present" | "absent" | "planned",
               submission: r.progress,
-              startISO: r.effectiveISO,
               extraBadges: r.badges,
               hiddenBadgeLabels: ["마지막 수업"],
             });

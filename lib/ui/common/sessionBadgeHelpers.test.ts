@@ -26,19 +26,16 @@ describe("session badge helpers", () => {
     expect(getSessionExtraBadgeStyle("기타")).toEqual({ background: "var(--surface-hover)", color: "var(--text-subtle)" });
   });
 
-  it("shows submission as percent and never uses red", () => {
-    expect(getSubmissionBadge(null, false).label).toBe("미정");
-    expect(getSubmissionBadge({ done: 0, total: 0, hasNotice: true }, true).label).toBe("공지");
-    expect(getSubmissionBadge({ done: 0, total: 0 }, true).label).toBe("미정");
-    expect(getSubmissionBadge({ done: 0, total: 4 }, false)).toEqual({
+  it("shows submission as percent with the original 4-step colors", () => {
+    expect(getSubmissionBadge(null).label).toBe("미정");
+    expect(getSubmissionBadge({ done: 0, total: 0, hasNotice: true }).label).toBe("공지");
+    expect(getSubmissionBadge({ done: 0, total: 0 }).label).toBe("미정");
+    expect(getSubmissionBadge({ done: 0, total: 4 })).toEqual({
       label: "0%",
-      style: { background: "var(--quiet)", color: "#ffffff" },
+      style: { background: "#dc2626", color: "#ffffff" },
     });
-    expect(getSubmissionBadge({ done: 3, total: 4 }, true)).toEqual({
-      label: "75%",
-      style: { background: "var(--wait)", color: "#ffffff" },
-    });
-    expect(getSubmissionBadge({ done: 4, total: 4 }, true).style.background).toBe("var(--ok)");
-    expect(getSubmissionBadge({ done: 4, total: 4 }, false).style.background).toBe("var(--ok)");
+    expect(getSubmissionBadge({ done: 3, total: 4 }).style.background).toBe("#ea580c");
+    expect(getSubmissionBadge({ done: 9, total: 10 }).style.background).toBe("#2563eb");
+    expect(getSubmissionBadge({ done: 4, total: 4 }).style.background).toBe("#16a34a");
   });
 });

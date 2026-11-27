@@ -1772,7 +1772,6 @@ export default function StudentHubCore({
                 dday: dday && dday.diff !== null ? dday : null,
                 status: (item.status as "present" | "absent" | "planned" | undefined) ?? "planned",
                 submission: item.submission,
-                startISO: item.iso,
                 extraBadges: item.badges,
               });
               return (
