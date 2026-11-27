@@ -13,7 +13,8 @@
   - 2,119줄 → `googleCalendarSync.ts`(동기화 흐름, 955줄) + `googleCalendarCore.ts`(순수 계산, 486줄) + `googleCalendarApi.ts`(구글 요청·캐시·재인증, 772줄). 코드는 그대로 옮기기만 했고, 기존 export 이름 유지
   - `googleCalendarCore.ts`는 저장소·화면 코드를 못 부르도록 ESLint 가드, 동작 고정 테스트 10개 추가
   - 2차: `runSync` 대상 고르기 계산을 이름 붙은 순수 함수로 분리(`selectSyncTargets` 등, 573→517줄), 테스트 +5, 브라우저 확인(시간표 20시 반영·대상 선별 정상)
-  - **23개 파일 128개 테스트 통과**, lint 0건, 프로덕션 빌드 정상
+  - 3차: `runSync` 안의 `syncSingleTarget`(회차 1개 캘린더 반영, 약 360줄)을 `googleCalendarSyncTarget.ts`로 분리. 바깥 변수 대신 `SyncTargetContext`로 재료를 받고, 결과는 `SessionPatch | null`로 돌려줌(본문은 `push`→`return`, `args`→`ctx`만 바뀐 그대로 옮기기, 원본과 기계적 diff로 확인). `googleCalendarSync.ts` 936→579줄. 구글 API를 가짜로 바꾼 동작 고정 테스트 9개 추가(담당자 확인·pending·잘못된 소유자 정리·직행 PATCH·신규 생성+영구 Meet 공유·404 복구·오류 기록). 브라우저 확인은 아직 안 함
+  - **24개 파일 137개 테스트 통과**, lint 0건, 프로덕션 빌드 정상
 - **리팩토링 3단계 사전 정리: 저장소 ↔ 구글 캘린더 결합 분리 (2026-11-27, 브랜치 `refactor/decouple-calendar-from-storage` → `main` 병합, 운영 배포 완료 `dpl_4Ua4NHmYtxZgmrXq3EUKUx1jtN7C`)**:
   - `saveSessions`/`saveStudents`/`saveTeachers`는 저장만 담당(캘린더 호출 제거). 캘린더까지 필요한 곳은 `saveSessionsAndSyncCalendar`, `saveStudentsAndResyncCalendar`, `saveTeachersAndResyncCalendar` 등을 명시적으로 호출
   - 캘린더/Meet 재동기화 함수 8종 `lib/integrations/sessionCalendarActions.ts`로 이동, 명단 저장+재동기화 래퍼 `lib/integrations/rosterCalendarActions.ts` 신설, `suppressCalendarSync` 옵션 제거
