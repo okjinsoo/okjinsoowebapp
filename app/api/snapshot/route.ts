@@ -35,6 +35,24 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "unauthorized" }, { status: 401 });
     }
 
+    // 미등록(guest) 계정, 명단과 이메일이 연결되지 않은 학생/선생님은 아무 데이터도 받지 못한다.
+    const isLinkedViewer =
+      viewer.role === "admin" ||
+      (viewer.role === "student" && Boolean(viewer.studentId)) ||
+      (viewer.role === "teacher" && Boolean(viewer.teacherId));
+    if (!isLinkedViewer) {
+      logPerf({
+        event: "done",
+        route,
+        requestId,
+        method: request.method,
+        status: 403,
+        startMs,
+        extra: { result: "forbidden", role: viewer.role },
+      });
+      return NextResponse.json({ error: "forbidden" }, { status: 403 });
+    }
+
     const clientDigest = request.nextUrl.searchParams.get("digest")?.trim();
     if (clientDigest && clientDigest === viewer.digest) {
       logPerf({
@@ -57,28 +75,6 @@ export async function GET(request: NextRequest) {
         ok: true,
         changed: false,
         digest: viewer.digest,
-      });
-    }
-
-    if (stateKey) {
-      logPerf({
-        event: "done",
-        route,
-        requestId,
-        method: request.method,
-        status: 200,
-        startMs,
-        extra: {
-          result: "state_key",
-          role: viewer.role,
-          hasValue: Object.prototype.hasOwnProperty.call(viewer.snapshot.stateKv, stateKey),
-        },
-      });
-      return NextResponse.json({
-        ok: true,
-        changed: true,
-        digest: viewer.digest,
-        value: viewer.snapshot.stateKv[stateKey] ?? null,
       });
     }
 
@@ -119,6 +115,29 @@ export async function GET(request: NextRequest) {
       studentToken,
       teacherStudentTokens,
     });
+
+    // 단일 키 조회도 역할별로 걸러진 stateKv에서만 꺼낸다(결제 장부 등 서버 전용 키 차단).
+    if (stateKey) {
+      logPerf({
+        event: "done",
+        route,
+        requestId,
+        method: request.method,
+        status: 200,
+        startMs,
+        extra: {
+          result: "state_key",
+          role: viewer.role,
+          hasValue: Object.prototype.hasOwnProperty.call(stateKv, stateKey),
+        },
+      });
+      return NextResponse.json({
+        ok: true,
+        changed: true,
+        digest: viewer.digest,
+        value: stateKv[stateKey] ?? null,
+      });
+    }
 
     logPerf({
       event: "done",

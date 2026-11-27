@@ -179,9 +179,13 @@ async function fetchSnapshotFallbackRole(args: {
     url.searchParams.set("id", `eq.${SNAPSHOT_KEY}`);
     url.searchParams.set("limit", "1");
 
+    // 스냅샷 테이블은 일반 로그인 사용자에게 읽기를 막아두었으므로(015) 서버 전용 키로 읽는다.
+    const serviceRoleKey = (process.env.SUPABASE_SERVICE_ROLE_KEY ?? "").trim();
     const res = await fetch(url.toString(), {
       method: "GET",
-      headers: buildSupabaseHeaders(args),
+      headers: serviceRoleKey
+        ? { apikey: serviceRoleKey, Authorization: `Bearer ${serviceRoleKey}` }
+        : buildSupabaseHeaders(args),
       cache: "no-store",
     });
     if (!res.ok) return null;

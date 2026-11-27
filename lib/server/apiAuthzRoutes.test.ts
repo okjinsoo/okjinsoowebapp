@@ -32,6 +32,58 @@ describe("API authz route guards", () => {
     expect(body).toEqual({ error: "unauthorized" });
   });
 
+  test("미등록(guest) 계정의 /api/snapshot은 403이고 명단을 받지 못함", async () => {
+    const guestViewer = {
+      role: "guest",
+      teacherId: null,
+      studentId: null,
+      digest: "d",
+      snapshot: {
+        teachers: [],
+        students: [{ id: "stu-1", name: "학생1" }],
+        sessions: [],
+        stateKv: {},
+      },
+    } as unknown as ViewerContext;
+    vi.mocked(snapshotApi.resolveViewerContext).mockResolvedValueOnce(guestViewer);
+
+    const res = await getSnapshot(new NextRequest("http://localhost:3000/api/snapshot"));
+    const body = await res.json();
+
+    expect(res.status).toBe(403);
+    expect(body).toEqual({ error: "forbidden" });
+  });
+
+  test("학생의 ?stateKey= 조회는 본인 키만 받고, 결제 장부·타 학생 키는 null", async () => {
+    const stateKv = {
+      "server:payment_orders_v1": "[{\"buyerPhone\":\"010\"}]",
+      "mk3:other:session:1:progressByLeafId": "{\"x\":1}",
+      "mk3:mine:session:1:progressByLeafId": "{\"y\":1}",
+    };
+    const studentViewer = {
+      role: "student",
+      teacherId: null,
+      studentId: "stu-1",
+      digest: "d",
+      snapshot: {
+        teachers: [],
+        students: [{ id: "stu-1", token: "mine" }],
+        sessions: [],
+        stateKv,
+      },
+    } as unknown as ViewerContext;
+
+    const read = async (key: string) => {
+      vi.mocked(snapshotApi.resolveViewerContext).mockResolvedValueOnce(studentViewer);
+      const url = `http://localhost:3000/api/snapshot?stateKey=${encodeURIComponent(key)}`;
+      return (await (await getSnapshot(new NextRequest(url))).json()).value;
+    };
+
+    expect(await read("server:payment_orders_v1")).toBeNull();
+    expect(await read("mk3:other:session:1:progressByLeafId")).toBeNull();
+    expect(await read("mk3:mine:session:1:progressByLeafId")).toBe("{\"y\":1}");
+  });
+
   test("학생이 다른 학생 /api/students/:id/sessions 조회 시 403", async () => {
     const studentViewer = { role: "student" } as unknown as ViewerContext;
     vi.mocked(snapshotApi.resolveViewerContext).mockResolvedValueOnce(studentViewer);

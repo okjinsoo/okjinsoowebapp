@@ -89,19 +89,28 @@ export async function POST(req: Request) {
     if (!tossResponse.ok) {
       // 이미 승인된 결제인지 확인 (ALREADY_APPROVED)
       if (data?.code === "ALREADY_APPROVED") {
-        const orderRecord = buildOrderRecordFromToss({
-          orderId: validation.orderId,
-          paymentKey: validation.paymentKey,
-          amount: validation.amount,
-          body: (body ?? {}) as Record<string, unknown>,
-          tossData: (data ?? {}) as Record<string, unknown>,
-        });
-        await recordConfirmedPaymentOrder(orderRecord, (data ?? {}) as Record<string, unknown>);
+        // 오류 응답(data)에는 승인 시각·영수증이 없으므로, 실제 결제 정보를 다시 받아 기록한다.
+        // 조회가 실패하면 기존 장부를 덮어쓰지 않는다(새로고침 시 장부 훼손 방지).
+        const lookupRes = await fetch(
+          `https://api.tosspayments.com/v1/payments/${encodeURIComponent(validation.paymentKey)}`,
+          { headers: { Authorization: `Basic ${basicAuth}` }, cache: "no-store" }
+        );
+        const payment = lookupRes.ok ? ((await lookupRes.json()) as Record<string, unknown>) : null;
+        if (payment && payment.orderId === validation.orderId) {
+          const orderRecord = buildOrderRecordFromToss({
+            orderId: validation.orderId,
+            paymentKey: validation.paymentKey,
+            amount: validation.amount,
+            body: (body ?? {}) as Record<string, unknown>,
+            tossData: payment,
+          });
+          await recordConfirmedPaymentOrder(orderRecord, payment);
+        }
 
         return NextResponse.json({
           success: true,
           alreadyApproved: true,
-          payment: data,
+          payment: payment ?? data,
         });
       }
 
