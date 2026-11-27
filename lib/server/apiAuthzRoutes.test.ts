@@ -11,7 +11,11 @@ vi.mock("@/lib/server/supabaseSnapshotApi", () => ({
   filterSessionsForStudent: vi.fn(),
 }));
 
+vi.mock("@/lib/server/autoAttendance", () => ({ runAutoAttendance: vi.fn() }));
+
 import * as snapshotApi from "@/lib/server/supabaseSnapshotApi";
+import * as autoAttendance from "@/lib/server/autoAttendance";
+import { GET as getAutoPresent } from "@/app/api/ops/attendance/auto-present/route";
 import { GET as getSnapshot, POST as postSnapshot } from "@/app/api/snapshot/route";
 import { GET as getTeachers } from "@/app/api/teachers/route";
 import { GET as getStudentSessions } from "@/app/api/students/[id]/sessions/route";
@@ -146,5 +150,22 @@ describe("API authz route guards", () => {
     expect(await res403.json()).toEqual({ error: "forbidden" });
 
     errSpy.mockRestore();
+  });
+
+  test("자동 출석: 관리자 아님 → 401, 실행 안 함", async () => {
+    vi.mocked(snapshotApi.resolveViewerContext).mockResolvedValueOnce({ role: "teacher" } as unknown as ViewerContext);
+    const res = await getAutoPresent(new NextRequest("http://localhost:3000/api/ops/attendance/auto-present"));
+    expect(res.status).toBe(401);
+    expect(autoAttendance.runAutoAttendance).not.toHaveBeenCalled();
+  });
+
+  test("자동 출석: 관리자 + dryRun=1 → 미리 세기로 실행", async () => {
+    vi.mocked(snapshotApi.resolveViewerContext).mockResolvedValueOnce({ role: "admin" } as unknown as ViewerContext);
+    vi.mocked(autoAttendance.runAutoAttendance).mockResolvedValueOnce({
+      ok: true, dryRun: true, studentCount: 0, sessionCount: 0, changes: [], message: "",
+    });
+    const res = await getAutoPresent(new NextRequest("http://localhost:3000/api/ops/attendance/auto-present?dryRun=1"));
+    expect(res.status).toBe(200);
+    expect(autoAttendance.runAutoAttendance).toHaveBeenCalledWith({ dryRun: true });
   });
 });

@@ -6,6 +6,10 @@
       "schedule": "0 18 * * *"
     },
     {
+      "path": "/api/ops/attendance/auto-present",
+      "schedule": "0 15 * * *"
+    },
+    {
       "path": "/api/ops/learning-sheet/weekly",
       "schedule": "0 21 * * 6"
     }
