@@ -5,6 +5,7 @@ import { loadAuthSession } from "@/lib/auth/supabaseAuth";
 
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import {
   saveStudentsAndResyncCalendar,
   saveStudentsServerFirstAndResyncCalendar,
@@ -44,6 +45,9 @@ import { fmtKST_yyyyMMdd_TimeRange } from "@/lib/factories/format";
 import Badge from "@/lib/ui/common/Badge";
 import SessionCardRow from "@/lib/ui/session/SessionCardRow";
 import SessionQuickActions from "@/lib/ui/session/SessionQuickActions";
+import AchievementBadge from "@/lib/ui/common/AchievementBadge";
+import RoundBarView from "@/lib/ui/common/RoundBarView";
+import { buildRoundBar } from "@/lib/factories/roundBar";
 import { buildSessionContextBadges } from "@/lib/ui/common/sessionExtraBadge";
 import { buildSessionCardViewModel } from "@/lib/ui/session/sessionCardFactory";
 import {
@@ -715,6 +719,16 @@ export default function StudentHubCore({
     };
   }, [token, progressTick]);
 
+  const roundBar = useMemo(() => {
+    if (!student) return null;
+    const list = [];
+    for (let i = 1; i <= (student.planCount || 12); i += 1) {
+      const { effectiveISO, meta } = computeEffectiveISO({ token, index: i, baseDatesISO, metaMap });
+      list.push({ index: i, effectiveISO, meta });
+    }
+    return buildRoundBar({ student, sessions: list, nowMs: Date.now() });
+  }, [student, token, baseDatesISO, metaMap]);
+
   const upcomingSessions = useMemo(() => {
     if (!student) return [];
     const now = new Date();
@@ -767,6 +781,7 @@ export default function StudentHubCore({
 
     return candidates.sort((a, b) => new Date(a.iso).getTime() - new Date(b.iso).getTime()).slice(0, 3);
   }, [student, sessions, token, baseDatesISO, metaMap, progressSummary, refundCompletedIndex, refundRequestedIndex]);
+  const nextSession = upcomingSessions[0] ?? null;
 
   useEffect(() => {
     if (!mounted || !isInitialLoaded) return;
@@ -1592,7 +1607,78 @@ export default function StudentHubCore({
         </div>
       </section>
 
-      <section style={{ marginTop: 14, border: "1px solid var(--surface-border)", borderRadius: 12, padding: 14, background: "var(--surface-bg)" }}>
+      <div className="hub-grid">
+        <div style={{ display: "grid", gap: 12, alignContent: "start" }}>
+          <section className="next-class-card" style={{ border: "1px solid var(--surface-border)", borderRadius: 12, padding: 14, background: "var(--surface-bg)" }}>
+            <div className="card-title">다음 수업</div>
+            {nextSession ? (
+              <>
+                <Link
+                  href={`${sessionListHref}/${nextSession.index}`}
+                  style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginTop: 8, color: "inherit", textDecoration: "none" }}
+                >
+                  {(() => {
+                    const dday = getDdayMeta(nextSession.iso, new Date());
+                    return dday.diff !== null ? <Badge className={`text-white ${dday.className}`}>{dday.label}</Badge> : null;
+                  })()}
+                  <span style={{ fontSize: 22, fontWeight: 800 }}>{nextSession.index}회차</span>
+                  <AchievementBadge submission={nextSession.submission} />
+                </Link>
+                <div style={{ marginTop: 4, color: "var(--text-subtle)" }}>
+                  {fmtKST_yyyyMMdd_TimeRange(nextSession.iso, nextSession.durationMin)}
+                </div>
+                <div style={{ marginTop: 12 }}>
+                  <SessionQuickActions role={accessRole} token={token} index={nextSession.index} />
+                </div>
+              </>
+            ) : (
+              <div className="text-muted" style={{ marginTop: 8 }}>예정 수업이 없습니다. 수업 목록을 확인하세요.</div>
+            )}
+          </section>
+
+          {roundBar ? (
+            <section style={{ border: "1px solid var(--surface-border)", borderRadius: 12, padding: 14, background: "var(--surface-bg)" }}>
+              <div className="card-title">{accessRole === "s" ? "내 수업 기록" : "수업 기록"}</div>
+              <div style={{ marginTop: 8 }}>
+                <RoundBarView bar={roundBar} size={14} />
+              </div>
+            </section>
+          ) : null}
+        </div>
+
+        <section style={{ border: "1px solid var(--surface-border)", borderRadius: 12, padding: 14, background: "var(--surface-bg)" }}>
+          <div className="card-title">예정 수업</div>
+          {upcomingSessions.length <= 1 ? (
+            <div className="text-muted" style={{ marginTop: 8 }}>
+              다음 수업 뒤로 예정된 수업이 없습니다. 수업 목록을 확인하세요.
+            </div>
+          ) : (
+            <div style={{ marginTop: 8, display: "grid", gap: 8 }}>
+              {upcomingSessions.slice(1).map((item) => {
+                const dday = getDdayMeta(item.iso, new Date());
+                const model = buildSessionCardViewModel({
+                  index: item.index,
+                  dateTimeText: fmtKST_yyyyMMdd_TimeRange(item.iso, item.durationMin),
+                  dday: dday && dday.diff !== null ? dday : null,
+                  status: (item.status as "present" | "absent" | "planned" | undefined) ?? "planned",
+                  submission: item.submission,
+                  extraBadges: item.badges,
+                });
+                return (
+                  <SessionCardRow
+                    key={`${item.index}-${item.iso}`}
+                    model={model}
+                    onClick={() => router.push(`${sessionListHref}/${item.index}`)}
+                    rightSlot={<SessionQuickActions role={accessRole} token={token} index={item.index} />}
+                  />
+                );
+              })}
+            </div>
+          )}
+        </section>
+      </div>
+
+      <section style={{ marginTop: 12, border: "1px solid var(--surface-border)", borderRadius: 12, padding: 14, background: "var(--surface-bg)" }}>
         <div className="info-grid" style={{ display: "grid", gap: 10 }}>
           <div
             style={{
@@ -1755,37 +1841,6 @@ export default function StudentHubCore({
       {canTriggerCalendarSync(accessRole) && calendarSyncMessage ? (
         <div style={{ marginTop: 8, color: "var(--text-muted)", fontSize: 13 }}>{calendarSyncMessage}</div>
       ) : null}
-
-      <section style={{ marginTop: 12, border: "1px solid var(--surface-border)", borderRadius: 12, padding: 14, background: "var(--surface-bg)" }}>
-        <div className="card-title">예정 수업</div>
-        {upcomingSessions.length === 0 ? (
-          <div className="text-muted" style={{ marginTop: 8 }}>
-            예정 수업이 없습니다. 수업 목록을 확인하세요.
-          </div>
-        ) : (
-          <div style={{ marginTop: 8, display: "grid", gap: 8 }}>
-            {upcomingSessions.map((item) => {
-              const dday = getDdayMeta(item.iso, new Date());
-              const model = buildSessionCardViewModel({
-                index: item.index,
-                dateTimeText: fmtKST_yyyyMMdd_TimeRange(item.iso, item.durationMin),
-                dday: dday && dday.diff !== null ? dday : null,
-                status: (item.status as "present" | "absent" | "planned" | undefined) ?? "planned",
-                submission: item.submission,
-                extraBadges: item.badges,
-              });
-              return (
-                <SessionCardRow
-                  key={`${item.index}-${item.iso}`}
-                  model={model}
-                  onClick={() => router.push(`${sessionListHref}/${item.index}`)}
-                  rightSlot={<SessionQuickActions role={accessRole} token={token} index={item.index} />}
-                />
-              );
-            })}
-          </div>
-        )}
-      </section>
 
       {isAdmin || accessRole === "t" ? (
         <StudentPaymentPanel

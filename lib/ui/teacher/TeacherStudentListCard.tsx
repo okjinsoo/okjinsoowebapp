@@ -10,8 +10,7 @@ import { formatSchedule } from "@/lib/ui/student/formatters";
 import { saveCurrentStudentToken } from "@/lib/ui/common/roleGateStorage";
 import { computeStudentStatus, getStudentStatusMeta } from "@/lib/factories/studentStatusFactory";
 import type { RoundBar } from "@/lib/factories/roundBar";
-
-const ROUND_CELL_COLOR = { done: "var(--ok)", absent: "var(--alert)", todo: "var(--surface-border)" } as const;
+import RoundBarView from "@/lib/ui/common/RoundBarView";
 
 type Props = {
   students: Student[];
@@ -168,20 +167,7 @@ export default function TeacherStudentListCard({
                   </div>
                   {(() => {
                     const bar = roundBarOf?.(s);
-                    if (!bar) return null;
-                    return (
-                      <div style={{ display: "flex", alignItems: "center", gap: 2, flexWrap: "wrap" }} title={`${bar.start}~${bar.end}회차`}>
-                        {bar.cells.map((cell, i) => (
-                          <span
-                            key={i}
-                            style={{ width: 10, height: 10, borderRadius: 2, background: ROUND_CELL_COLOR[cell] }}
-                          />
-                        ))}
-                        <span style={{ fontSize: 12, color: "var(--text-subtle)", marginLeft: 6 }}>
-                          {bar.start}~{bar.end}회차 · 남은 {bar.remaining}회
-                        </span>
-                      </div>
-                    );
+                    return bar ? <RoundBarView bar={bar} /> : null;
                   })()}
                 </div>
                 <div style={{ textAlign: "left", alignSelf: "center" }}>{scheduleTextOf(s) || "-"}</div>

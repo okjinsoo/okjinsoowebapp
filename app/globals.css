@@ -684,3 +684,33 @@ textarea::placeholder {
     font-size: 24px !important;
   }
 }
+
+/* 4단계: 학생 메인 — 휴대폰 1열, 패드·노트북 2열 */
+.hub-grid {
+  margin-top: 14px;
+  display: grid;
+  gap: 12px;
+}
+@media (min-width: 720px) {
+  .hub-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    align-items: start;
+  }
+}
+.next-class-card .btn {
+  flex: 1;
+  min-height: 44px;
+  padding: 8px 16px !important;
+  font-size: 15px !important;
+}
+/* 학생 메인 2열 안에서는 칸이 좁으므로 수업 줄을 항상 2줄 카드로 */
+.hub-grid .session-row,
+.hub-grid .session-row-main {
+  grid-template-columns: minmax(0, 1fr) !important;
+  gap: 6px !important;
+}
+.hub-grid .session-row-actions,
+.hub-grid .session-row-actions > div {
+  display: grid !important;
+  grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
+}
