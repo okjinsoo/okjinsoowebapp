@@ -97,7 +97,6 @@ export default function SessionQuickActions({ role, token, index }: Props) {
     });
   }, [token, index, baseDatesISO, hydratedMetaMap]);
 
-  const isPresent = meta.status === "present";
   const isAbsent = meta.status === "absent";
 
   const [open, setOpen] = useState(false);
@@ -109,16 +108,6 @@ export default function SessionQuickActions({ role, token, index }: Props) {
   }, []);
 
   const [isSaving, setIsSaving] = useState(false);
-  const togglePresent = async () => {
-    if (!canEdit || isSaving) return;
-    setIsSaving(true);
-    try {
-      await upsertMeta(token, index, { status: isPresent ? "planned" : "present" });
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
   const toggleAbsent = async () => {
     if (!canEdit || isSaving) return;
     if (isAbsent) {
@@ -209,14 +198,6 @@ export default function SessionQuickActions({ role, token, index }: Props) {
 
         {canEdit ? (
           <>
-            <button
-              className={`${isPresent ? "btn btn-blue" : "btn btn-white"}`}
-              onClick={togglePresent}
-              disabled={isSaving}
-            >
-              {isSaving && isPresent ? "..." : "출석"}
-            </button>
-
             <button
               className={`${isAbsent ? "btn btn-red" : "btn btn-white"}`}
               onClick={toggleAbsent}

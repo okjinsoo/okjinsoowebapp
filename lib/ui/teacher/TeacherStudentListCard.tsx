@@ -9,6 +9,9 @@ import Badge from "@/lib/ui/common/Badge";
 import { formatSchedule } from "@/lib/ui/student/formatters";
 import { saveCurrentStudentToken } from "@/lib/ui/common/roleGateStorage";
 import { computeStudentStatus, getStudentStatusMeta } from "@/lib/factories/studentStatusFactory";
+import type { RoundBar } from "@/lib/factories/roundBar";
+
+const ROUND_CELL_COLOR = { done: "var(--ok)", absent: "var(--alert)", todo: "var(--surface-border)" } as const;
 
 type Props = {
   students: Student[];
@@ -18,6 +21,7 @@ type Props = {
   onSyncOwnStudents?: () => void;
   onResetAndSyncOwnMeet?: () => void;
   onSyncLearningSheet?: () => void;
+  roundBarOf?: (student: Student) => RoundBar | null;
   role?: "a" | "t" | "s";
 };
 
@@ -29,6 +33,7 @@ export default function TeacherStudentListCard({
   onSyncOwnStudents,
   onResetAndSyncOwnMeet,
   onSyncLearningSheet,
+  roundBarOf,
   role = "t",
 }: Props) {
   const handleClick = onStudentClick;
@@ -95,31 +100,41 @@ export default function TeacherStudentListCard({
           <div className="card-title">학생 리스트</div>
           <Badge className="bg-slate-200 text-slate-700">{students.length}명</Badge>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-          {onSyncLearningSheet ? (
-            <button className="btn btn-blue" onClick={onSyncLearningSheet}>
-              학습 현황 동기화
-            </button>
-          ) : null}
-          {onSyncOwnStudents ? (
-            <button className="btn btn-blue" onClick={onSyncOwnStudents} title="담당 학생들의 고유 미트 링크 및 캘린더 일정을 일괄 동기화합니다">
-              본인 학생 미트/캘린더 동기화
-            </button>
-          ) : null}
-          {onResetAndSyncOwnMeet ? (
-            <button
-              className="btn btn-white"
-              onClick={onResetAndSyncOwnMeet}
-              style={{ borderColor: "#f59e0b", color: "#b45309", fontWeight: 600 }}
-              title="담당 학생들의 기존 Meet 링크를 모두 초기화하고 완전 새로운 고유 링크를 발급받아 동기화합니다"
-            >
-              미트 링크 일괄 초기화
-            </button>
-          ) : null}
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           {onAddStudent ? (
             <button className="btn btn-black" onClick={onAddStudent}>
               + 학생 추가
             </button>
+          ) : null}
+          {onSyncLearningSheet || onSyncOwnStudents || onResetAndSyncOwnMeet ? (
+            <details className="more-menu">
+              <summary className="btn btn-white" aria-label="더보기">더보기</summary>
+              <div className="more-menu-panel">
+                {onSyncLearningSheet ? (
+                  <button className="btn btn-white" onClick={onSyncLearningSheet}>
+                    학습 현황 동기화
+                  </button>
+                ) : null}
+                {onSyncOwnStudents ? (
+                  <button className="btn btn-white" onClick={onSyncOwnStudents} title="담당 학생들의 고유 미트 링크 및 캘린더 일정을 일괄 동기화합니다">
+                    본인 학생 미트/캘린더 동기화
+                  </button>
+                ) : null}
+                {onResetAndSyncOwnMeet ? (
+                  <button
+                    className="btn btn-white"
+                    style={{ color: "var(--alert)" }}
+                    onClick={() => {
+                      if (window.confirm("담당 학생들의 Meet 링크를 모두 새로 만듭니다. 학생들이 알던 링크는 더 이상 쓸 수 없어요. 계속할까요?")) {
+                        onResetAndSyncOwnMeet();
+                      }
+                    }}
+                  >
+                    미트 링크 일괄 초기화
+                  </button>
+                ) : null}
+              </div>
+            </details>
           ) : null}
         </div>
       </div>
@@ -130,7 +145,7 @@ export default function TeacherStudentListCard({
           {students.map((s) => {
             const rowStyle: React.CSSProperties = {
               display: "grid",
-              gridTemplateColumns: "0.8fr minmax(0, 1.2fr)",
+              gridTemplateColumns: "minmax(0, 1.4fr) minmax(0, 1fr)",
               gap: 6,
               padding: "8px 10px",
               border: "1px solid var(--surface-border)",
@@ -142,16 +157,34 @@ export default function TeacherStudentListCard({
             };
             const rowContent = (
               <>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                  <span>
-                    {s.cohort ?? "-"} · <span style={{ fontWeight: 700 }}>{s.name}</span>
-                  </span>
+                <div style={{ display: "grid", gap: 4, minWidth: 0 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                    <span style={{ fontWeight: 700 }}>{s.name}</span>
+                    <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{s.cohort ?? ""}</span>
+                    {(() => {
+                      const meta = statusMetaOf(s);
+                      return <Badge tone={meta.tone}>{meta.label}</Badge>;
+                    })()}
+                  </div>
                   {(() => {
-                    const meta = statusMetaOf(s);
-                    return <Badge tone={meta.tone}>{meta.label}</Badge>;
+                    const bar = roundBarOf?.(s);
+                    if (!bar) return null;
+                    return (
+                      <div style={{ display: "flex", alignItems: "center", gap: 2, flexWrap: "wrap" }} title={`${bar.start}~${bar.end}회차`}>
+                        {bar.cells.map((cell, i) => (
+                          <span
+                            key={i}
+                            style={{ width: 10, height: 10, borderRadius: 2, background: ROUND_CELL_COLOR[cell] }}
+                          />
+                        ))}
+                        <span style={{ fontSize: 12, color: "var(--text-subtle)", marginLeft: 6 }}>
+                          {bar.start}~{bar.end}회차 · 남은 {bar.remaining}회
+                        </span>
+                      </div>
+                    );
                   })()}
                 </div>
-                <div style={{ textAlign: "left" }}>{scheduleTextOf(s) || "-"}</div>
+                <div style={{ textAlign: "left", alignSelf: "center" }}>{scheduleTextOf(s) || "-"}</div>
               </>
             );
 
@@ -159,6 +192,7 @@ export default function TeacherStudentListCard({
               return (
                 <div
                   key={s.id}
+                  className="student-row"
                   style={rowStyle}
                   onClick={() => handleClick(s)}
                   onMouseEnter={(e) => (e.currentTarget.style.background = "var(--surface-hover)")}
@@ -172,6 +206,7 @@ export default function TeacherStudentListCard({
             return (
               <Link
                 key={s.id}
+                className="student-row"
                 href={studentHrefOf ? studentHrefOf(s) : studentHref(s)}
                 style={rowStyle}
                 onClick={() => saveCurrentStudentToken(s.token)}

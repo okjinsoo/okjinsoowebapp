@@ -29,6 +29,7 @@ import {
 } from "@/lib/factories/sessionFactories";
 import { GATE_EVENT } from "@/lib/ui/common/roleGateStorage";
 import { calculateSessionProgressSummary } from "@/lib/factories/sessionProgressFactory";
+import { buildRoundBar, type RoundBar } from "@/lib/factories/roundBar";
 import { useStudentRegistry } from "@/lib/hooks/useStudentRegistry";
 import { parseDateTime } from "@/lib/factories/format";
 import { resolveDurationMinForSessionWithMeta, resolveRulesForIndex } from "@/lib/factories/sessionScheduleResolver";
@@ -145,14 +146,21 @@ export default function TeacherMainClient({
     [allRows]
   );
   const nextRows = useMemo(() => {
-    const future = allRows.filter((r) => r.diff > 0).sort((a, b) => a.effectiveISO.localeCompare(b.effectiveISO));
-    // 학생당 최대 2개씩만
-    const picked: Record<string, number> = {};
-    return future.filter(r => {
-      picked[r.studentId] = (picked[r.studentId] || 0) + 1;
-      return picked[r.studentId] <= 2;
-    });
+    // 앞으로 7일치만
+    return allRows
+      .filter((r) => r.diff > 0 && r.diff <= 7)
+      .sort((a, b) => a.effectiveISO.localeCompare(b.effectiveISO));
   }, [allRows]);
+
+  const roundBarByStudentId = useMemo(() => {
+    const nowMs = Date.now();
+    const out = new Map<string, RoundBar | null>();
+    for (const st of visibleStudents) {
+      const metrics = metricsMap.get(st.id);
+      out.set(st.id, metrics ? buildRoundBar({ student: st, sessions: metrics.sessions, nowMs }) : null);
+    }
+    return out;
+  }, [visibleStudents, metricsMap]);
 
   function onClickSyncOwnStudents() {
     const targetStudentIds = visibleStudents
@@ -357,6 +365,7 @@ export default function TeacherMainClient({
                   })
               : undefined
           }
+          roundBarOf={(student) => roundBarByStudentId.get(student.id) ?? null}
           onSyncOwnStudents={onClickSyncOwnStudents}
           onResetAndSyncOwnMeet={onClickResetAndSyncOwnMeet}
           onSyncLearningSheet={onClickSyncLearningSheet}

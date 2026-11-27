@@ -527,7 +527,7 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginTop: 8 }}>
         <div />
         {canAssignLectures ? (
-          <div style={{ display: "flex", gap: 8 }}>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
             <button
               onClick={async () => {
                 if (isReordering) {

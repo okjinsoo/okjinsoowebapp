@@ -258,6 +258,7 @@ button {
   background: transparent;
   color: var(--foreground);
   font-weight: 400;
+  white-space: nowrap;
 }
 
 .btn:hover {
@@ -615,3 +616,71 @@ textarea::placeholder {
   font-size: 1.875rem !important; /* 30px */
 }
 
+
+/* 2단계: 더보기 메뉴 (details/summary) */
+.more-menu {
+  position: relative;
+}
+.more-menu > summary {
+  list-style: none;
+  cursor: pointer;
+}
+.more-menu > summary::-webkit-details-marker {
+  display: none;
+}
+.more-menu-panel {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 20;
+  display: grid;
+  gap: 6px;
+  min-width: 220px;
+  padding: 8px;
+  border: 1px solid var(--surface-border);
+  border-radius: 10px;
+  background: var(--surface-bg);
+  box-shadow: 0 6px 20px rgba(15, 23, 42, 0.12);
+}
+.more-menu-panel .btn {
+  justify-content: flex-start;
+  text-align: left;
+}
+
+/* 2단계: 휴대폰 폭(640px 이하)에서 줄을 2줄 카드로 */
+@media (max-width: 640px) {
+  .session-row {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+  .session-row-main {
+    grid-template-columns: minmax(0, 1fr) !important;
+    gap: 6px !important;
+  }
+  .session-row-actions {
+    display: grid !important;
+    grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
+  }
+  .session-row-actions > div {
+    display: grid !important;
+    grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
+  }
+  .session-row-actions .btn {
+    min-height: 40px;
+    justify-content: center;
+  }
+  .student-row {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+  .info-grid > div {
+    grid-template-columns: 96px minmax(0, 1fr) !important;
+  }
+  .info-grid {
+    overflow-wrap: anywhere;
+  }
+  main.p-6 {
+    padding: 12px 0 !important;
+  }
+  h1 {
+    font-size: 24px !important;
+  }
+}

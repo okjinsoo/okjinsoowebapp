@@ -65,7 +65,7 @@ export default function RoleGateCard({
         <span style={{ fontWeight: 700, marginLeft: 8 }}>현재 선생님</span> · {currentTeacherName}
         <span style={{ fontWeight: 700, marginLeft: 8 }}>현재 학생</span> · {currentStudentName}
       </div>
-      <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, alignItems: "center" }}>
+      <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 8, alignItems: "center" }}>
         <div style={{ display: "grid", gap: 6 }}>
           <div className="text-muted">역할</div>
           <select

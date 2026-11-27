@@ -1593,7 +1593,7 @@ export default function StudentHubCore({
       </section>
 
       <section style={{ marginTop: 14, border: "1px solid var(--surface-border)", borderRadius: 12, padding: 14, background: "var(--surface-bg)" }}>
-        <div style={{ display: "grid", gap: 10 }}>
+        <div className="info-grid" style={{ display: "grid", gap: 10 }}>
           <div
             style={{
               display: "grid",

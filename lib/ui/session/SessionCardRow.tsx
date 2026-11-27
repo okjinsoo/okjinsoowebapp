@@ -29,6 +29,7 @@ export default function SessionCardRow({
 
   return (
     <div
+      className="session-row"
       style={{
         display: "grid",
         gridTemplateColumns: "1fr auto",
@@ -46,6 +47,7 @@ export default function SessionCardRow({
         <Link
           href={href}
           onClick={() => onClick?.()}
+          className="session-row-main"
           style={{
             display: "grid",
             gridTemplateColumns: `${leadColumnWidth} 1fr`,
@@ -81,6 +83,7 @@ export default function SessionCardRow({
       ) : (
         <div
           onClick={() => onClick?.()}
+          className="session-row-main"
           style={{
             display: "grid",
             gridTemplateColumns: `${leadColumnWidth} 1fr`,
@@ -118,6 +121,7 @@ export default function SessionCardRow({
             e.stopPropagation();
             e.preventDefault();
           }}
+          className="session-row-actions"
           style={{ display: "flex", gap: 6 }}
         >
           {rightSlot}
