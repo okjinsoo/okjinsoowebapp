@@ -487,6 +487,7 @@
 - 관리자 계정이 비소유자면 직접 생성 대신 `pending` 요청 저장
 ## 최근 변경(운영 영향 큰 항목)
 
+- `2026-11-22 19:58` — 프로덕션 배포 `dpl_9nTT2tHC12jcrjHMLczsSgwxEvSE` (커밋 `37b97fe`, 운영 주소: `https://okjinsoowebapp.vercel.app`, 배포 URL: `https://okjinsoowebapp-2t64u7naw-okjinsoos-projects.vercel.app`, 리팩토링 1~2단계 완료: 미사용·임시파일 정리, 문서 슬림화, `lib/shared`/`lib/factories`/`lib/storage/sessionMeta` 계층 정리, ESLint 역의존 자동 가드, 단위 테스트 95개 확충, 되돌리기 태그 `pre-refactor`)
 - 2026-11-21 20:02: 프로덕션 배포 `dpl_GK3TN1ryTRMLiU5EdjHANHPaNF7s` (커밋 `0aefd62`, 운영 주소: `https://okjinsoowebapp.vercel.app`, 배포 URL: `https://okjinsoowebapp-p4u8bjuai-okjinsoos-projects.vercel.app`, 시간표 조정 A/B-2/C 통합 고속화: 개별·일괄 조정 1회 부분 병합 `merge` 저장, 0.7초 중복 POST 제거, KST 날짜 계산·학생별 캐싱 최적화, 실패 롤백, `useServiceRole` 수정 및 변경분 듀얼라이트, 수업 길이 단독 변경 시 캘린더 동기화, 구글 캘린더 동시 3병렬 + 429 백오프 + `eventId` 직행 PATCH)
 - 2026-11-20 16:28: 프로덕션 재배포 `57fs8sCNsPwscT4TuBveZNkH4x9R` (운영 주소: `https://okjinsoowebapp.vercel.app`, 배포 URL: `https://okjinsoowebapp-opmt08xzw-okjinsoos-projects.vercel.app`, Vercel Production 환경변수 `TOSS_SECRET_KEY`(Secret) 및 `NEXT_PUBLIC_TOSS_CLIENT_KEY`(Config) 등록 후 재배포하여 `/api/payments/confirm` `SERVER_CONFIG_MISSING` 오류 해소)
 - 2026-11-14 00:20: 프로덕션 배포 커밋 `58f2df4` (운영 주소: `https://okjinsoowebapp.vercel.app`, CTO 구조 진단 1~3단계 통합 패치: 토스 시크릿키 격리 및 결제 금액 검증, 학생/선생님 `stateKv` 세밀한 권한 분리 및 Direct DB Fallback 제거, `patch_snapshot_state_kv` 원자적 병합 및 교사별 스냅샷 다이어트, 온라인 수강 신청 결제 원장 `payment_orders` 이중 기록 및 조회 API 구축)
