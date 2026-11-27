@@ -9,7 +9,7 @@
 
 ## 1분 요약 (현재 확정 상태)
 
-- **리팩토링 3단계 본편 1차: `googleCalendarSync.ts` 나누기 (2026-11-27, 브랜치 `refactor/split-google-calendar-sync`, 아직 운영 미배포·브라우저 확인 전)**:
+- **리팩토링 3단계 본편 1차: `googleCalendarSync.ts` 나누기 (2026-11-27, 브랜치 `refactor/split-google-calendar-sync` → `main` 병합, 연습용 모드 브라우저 확인 완료: 시간표 변경 18시→19시 반영, 동기화 흐름이 토큰 없음 오류를 정상 기록, 콘솔 오류 0건)**:
   - 2,119줄 → `googleCalendarSync.ts`(동기화 흐름, 955줄) + `googleCalendarCore.ts`(순수 계산, 486줄) + `googleCalendarApi.ts`(구글 요청·캐시·재인증, 772줄). 코드는 그대로 옮기기만 했고, 기존 export 이름 유지
   - `googleCalendarCore.ts`는 저장소·화면 코드를 못 부르도록 ESLint 가드, 동작 고정 테스트 10개 추가
   - **23개 파일 123개 테스트 통과**, lint 0건, 프로덕션 빌드 정상
