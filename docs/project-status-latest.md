@@ -13,8 +13,9 @@
   - `app/api/snapshot/route.ts`: 미등록(guest)·명단 미연결 학생/선생님 GET은 `403 forbidden`(이전엔 전체 명단·회차 반환). `?stateKey=` 단일 조회도 `filterStateKvForViewer`를 거쳐 결제 장부(`server:payment_orders_v1`)·타 학생 키 차단
   - `lib/security/requestAuth.ts`: `proxy.ts` 역할 판별의 스냅샷 대체 조회를 service role 키로 읽도록 변경(015 적용 대비)
   - `app/api/payments/confirm/route.ts`: `ALREADY_APPROVED`(결제 완료 화면 새로고침) 시 토스 `GET /v1/payments/{paymentKey}`로 실제 결제 정보를 다시 받아 기록. 조회 실패 시 장부를 덮어쓰지 않음(이전엔 오류 응답으로 승인 시각·영수증 소실)
-  - `db/migrations/015_lockdown_snapshot_table_and_rpc.sql`: `app_state_snapshots`의 authenticated 읽기/쓰기 정책 제거·권한 회수, `patch_snapshot_state_kv` 실행 권한 service_role 전용. **⚠️ 아직 Supabase에 미적용 — SQL Editor에서 직접 실행 필요**(적용 전 Vercel `SUPABASE_SERVICE_ROLE_KEY` 존재 확인)
+  - `db/migrations/015_lockdown_snapshot_table_and_rpc.sql`: `app_state_snapshots`의 authenticated 읽기/쓰기 정책 제거·권한 회수, `patch_snapshot_state_kv` 실행 권한 service_role 전용. **운영 Supabase 적용 완료 (2026-11-27, SQL Editor 수동 실행)**. 운영 DB에는 `patch_snapshot_state_kv` 함수가 없어(013 미적용) 함수 권한 부분은 건너뛰도록 수정(커밋 `4a5e425`)
   - 테스트 +2(guest 403, 학생 stateKey 필터), **24개 파일 139개 테스트 통과**, lint 0건, 프로덕션 빌드 정상. 운영 확인: 홈 200, 비로그인 `/api/snapshot` 401. 로그인 계정별 브라우저 확인은 아직 안 함
+  - ⚠️ 013(`patch_snapshot_state_kv`) 운영 미적용 확인: 서버의 `state_kv` 저장이 모두 '읽고→합치고→통째로 쓰기' 비상 경로로 동작 중(동시 저장 시 한쪽 유실 가능). 013 적용이 다음 우선 과제
   - 남은 점검 항목(Should fix): 결제 장부 백업 비상 경로의 전체 `state_kv` 덮어쓰기(`paymentOrderStore.ts:182-194`), 학생에게 전체 선생님 정보 전송, 결제 성공 URL의 보호자 전화번호
 
 - **리팩토링 3단계 본편 1차: `googleCalendarSync.ts` 나누기 (2026-11-27, 브랜치 `refactor/split-google-calendar-sync` → `main` 병합, 운영 배포 완료 `dpl_8PkGtcpTL5QnSXRhvkbPk2qHxqmj`(1~2차)·`dpl_2tAtf3Z1HoZkcp5B2j9Wj13SjENZ`(3차), 연습용 모드 브라우저 확인 완료: 시간표 변경 18시→19시 반영, 동기화 흐름이 토큰 없음 오류를 정상 기록, 콘솔 오류 0건)**:
@@ -74,7 +75,7 @@
 
 ## 최근 주요 배포 이력 (최신 5건)
 
-- `2026-11-27 20:30` — 프로덕션 배포 `dpl_GNE1ySyqmK1ycZDQdmbvq72nSvY8` (커밋 `ecaed9c`, `git push origin main` 자동 배포, 운영 주소: `https://okjinsoowebapp.vercel.app`, 보안 점검 Must fix: `/api/snapshot` guest 403·stateKey 필터, proxy 역할 대체 조회 service role, 결제 새로고침 장부 훼손 수정, DB 잠금 SQL 015 추가(Supabase 미적용), 단위 테스트 139개 통과)
+- `2026-11-27 20:30` — 프로덕션 배포 `dpl_GNE1ySyqmK1ycZDQdmbvq72nSvY8` (커밋 `ecaed9c`, `git push origin main` 자동 배포, 운영 주소: `https://okjinsoowebapp.vercel.app`, 보안 점검 Must fix: `/api/snapshot` guest 403·stateKey 필터, proxy 역할 대체 조회 service role, 결제 새로고침 장부 훼손 수정, DB 잠금 SQL 015 추가(같은 날 Supabase 수동 적용), 단위 테스트 139개 통과)
 - `2026-11-27 16:22` — 프로덕션 배포 `dpl_2tAtf3Z1HoZkcp5B2j9Wj13SjENZ` (커밋 `3a69afa`, `git push origin main` 자동 배포, 운영 주소: `https://okjinsoowebapp.vercel.app`, 배포 URL: `https://okjinsoowebapp-f16eip7u4-okjinsoos-projects.vercel.app`, 리팩토링 3단계 3차: `syncSingleTarget`을 `googleCalendarSyncTarget.ts`로 분리, 동작 고정 테스트 +9, 단위 테스트 137개 통과)
 - `2026-11-27 15:58` — 프로덕션 배포 `dpl_8PkGtcpTL5QnSXRhvkbPk2qHxqmj` (커밋 `f713313`, `git push origin main` 자동 배포, 운영 주소: `https://okjinsoowebapp.vercel.app`, 배포 URL: `https://okjinsoowebapp-l84d9vx8d-okjinsoos-projects.vercel.app`, 리팩토링 3단계 1차: `googleCalendarSync.ts` → `googleCalendarCore`·`googleCalendarApi` 분리, `runSync` 대상 고르기 순수 함수 분리, 단위 테스트 128개 통과)
 - `2026-11-27 02:52` — 프로덕션 배포 `dpl_4Ua4NHmYtxZgmrXq3EUKUx1jtN7C` (커밋 `188e326`, 운영 주소: `https://okjinsoowebapp.vercel.app`, 배포 URL: `https://okjinsoowebapp-pvpxowshw-okjinsoos-projects.vercel.app`, 저장소↔구글 캘린더 결합 분리(`sessionCalendarActions`·`rosterCalendarActions`, ESLint 가드), 50ms 캐시 무효화, 미사용 저장 함수 13종 삭제, 연습용 모드 브라우저 확인, 단위 테스트 113개 통과)
