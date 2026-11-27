@@ -15,7 +15,7 @@
   - `app/api/payments/confirm/route.ts`: `ALREADY_APPROVED`(결제 완료 화면 새로고침) 시 토스 `GET /v1/payments/{paymentKey}`로 실제 결제 정보를 다시 받아 기록. 조회 실패 시 장부를 덮어쓰지 않음(이전엔 오류 응답으로 승인 시각·영수증 소실)
   - `db/migrations/015_lockdown_snapshot_table_and_rpc.sql`: `app_state_snapshots`의 authenticated 읽기/쓰기 정책 제거·권한 회수, `patch_snapshot_state_kv` 실행 권한 service_role 전용. **운영 Supabase 적용 완료 (2026-11-27, SQL Editor 수동 실행)**. 운영 DB에는 `patch_snapshot_state_kv` 함수가 없어(013 미적용) 함수 권한 부분은 건너뛰도록 수정(커밋 `4a5e425`)
   - 테스트 +2(guest 403, 학생 stateKey 필터), **24개 파일 139개 테스트 통과**, lint 0건, 프로덕션 빌드 정상. 운영 확인: 홈 200, 비로그인 `/api/snapshot` 401. 로그인 계정별 브라우저 확인은 아직 안 함
-  - ⚠️ 013(`patch_snapshot_state_kv`) 운영 미적용 확인: 서버의 `state_kv` 저장이 모두 '읽고→합치고→통째로 쓰기' 비상 경로로 동작 중(동시 저장 시 한쪽 유실 가능). 013 적용이 다음 우선 과제
+  - 013 운영 미적용 확인 → `db/migrations/016_apply_atomic_state_kv_patch_locked.sql`(013 + service_role 전용 권한 + `mk3:backup:` 정리)로 **운영 Supabase 적용 완료 (2026-11-27, SQL Editor 수동 실행, 커밋 `7072152`)**. 서버 `state_kv` 저장이 '읽고→합치고→통째로 쓰기' 비상 경로 대신 DB 원자적 UPDATE로 동작(코드 배포 불필요)
   - 남은 점검 항목(Should fix): 결제 장부 백업 비상 경로의 전체 `state_kv` 덮어쓰기(`paymentOrderStore.ts:182-194`), 학생에게 전체 선생님 정보 전송, 결제 성공 URL의 보호자 전화번호
 
 - **리팩토링 3단계 본편 1차: `googleCalendarSync.ts` 나누기 (2026-11-27, 브랜치 `refactor/split-google-calendar-sync` → `main` 병합, 운영 배포 완료 `dpl_8PkGtcpTL5QnSXRhvkbPk2qHxqmj`(1~2차)·`dpl_2tAtf3Z1HoZkcp5B2j9Wj13SjENZ`(3차), 연습용 모드 브라우저 확인 완료: 시간표 변경 18시→19시 반영, 동기화 흐름이 토큰 없음 오류를 정상 기록, 콘솔 오류 0건)**:
