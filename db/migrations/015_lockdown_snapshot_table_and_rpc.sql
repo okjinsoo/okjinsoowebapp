@@ -23,8 +23,15 @@ ALTER TABLE public.app_state_snapshots ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON TABLE public.app_state_snapshots FROM anon, authenticated;
 
 -- 2. 원자적 state_kv 병합 함수는 서버(service_role) 전용
-REVOKE EXECUTE ON FUNCTION public.patch_snapshot_state_kv(text, jsonb, text[]) FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.patch_snapshot_state_kv(text, jsonb, text[]) TO service_role;
+--    (013 이 적용되지 않은 DB 에는 함수가 없으므로 있을 때만 권한을 바꾼다)
+DO $$
+BEGIN
+  IF to_regprocedure('public.patch_snapshot_state_kv(text, jsonb, text[])') IS NOT NULL THEN
+    REVOKE EXECUTE ON FUNCTION public.patch_snapshot_state_kv(text, jsonb, text[]) FROM PUBLIC, anon, authenticated;
+    GRANT EXECUTE ON FUNCTION public.patch_snapshot_state_kv(text, jsonb, text[]) TO service_role;
+  END IF;
+END;
+$$;
 
 COMMIT;
 
