@@ -12,7 +12,7 @@
 - **자정 자동 출석 (2026-11-27, 브랜치 `feat/auto-attendance` → `main`, 운영 배포 완료 `dpl_2i6JFZH1Mb8etaLXgh58fmqTRggb`)**:
   - `/api/ops/attendance/auto-present` + vercel cron `0 15 * * *`(매일 00:00 KST). 재학 학생의 종료된 `예정` 회차 → `출석`(metaMap `status`만 변경, 결석·다른 필드 유지)
   - 저장은 원자적 `patch_snapshot_state_kv` RPC만 사용(실패 시 덮어쓰기 대체 경로 없음). 크론 시크릿 또는 관리자만, `?dryRun=1`은 개수만
-  - 운영 dryRun(23:18): 12명 186회차 대상 → 2026-11-28 00:00 첫 실행 때 일괄 반영 예정. 되돌릴 때는 03:00 일일 백업(`main-2026-11-27`) 참고
+  - 운영 dryRun(23:18): 12명 186회차 대상 → 2026-11-28 00:00 첫 실행 때 일괄 반영 예정. 되돌릴 때는 바뀌기 전 마지막 백업인 11-27 03:00 KST 일일 백업(`main-2026-11-26`, UTC 날짜 기준 이름) 참고. 11-28 03:00 백업은 이미 바뀐 뒤 상태
   - 단위 테스트 145개 통과. 첫 실행 결과(크론 로그·화면)는 아직 확인 안 함
 - **디자인 기획 확정 + 1단계 바닥 깔기 (2026-11-27, 브랜치 `design/phase1-foundation` → `main`, 운영 배포 완료 `dpl_GztdTQixRRgZTkoM8czRVjrd2heM`, 제출률 색 되돌림 `dpl_3UfZRW4WdUphxUypfG8wb1qkkqgQ`)**:
   - 디자인 기획서(Claude 문서): https://claude.ai/artifact/LCvTUirMd8A2Ruyeg73z6j — 선생님=수업 운영판, 학생=성장 기록. 학생 기기 휴대폰:패드 50:50, 선생님 노트북 우선
