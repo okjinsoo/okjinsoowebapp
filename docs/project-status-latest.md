@@ -1,14 +1,19 @@
 # Project Status (Latest)
 
-기준 시각: 2026-11-27 23:20 (KST)  
+기준 시각: 2026-11-27 23:32 (KST)  
 대상 프로젝트: `v1`  
 운영 주소: `https://okjinsoowebapp.vercel.app`  
-최신 운영 배포본: `2026-11-27 23:18 (KST)` (`dpl_2i6JFZH1Mb8etaLXgh58fmqTRggb`, 커밋 `e9afc5d`)
+최신 운영 배포본: `2026-11-27 23:30 (KST)` (`dpl_5jCMm5tCYtiTz8wJ1oAFYx1DgxdU`, 커밋 `6c9f63d`)
 
 ---
 
 ## 1분 요약 (현재 확정 상태)
 
+- **디자인 2단계 선생님 메인 (2026-11-27, 브랜치 `design/phase2-teacher-main` → `main`, 운영 배포 완료 `dpl_5jCMm5tCYtiTz8wJ1oAFYx1DgxdU`)**:
+  - 수업 줄 버튼 미트·결석·조정 3개(출석 제거, 자정 자동 출석에 맡김). 다음 수업은 앞으로 7일치
+  - 학생 리스트 이름 우선 + 마지막 회차 묶음 막대(`lib/factories/roundBar.ts`)·남은 회차. 동기화·Meet 초기화는 `더보기` 메뉴, 초기화는 확인 창 후 실행
+  - viewport 1024px 고정 해제(`device-width`), 640px 이하 2줄 카드, 학생 정보표·역할 선택·회차 상세 버튼 줄 최소 대응
+  - 단위 테스트 147개 통과, 연습용 모드 노트북·패드·휴대폰 크기 확인, 운영 선생님 메인 확인. 실기기(아이폰·아이패드) 미확인, 회차 상세 맨 위 줄 출석 버튼은 남아 있음
 - **자정 자동 출석 (2026-11-27, 브랜치 `feat/auto-attendance` → `main`, 운영 배포 완료 `dpl_2i6JFZH1Mb8etaLXgh58fmqTRggb`)**:
   - `/api/ops/attendance/auto-present` + vercel cron `0 15 * * *`(매일 00:00 KST). 재학 학생의 종료된 `예정` 회차 → `출석`(metaMap `status`만 변경, 결석·다른 필드 유지)
   - 저장은 원자적 `patch_snapshot_state_kv` RPC만 사용(실패 시 덮어쓰기 대체 경로 없음). 크론 시크릿 또는 관리자만, `?dryRun=1`은 개수만
@@ -87,11 +92,11 @@
 
 ## 최근 주요 배포 이력 (최신 5건)
 
+- `2026-11-27 23:30` — 프로덕션 배포 `dpl_5jCMm5tCYtiTz8wJ1oAFYx1DgxdU` (커밋 `6c9f63d`, `git push origin main` 자동 배포, 운영 주소: `https://okjinsoowebapp.vercel.app`, 디자인 2단계 선생님 메인: 줄 버튼 3개·7일치·회차 막대·더보기 메뉴·viewport 고정 해제·휴대폰 2줄 카드, 단위 테스트 147개 통과)
 - `2026-11-27 23:18` — 프로덕션 배포 `dpl_2i6JFZH1Mb8etaLXgh58fmqTRggb` (커밋 `e9afc5d`, `git push origin main` 자동 배포, 운영 주소: `https://okjinsoowebapp.vercel.app`, 자정 자동 출석 API·크론 추가, 운영 dryRun 12명 186회차, 단위 테스트 145개 통과)
 - `2026-11-27 23:08` — 프로덕션 배포 `dpl_3UfZRW4WdUphxUypfG8wb1qkkqgQ` (커밋 `9af6703`, `git push origin main` 자동 배포, 운영 주소: `https://okjinsoowebapp.vercel.app`, 제출률 배지 색을 원래 4단계로 되돌림(빨강 유지), 미정/공지 구분 유지, 단위 테스트 140개 통과)
 - `2026-11-27 23:02` — 프로덕션 배포 `dpl_GztdTQixRRgZTkoM8czRVjrd2heM` (커밋 `d719323`, `git push origin main` 자동 배포, 운영 주소: `https://okjinsoowebapp.vercel.app`, 디자인 1단계 바닥 깔기: 상태 색 토큰 5종, 제출률 배지 색 규칙(빨강 제거·미정/공지), 출석 초록·마지막 수업 노랑, Pretendard, 단위 테스트 140개 통과)
 - `2026-11-27 20:30` — 프로덕션 배포 `dpl_GNE1ySyqmK1ycZDQdmbvq72nSvY8` (커밋 `ecaed9c`, `git push origin main` 자동 배포, 운영 주소: `https://okjinsoowebapp.vercel.app`, 보안 점검 Must fix: `/api/snapshot` guest 403·stateKey 필터, proxy 역할 대체 조회 service role, 결제 새로고침 장부 훼손 수정, DB 잠금 SQL 015 추가(같은 날 Supabase 수동 적용), 단위 테스트 139개 통과)
-- `2026-11-27 16:22` — 프로덕션 배포 `dpl_2tAtf3Z1HoZkcp5B2j9Wj13SjENZ` (커밋 `3a69afa`, `git push origin main` 자동 배포, 운영 주소: `https://okjinsoowebapp.vercel.app`, 배포 URL: `https://okjinsoowebapp-f16eip7u4-okjinsoos-projects.vercel.app`, 리팩토링 3단계 3차: `syncSingleTarget`을 `googleCalendarSyncTarget.ts`로 분리, 동작 고정 테스트 +9, 단위 테스트 137개 통과)
 
 > 2026-03 ~ 2026-11 전체 상세 패치·배포 로그는 [`docs/project-status-archive.md`](file:///Users/okjinsoo/Project/TutorWEB/v1/docs/project-status-archive.md)에 보관되어 있습니다.
 
