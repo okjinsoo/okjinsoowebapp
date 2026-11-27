@@ -68,7 +68,7 @@ export default function SessionCardRow({
           )}
           <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
             <div>{model.dateTimeText}</div>
-            <AchievementBadge percent={model.achievementPercent} />
+            <AchievementBadge submission={model.submission} isPast={model.isPast} />
             <Badge style={model.statusBadge.style}>{model.statusBadge.label}</Badge>
             {model.extraBadges.map((badge) => (
               <Badge key={`${model.index}:${badge.label}`} style={badge.style}>
@@ -101,7 +101,7 @@ export default function SessionCardRow({
           )}
           <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
             <div>{model.dateTimeText}</div>
-            <AchievementBadge percent={model.achievementPercent} />
+            <AchievementBadge submission={model.submission} isPast={model.isPast} />
             <Badge style={model.statusBadge.style}>{model.statusBadge.label}</Badge>
             {model.extraBadges.map((badge) => (
               <Badge key={`${model.index}:${badge.label}`} style={badge.style}>

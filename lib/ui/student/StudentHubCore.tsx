@@ -54,7 +54,7 @@ import { StudentPaymentPanel } from "./panels/StudentPaymentPanel";
 import { StudentSessionAddModal } from "./modals/StudentSessionAddModal";
 import { StudentScheduleChangeModal } from "./modals/StudentScheduleChangeModal";
 import {
-  calculateSessionAchievementPercent,
+  calculateSessionProgressSummary,
   isSessionProgressEventKeyForToken,
 } from "@/lib/factories/sessionProgressFactory";
 import { TUTORWEB_EVENTS } from "@/lib/events/tutorwebEvents";
@@ -705,10 +705,10 @@ export default function StudentHubCore({
     if (indices.length === 0) return null;
     return Math.min(...indices);
   }, [displayRecords]);
-  const progressPercent = useMemo(() => {
+  const progressSummary = useMemo(() => {
     void progressTick;
     return (index: number) => {
-      return calculateSessionAchievementPercent({
+      return calculateSessionProgressSummary({
         token,
         sessionIndex: index,
       });
@@ -724,7 +724,7 @@ export default function StudentHubCore({
       durationMin: number;
       status?: string;
       badges: string[];
-      percent: number | null;
+      submission: ReturnType<typeof progressSummary>;
       lastClass?: boolean;
     }[] = [];
 
@@ -760,13 +760,13 @@ export default function StudentHubCore({
           lastClass: false,
           refundStatus,
         }),
-        percent: progressPercent(s.index),
+        submission: progressSummary(s.index),
         lastClass: false,
       });
     }
 
     return candidates.sort((a, b) => new Date(a.iso).getTime() - new Date(b.iso).getTime()).slice(0, 3);
-  }, [student, sessions, token, baseDatesISO, metaMap, progressPercent, refundCompletedIndex, refundRequestedIndex]);
+  }, [student, sessions, token, baseDatesISO, metaMap, progressSummary, refundCompletedIndex, refundRequestedIndex]);
 
   useEffect(() => {
     if (!mounted || !isInitialLoaded) return;
@@ -1771,7 +1771,8 @@ export default function StudentHubCore({
                 dateTimeText: fmtKST_yyyyMMdd_TimeRange(item.iso, item.durationMin),
                 dday: dday && dday.diff !== null ? dday : null,
                 status: (item.status as "present" | "absent" | "planned" | undefined) ?? "planned",
-                achievementPercent: item.percent,
+                submission: item.submission,
+                startISO: item.iso,
                 extraBadges: item.badges,
               });
               return (

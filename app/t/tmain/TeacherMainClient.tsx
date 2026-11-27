@@ -28,7 +28,7 @@ import {
   getDdayMeta,
 } from "@/lib/factories/sessionFactories";
 import { GATE_EVENT } from "@/lib/ui/common/roleGateStorage";
-import { calculateSessionAchievementPercent } from "@/lib/factories/sessionProgressFactory";
+import { calculateSessionProgressSummary } from "@/lib/factories/sessionProgressFactory";
 import { useStudentRegistry } from "@/lib/hooks/useStudentRegistry";
 import { parseDateTime } from "@/lib/factories/format";
 import { resolveDurationMinForSessionWithMeta, resolveRulesForIndex } from "@/lib/factories/sessionScheduleResolver";
@@ -111,8 +111,8 @@ export default function TeacherMainClient({
         const durationMin = resolveDurationMinForSessionWithMeta(s.effectiveISO, rules, s.meta);
         const { dateText, timeText } = parseDateTime(s.effectiveISO, durationMin);
         
-        // ✅ 성취도 퍼센트 계산
-        const percent = calculateSessionAchievementPercent({ token: st.token, sessionIndex: s.index });
+        // ✅ 제출 현황(제출률 %) 계산
+        const submission = calculateSessionProgressSummary({ token: st.token, sessionIndex: s.index });
 
         // ✅ 세션 상태 배지 및 기타 특수 배지 (마지막 수업 등) 구성
         const badges = buildBadges(s.meta);
@@ -131,7 +131,7 @@ export default function TeacherMainClient({
           badges,
           ddayLabel: dday.label,
           ddayClass: dday.className,
-          percent,
+          submission,
           lastClass: isLastClass,
           diff: dday.diff,
         });

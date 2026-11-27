@@ -2,6 +2,7 @@
 "use client";
 
 import Badge from "@/lib/ui/common/Badge";
+import { getSessionExtraBadgeStyle } from "@/lib/ui/common/sessionExtraBadge";
 import { saveCurrentStudentToken } from "@/lib/ui/common/roleGateStorage";
 import SessionQuickActions from "@/lib/ui/session/SessionQuickActions";
 import SessionCardRow from "@/lib/ui/session/SessionCardRow";
@@ -77,7 +78,7 @@ export default function TodaySessionsCard({
                 }
                 inlineBadgeSlot={
                   model.showLastClassBadge ? (
-                    <Badge style={{ background: "#ef4444", color: "#fff" }}>마지막 수업</Badge>
+                    <Badge style={getSessionExtraBadgeStyle("마지막 수업")}>마지막 수업</Badge>
                   ) : null
                 }
                 rightSlot={<SessionQuickActions role={role} token={model.token} index={model.index} />}

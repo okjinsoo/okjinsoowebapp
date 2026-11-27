@@ -17,6 +17,7 @@ export type SessionProgressSummary = {
   done: number;
   total: number;
   percent: number | null;
+  hasNotice: boolean;
 };
 
 function readJson<T>(key: string, fallback: T): T {
@@ -51,12 +52,14 @@ export function calculateSessionProgressSummary(args: {
 
   let total = 0;
   let done = 0;
+  let hasNotice = false;
 
   for (const id of ids) {
     const row = progress[id];
 
     // 1. 공지사항 카드는 진도율 계산에서 완전히 배제
     if (id.startsWith("notice_")) {
+      hasNotice = true;
       continue;
     }
 
@@ -83,14 +86,8 @@ export function calculateSessionProgressSummary(args: {
     done,
     total,
     percent: total === 0 ? null : Math.round((done / total) * 100),
+    hasNotice,
   };
-}
-
-export function calculateSessionAchievementPercent(args: {
-  token: string;
-  sessionIndex: number;
-}): number | null {
-  return calculateSessionProgressSummary(args).percent;
 }
 
 export function isSessionProgressEventKey(key: string): boolean {

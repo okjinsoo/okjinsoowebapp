@@ -1,4 +1,5 @@
 import { buildSessionCardViewModel, type SessionCardViewModel } from "@/lib/ui/session/sessionCardFactory";
+import type { SubmissionSummary } from "@/lib/ui/common/achievementBadgeStyle";
 import {
   buildAdminTeacherStudentSessionDetailPath,
   buildSmainSessionDetailPathWithToken,
@@ -19,7 +20,7 @@ export type TeacherSessionRow = {
   badges?: string[];
   ddayLabel: string;
   ddayClass: string;
-  percent: number | null;
+  submission: SubmissionSummary | null;
   lastClass?: boolean;
 };
 
@@ -66,7 +67,8 @@ export function buildTeacherSessionCardViewModel(args: {
     dateTimeText: `${row.dateText} ${row.timeText}`.trim(),
     dday: null,
     status: row.status,
-    achievementPercent: row.percent,
+    submission: row.submission,
+    startISO: row.effectiveISO,
     extraBadges: badges,
     hiddenBadgeLabels: ["마지막 수업"],
   });

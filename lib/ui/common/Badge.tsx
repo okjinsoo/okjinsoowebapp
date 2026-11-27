@@ -7,11 +7,11 @@ export type BadgeStyle = React.CSSProperties;
 export type BadgeTone = "gray" | "blue" | "green" | "orange" | "red";
 
 const TONE_STYLE: Record<BadgeTone, React.CSSProperties> = {
-  gray: { background: "#6b7280", color: "#ffffff" },
-  blue: { background: "#2563eb", color: "#ffffff" },
-  green: { background: "#16a34a", color: "#ffffff" },
-  orange: { background: "#f97316", color: "#ffffff" },
-  red: { background: "#dc2626", color: "#ffffff" },
+  gray: { background: "var(--quiet)", color: "#ffffff" },
+  blue: { background: "var(--brand)", color: "#ffffff" },
+  green: { background: "var(--ok)", color: "#ffffff" },
+  orange: { background: "var(--wait)", color: "#ffffff" },
+  red: { background: "var(--alert)", color: "#ffffff" },
 };
 
 type Props = React.HTMLAttributes<HTMLSpanElement> & {

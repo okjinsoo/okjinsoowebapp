@@ -509,10 +509,10 @@ describe("sessionEffective schedule change by date", () => {
       "변경",
     ]);
 
-    expect(getStatusStyle("present").bg).toBe("#2563eb");
-    expect(getStatusStyle("absent").bg).toBe("#dc2626");
-    expect(getStatusStyle("planned").bg).toBe("#64748b");
-    expect(getStatusStyle(undefined).bg).toBe("#64748b");
+    expect(getStatusStyle("present").bg).toBe("var(--ok)");
+    expect(getStatusStyle("absent").bg).toBe("var(--alert)");
+    expect(getStatusStyle("planned").bg).toBe("var(--quiet)");
+    expect(getStatusStyle(undefined).bg).toBe("var(--quiet)");
   });
 
   it("resolveActiveScheduleRules: startIndex<=1 시작일 분기 및 정렬되지 않은 다중 변경 이벤트를 올바르게 처리한다", () => {

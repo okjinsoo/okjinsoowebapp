@@ -1,4 +1,5 @@
 import type { SessionMetaStatus } from "@/lib/types/index";
+import type { SubmissionSummary } from "@/lib/ui/common/achievementBadgeStyle";
 import { getSessionExtraBadgeStyle } from "@/lib/ui/common/sessionExtraBadge";
 import { getSessionStatusBadge } from "@/lib/ui/common/sessionStatusBadge";
 
@@ -18,7 +19,8 @@ export type SessionCardViewModel = {
   title: string;
   dateTimeText: string;
   dday: SessionCardDday;
-  achievementPercent: number | null;
+  submission: SubmissionSummary | null;
+  isPast: boolean;
   statusBadge: {
     label: "출석" | "결석" | "예정";
     style: { background: string; color: string };
@@ -31,7 +33,9 @@ type BuildSessionCardViewArgs = {
   dateTimeText: string;
   dday: SessionCardDday;
   status: SessionMetaStatus | undefined;
-  achievementPercent: number | null;
+  submission: SubmissionSummary | null;
+  /** 수업 시작 시각. 지났으면 미제출을 노랑으로 표시 */
+  startISO?: string | null;
   extraBadges?: string[];
   hiddenBadgeLabels?: string[];
 };
@@ -49,7 +53,8 @@ export function buildSessionCardViewModel(args: BuildSessionCardViewArgs): Sessi
     title: `${args.index}회차`,
     dateTimeText: args.dateTimeText,
     dday: args.dday,
-    achievementPercent: args.achievementPercent,
+    submission: args.submission,
+    isPast: Boolean(args.startISO) && Date.parse(args.startISO as string) < Date.now(),
     statusBadge: getSessionStatusBadge(args.status),
     extraBadges,
   };

@@ -20,9 +20,9 @@ import type { ScheduleRule, SessionMeta, SessionMetaStatus, Student } from "@/li
  */
 
 const SESSION_STATUS_BADGE_STYLES = {
-  present: { bg: "#2563eb", text: "#ffffff", border: "#2563eb" }, // 출석: 파란색
-  absent: { bg: "#dc2626", text: "#ffffff", border: "#dc2626" }, // 결석: 빨간색
-  planned: { bg: "#64748b", text: "#ffffff", border: "#64748b" },
+  present: { bg: "var(--ok)", text: "#ffffff", border: "var(--ok)" }, // 출석: 초록
+  absent: { bg: "var(--alert)", text: "#ffffff", border: "var(--alert)" }, // 결석: 빨강
+  planned: { bg: "var(--quiet)", text: "#ffffff", border: "var(--quiet)" },
 } as const;
 
 export function getStatusStyle(status?: SessionMetaStatus): { bg: string; text: string; border: string } {

@@ -16,9 +16,10 @@ import { buildDisplayRecords } from "@/lib/factories/lessonStatusFactory";
 import Badge from "@/lib/ui/common/Badge";
 import SessionCardRow from "@/lib/ui/session/SessionCardRow";
 import SessionQuickActions from "@/lib/ui/session/SessionQuickActions";
-import { buildSessionContextBadges } from "@/lib/ui/common/sessionExtraBadge";
+import { buildSessionContextBadges, getSessionExtraBadgeStyle } from "@/lib/ui/common/sessionExtraBadge";
 import {
   calculateSessionProgressSummary,
+  type SessionProgressSummary,
   isSessionProgressEventKeyForToken,
 } from "@/lib/factories/sessionProgressFactory";
 import { parseDateTime } from "@/lib/factories/format";
@@ -81,9 +82,9 @@ export default function StudentSessionListCore({ role, token, prefix, hideTokenI
   const baseDatesISO = useMemo(() => (student ? buildBaseDatesISO(student, 60) : []), [student]);
 
   const progressByIndex = useMemo(() => {
-    if (!mounted) return {} as Record<number, { done: number; total: number; percent: number | null }>;
+    if (!mounted) return {} as Record<number, SessionProgressSummary>;
     void progressTick;
-    const out: Record<number, { done: number; total: number; percent: number | null }> = {};
+    const out: Record<number, SessionProgressSummary> = {};
     for (const s of sessions) {
       out[s.index] = calculateSessionProgressSummary({
         token,
@@ -143,7 +144,7 @@ export default function StudentSessionListCore({ role, token, prefix, hideTokenI
 
         // ✅ D-day 레고: mounted 이전에는 diff를 만들지 않음(SSR mismatch 방지)
         const dday = mounted ? getDdayMeta(effectiveISO, new Date()) : null;
-        const progress = progressByIndex[s.index] ?? { done: 0, total: 0, percent: 0 };
+        const progress: SessionProgressSummary | null = progressByIndex[s.index] ?? null;
 
         return {
           index: s.index,
@@ -209,7 +210,8 @@ export default function StudentSessionListCore({ role, token, prefix, hideTokenI
               dateTimeText: `${r.dateText} ${r.timeText}`.trim(),
               dday: r.dday,
               status: r.status as "present" | "absent" | "planned",
-              achievementPercent: r.progress.percent,
+              submission: r.progress,
+              startISO: r.effectiveISO,
               extraBadges: r.badges,
               hiddenBadgeLabels: ["마지막 수업"],
             });
@@ -221,7 +223,7 @@ export default function StudentSessionListCore({ role, token, prefix, hideTokenI
                 inlineBadgeSlot={
                   <>
                     {r.badges.includes("마지막 수업") ? (
-                      <Badge style={{ background: "#ef4444", color: "#fff" }}>마지막 수업</Badge>
+                      <Badge style={getSessionExtraBadgeStyle("마지막 수업")}>마지막 수업</Badge>
                     ) : null}
                   </>
                 }
@@ -265,7 +267,8 @@ export default function StudentSessionListCore({ role, token, prefix, hideTokenI
               dateTimeText: `${r.dateText} ${r.timeText}`.trim(),
               dday: r.dday,
               status: r.status as "present" | "absent" | "planned",
-              achievementPercent: r.progress.percent,
+              submission: r.progress,
+              startISO: r.effectiveISO,
               extraBadges: r.badges,
               hiddenBadgeLabels: ["마지막 수업"],
             });

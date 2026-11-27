@@ -15,9 +15,10 @@ import {
 } from "@/lib/auth/supabaseAuth";
 import { fmtKST_yyyyMMdd_TimeRange } from "@/lib/factories/format";
 import Badge from "@/lib/ui/common/Badge";
+import { getSessionExtraBadgeStyle } from "@/lib/ui/common/sessionExtraBadge";
 import { TUTORWEB_EVENTS } from "@/lib/events/tutorwebEvents";
 import {
-  calculateSessionAchievementPercent,
+  calculateSessionProgressSummary,
   isSessionProgressEventKeyForToken,
 } from "@/lib/factories/sessionProgressFactory";
 import { todayYmdKST } from "@/lib/utils/date";
@@ -206,10 +207,10 @@ export default function SessionTopBarCore({ role, token, index }: Props) {
   }, [mounted, effectiveISO]);
 
 
-  const achievementPercent = useMemo((): number | null => {
+  const submission = useMemo(() => {
     if (!mounted) return null;
     void progressTick;
-    return calculateSessionAchievementPercent({
+    return calculateSessionProgressSummary({
       token,
       sessionIndex: index,
     });
@@ -238,10 +239,11 @@ export default function SessionTopBarCore({ role, token, index }: Props) {
       dateTimeText,
       dday: dday && dday.diff !== null ? dday : null,
       status: meta.status ?? "planned",
-      achievementPercent,
+      submission,
+      startISO: effectiveISO,
       extraBadges: mounted ? badges : [],
     });
-  }, [index, mounted, effectiveISO, durationMin, dday, meta.status, achievementPercent, badges]);
+  }, [index, mounted, effectiveISO, durationMin, dday, meta.status, submission, badges]);
 
   const meetUrl =
     (typeof currentSession?.googleMeetUrl === "string" && currentSession.googleMeetUrl.trim()) ||
@@ -617,7 +619,7 @@ export default function SessionTopBarCore({ role, token, index }: Props) {
         inlineBadgeSlot={
           <>
             {lastClassIndex && index === lastClassIndex ? (
-              <Badge className="bg-red-500 text-white">마지막 수업</Badge>
+              <Badge style={getSessionExtraBadgeStyle("마지막 수업")}>마지막 수업</Badge>
             ) : null}
           </>
         }

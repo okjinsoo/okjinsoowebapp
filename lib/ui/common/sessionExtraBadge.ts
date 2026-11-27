@@ -1,14 +1,14 @@
 export function getSessionExtraBadgeStyle(badge: string): { background: string; color: string } {
   if (badge === "마지막 수업") {
-    return { background: "#ef4444", color: "#fff" };
+    return { background: "var(--wait)", color: "#fff" };
   }
   if (badge === "환불완료") {
-    return { background: "#fecaca", color: "#9f1239" };
+    return { background: "var(--quiet)", color: "#fff" };
   }
   if (badge === "환불요청") {
-    return { background: "#fed7aa", color: "#9a3412" };
+    return { background: "var(--alert)", color: "#fff" };
   }
-  return { background: "#f1f5f9", color: "#334155" };
+  return { background: "var(--surface-hover)", color: "var(--text-subtle)" };
 }
 
 export function buildSessionContextBadges(args: {
