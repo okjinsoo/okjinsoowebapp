@@ -1,15 +1,15 @@
 # Project Status (Latest)
 
-기준 시각: 2026-11-27 02:52 (KST)  
+기준 시각: 2026-11-27 16:10 (KST)  
 대상 프로젝트: `v1`  
 운영 주소: `https://okjinsoowebapp.vercel.app`  
-최신 운영 배포본: `2026-11-27 02:52 (KST)` (`dpl_4Ua4NHmYtxZgmrXq3EUKUx1jtN7C`, 커밋 `188e326`)
+최신 운영 배포본: `2026-11-27 15:58 (KST)` (`dpl_8PkGtcpTL5QnSXRhvkbPk2qHxqmj`, 커밋 `f713313`)
 
 ---
 
 ## 1분 요약 (현재 확정 상태)
 
-- **리팩토링 3단계 본편 1차: `googleCalendarSync.ts` 나누기 (2026-11-27, 브랜치 `refactor/split-google-calendar-sync` → `main` 병합, 연습용 모드 브라우저 확인 완료: 시간표 변경 18시→19시 반영, 동기화 흐름이 토큰 없음 오류를 정상 기록, 콘솔 오류 0건)**:
+- **리팩토링 3단계 본편 1차: `googleCalendarSync.ts` 나누기 (2026-11-27, 브랜치 `refactor/split-google-calendar-sync` → `main` 병합, 운영 배포 완료 `dpl_8PkGtcpTL5QnSXRhvkbPk2qHxqmj`, 연습용 모드 브라우저 확인 완료: 시간표 변경 18시→19시 반영, 동기화 흐름이 토큰 없음 오류를 정상 기록, 콘솔 오류 0건)**:
   - 2,119줄 → `googleCalendarSync.ts`(동기화 흐름, 955줄) + `googleCalendarCore.ts`(순수 계산, 486줄) + `googleCalendarApi.ts`(구글 요청·캐시·재인증, 772줄). 코드는 그대로 옮기기만 했고, 기존 export 이름 유지
   - `googleCalendarCore.ts`는 저장소·화면 코드를 못 부르도록 ESLint 가드, 동작 고정 테스트 10개 추가
   - 2차: `runSync` 대상 고르기 계산을 이름 붙은 순수 함수로 분리(`selectSyncTargets` 등, 573→517줄), 테스트 +5, 브라우저 확인(시간표 20시 반영·대상 선별 정상)
@@ -65,11 +65,11 @@
 
 ## 최근 주요 배포 이력 (최신 5건)
 
+- `2026-11-27 15:58` — 프로덕션 배포 `dpl_8PkGtcpTL5QnSXRhvkbPk2qHxqmj` (커밋 `f713313`, `git push origin main` 자동 배포, 운영 주소: `https://okjinsoowebapp.vercel.app`, 배포 URL: `https://okjinsoowebapp-l84d9vx8d-okjinsoos-projects.vercel.app`, 리팩토링 3단계 1차: `googleCalendarSync.ts` → `googleCalendarCore`·`googleCalendarApi` 분리, `runSync` 대상 고르기 순수 함수 분리, 단위 테스트 128개 통과)
 - `2026-11-27 02:52` — 프로덕션 배포 `dpl_4Ua4NHmYtxZgmrXq3EUKUx1jtN7C` (커밋 `188e326`, 운영 주소: `https://okjinsoowebapp.vercel.app`, 배포 URL: `https://okjinsoowebapp-pvpxowshw-okjinsoos-projects.vercel.app`, 저장소↔구글 캘린더 결합 분리(`sessionCalendarActions`·`rosterCalendarActions`, ESLint 가드), 50ms 캐시 무효화, 미사용 저장 함수 13종 삭제, 연습용 모드 브라우저 확인, 단위 테스트 113개 통과)
 - `2026-11-25 19:22` — 프로덕션 배포 `dpl_ENszGc6ukVfQipcaD24TLstUZbs5` (커밋 `af8c76e`, 운영 주소: `https://okjinsoowebapp.vercel.app`, 배포 URL: `https://okjinsoowebapp-klip8rnjz-okjinsoos-projects.vercel.app`, 401/403 응답 분리, 401 토큰 갱신 1회 재시도 및 3회 초과 시 큐 보존 일시정지, 학생 금지 키 사전 차단, `sessionProgressUpdated` 상단 바·허브 즉시 갱신 연결, `getSessionItemsDefault` 죽은 코드 삭제, 단위 테스트 101개 통과)
 - `2026-11-25 19:05` — 프로덕션 배포 `dpl_YELqr2uY2jbXgPRqV5WYAdirQe1B` (커밋 `792bb69`, 운영 주소: `https://okjinsoowebapp.vercel.app`, 배포 URL: `https://okjinsoowebapp-7oxs60gq4-okjinsoos-projects.vercel.app`, Vercel Incoming 9.45GB 무한 POST 폭주 긴급 차단: `lectures.ts` `root.createdAt` 보존 + 읽기 silent화, `SharedSnapshotAgent` 401/403 재시도 즉시 중단 및 최대 3회 백오프, `SessionClientCore` 메아리 POST 제거, 회귀 테스트 +4건 총 99개 통과)
 - `2026-11-22 19:58` — 프로덕션 배포 `dpl_9nTT2tHC12jcrjHMLczsSgwxEvSE` (커밋 `37b97fe`, 운영 주소: `https://okjinsoowebapp.vercel.app`, 배포 URL: `https://okjinsoowebapp-2t64u7naw-okjinsoos-projects.vercel.app`, 리팩토링 1~2단계 완료: 미사용·임시파일 정리, 문서 슬림화, `lib/shared`/`lib/factories`/`lib/storage/sessionMeta` 계층 정리, ESLint 역의존 자동 가드, 단위 테스트 95개 확충, 되돌리기 태그 `pre-refactor`)
-- `2026-11-21 20:03` — 프로덕션 배포 `dpl_GK3TN1ryTRMLiU5EdjHANHPaNF7s` (커밋 `0aefd62`, 시간표 조정 1회 부분 병합 고속화, 실패 롤백, 변경분 듀얼라이트, 구글 캘린더 3병렬+429 백오프)
 
 > 2026-03 ~ 2026-11 전체 상세 패치·배포 로그는 [`docs/project-status-archive.md`](file:///Users/okjinsoo/Project/TutorWEB/v1/docs/project-status-archive.md)에 보관되어 있습니다.
 
