@@ -129,6 +129,11 @@ function pickLectureTree(localTree: LectureTree, remoteTree: LectureTree | null)
   };
 }
 
+// 카드 제목 앞 이모티콘. 선생님이 제목에 이미 이모티콘을 넣었으면 겹쳐 붙이지 않음
+function withTitleEmoji(emoji: string, title: string): string {
+  return /^\p{Extended_Pictographic}/u.test(title.trim()) ? title : `${emoji} ${title}`;
+}
+
 export default function SessionClientCore({ token, sessionIndex, role, headerSlot }: Props) {
   const canAssignLectures = canAssignSessionLectures(role); // ✅ t/a만 강의 배치(추가/삭제/추천저장) 가능
   const canEditProgress = true; // ✅ 학생도 체크/링크 입력은 가능
@@ -579,7 +584,7 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
               className="btn btn-black"
               style={{ padding: "6px 12px", background: "var(--color-bg)", border: "1px solid var(--control-border)", color: "var(--text-main)" }}
             >
-              + 문제 추가
+              + 📝 문제 추가
             </button>
             <button
               onClick={async () => {
@@ -625,10 +630,10 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
               className="btn btn-black"
               style={{ padding: "6px 12px", background: "var(--color-bg)", border: "1px solid var(--control-border)", color: "var(--text-main)" }}
             >
-              + 오답 노트
+              + 📕 오답 노트
             </button>
             <button onClick={() => void openPicker()} className="btn btn-black" disabled={isHydrating || isSaving || pickerSyncing}>
-              {pickerSyncing ? "강의 동기화 중..." : "+ 강의 추가"}
+              {pickerSyncing ? "강의 동기화 중..." : "+ 🧑‍🏫 강의 추가"}
             </button>
           </div>
         ) : (
@@ -729,15 +734,15 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
                       {isNotice ? (
                         p.noticeContent || "내용 없음"
                       ) : isCustom ? (
-                        p.customTitle || "제목 없는 문제"
+                        withTitleEmoji("📝", p.customTitle || "제목 없는 문제")
                       ) : isWrongNote ? (
                         "📕 오답노트"
                       ) : (
-                        leaf?.title ?? "(삭제되었거나 찾을 수 없는 강의)"
+                        withTitleEmoji("🧑‍🏫", leaf?.title ?? "(삭제되었거나 찾을 수 없는 강의)")
                       )}
 
                     </div>
-                    {canSeeInternalFields ? (
+                    {role === "a" ? (
                       <div style={{ opacity: 0.7, marginTop: 4 }}>
                         leafId: {leafId} {leaf?.orderKey ? `· orderKey: ${leaf.orderKey}` : ""}
                       </div>
