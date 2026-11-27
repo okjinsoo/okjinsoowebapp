@@ -1,14 +1,16 @@
 # Project Status (Latest)
 
-기준 시각: 2026-11-27 23:57 (KST)  
+기준 시각: 2026-11-28 01:05 (KST)  
 대상 프로젝트: `v1`  
 운영 주소: `https://okjinsoowebapp.vercel.app`  
-최신 운영 배포본: `2026-11-27 23:54 (KST)` (`dpl_6YpdtodYh2UgWz26RHgBWUXB8QhU`, 커밋 `4e25c8d`)
+최신 운영 배포본: `2026-11-28 01:02 (KST)` (`dpl_XqNVbBqJnT56h6xJ2hg1KeGh1tU3`, 커밋 `210d112`)
 
 ---
 
 ## 1분 요약 (현재 확정 상태)
 
+- **디자인 4단계 학생 메인 (2026-11-28, 운영 배포 완료 `dpl_XqNVbBqJnT56h6xJ2hg1KeGh1tU3`)**: 순서 다음 수업(큰 버튼) → 수업 기록(회차 막대, `RoundBarView` 공용) → 예정 수업 → 학생 정보(펼친 채) → 선생님 버튼·회차 추가 기록. 720px 이상 2열, 휴대폰 1열, 선생님·관리자 보기도 동일. 연습용 모드 3개 크기·운영 화면 확인, 실기기 미확인
+- **자정 자동 출석 첫 실행 확인 (2026-11-28 00:00)**: 실행 뒤 운영 dryRun 대상 0건 → 186회차 출석 반영 완료(크론 로그는 직접 미확인)
 - **디자인 3단계 회차 상세 (2026-11-27, 운영 배포 완료 `dpl_6YpdtodYh2UgWz26RHgBWUXB8QhU`)**: 추가 버튼·카드 제목 앞 이모티콘(문제 📝, 오답 📕, 강의 🧑‍🏫, 제목에 이미 이모티콘 있으면 생략), leafId 표시는 관리자만. 화면 구성·상세 맨 위 출석 버튼은 사용자 결정으로 유지. 다음: 4단계 학생 메인
 - **디자인 2단계 선생님 메인 (2026-11-27, 브랜치 `design/phase2-teacher-main` → `main`, 운영 배포 완료 `dpl_5jCMm5tCYtiTz8wJ1oAFYx1DgxdU`)**:
   - 수업 줄 버튼 미트·결석·조정 3개(출석 제거, 자정 자동 출석에 맡김). 다음 수업은 앞으로 7일치
@@ -18,7 +20,7 @@
 - **자정 자동 출석 (2026-11-27, 브랜치 `feat/auto-attendance` → `main`, 운영 배포 완료 `dpl_2i6JFZH1Mb8etaLXgh58fmqTRggb`)**:
   - `/api/ops/attendance/auto-present` + vercel cron `0 15 * * *`(매일 00:00 KST). 재학 학생의 종료된 `예정` 회차 → `출석`(metaMap `status`만 변경, 결석·다른 필드 유지)
   - 저장은 원자적 `patch_snapshot_state_kv` RPC만 사용(실패 시 덮어쓰기 대체 경로 없음). 크론 시크릿 또는 관리자만, `?dryRun=1`은 개수만
-  - 운영 dryRun(23:18): 12명 186회차 대상 → 2026-11-28 00:00 첫 실행 때 일괄 반영 예정. 되돌릴 때는 바뀌기 전 마지막 백업인 11-27 03:00 KST 일일 백업(`main-2026-11-26`, UTC 날짜 기준 이름) 참고. 11-28 03:00 백업은 이미 바뀐 뒤 상태
+  - 운영 dryRun(23:18): 12명 186회차 대상 → 2026-11-28 00:00 첫 실행으로 반영 완료(실행 뒤 dryRun 0건). 되돌릴 때는 바뀌기 전 마지막 백업인 11-27 03:00 KST 일일 백업(`main-2026-11-26`, UTC 날짜 기준 이름) 참고. 11-28 03:00 백업은 이미 바뀐 뒤 상태
   - 단위 테스트 145개 통과. 첫 실행 결과(크론 로그·화면)는 아직 확인 안 함
 - **디자인 기획 확정 + 1단계 바닥 깔기 (2026-11-27, 브랜치 `design/phase1-foundation` → `main`, 운영 배포 완료 `dpl_GztdTQixRRgZTkoM8czRVjrd2heM`, 제출률 색 되돌림 `dpl_3UfZRW4WdUphxUypfG8wb1qkkqgQ`)**:
   - 디자인 기획서(Claude 문서): https://claude.ai/artifact/LCvTUirMd8A2Ruyeg73z6j — 선생님=수업 운영판, 학생=성장 기록. 학생 기기 휴대폰:패드 50:50, 선생님 노트북 우선
@@ -93,11 +95,11 @@
 
 ## 최근 주요 배포 이력 (최신 5건)
 
+- `2026-11-28 01:02` — 프로덕션 배포 `dpl_XqNVbBqJnT56h6xJ2hg1KeGh1tU3` (커밋 `210d112`, `git push origin main` 자동 배포, 운영 주소: `https://okjinsoowebapp.vercel.app`, 디자인 4단계 학생 메인: 다음 수업·수업 기록 우선, 720px 이상 2열, 단위 테스트 147개 통과)
 - `2026-11-27 23:54` — 프로덕션 배포 `dpl_6YpdtodYh2UgWz26RHgBWUXB8QhU` (커밋 `4e25c8d`, `git push origin main` 자동 배포, 운영 주소: `https://okjinsoowebapp.vercel.app`, 디자인 3단계 회차 상세: 버튼·카드 제목 이모티콘, leafId 관리자 전용, 단위 테스트 147개 통과)
 - `2026-11-27 23:30` — 프로덕션 배포 `dpl_5jCMm5tCYtiTz8wJ1oAFYx1DgxdU` (커밋 `6c9f63d`, `git push origin main` 자동 배포, 운영 주소: `https://okjinsoowebapp.vercel.app`, 디자인 2단계 선생님 메인: 줄 버튼 3개·7일치·회차 막대·더보기 메뉴·viewport 고정 해제·휴대폰 2줄 카드, 단위 테스트 147개 통과)
 - `2026-11-27 23:18` — 프로덕션 배포 `dpl_2i6JFZH1Mb8etaLXgh58fmqTRggb` (커밋 `e9afc5d`, `git push origin main` 자동 배포, 운영 주소: `https://okjinsoowebapp.vercel.app`, 자정 자동 출석 API·크론 추가, 운영 dryRun 12명 186회차, 단위 테스트 145개 통과)
 - `2026-11-27 23:08` — 프로덕션 배포 `dpl_3UfZRW4WdUphxUypfG8wb1qkkqgQ` (커밋 `9af6703`, `git push origin main` 자동 배포, 운영 주소: `https://okjinsoowebapp.vercel.app`, 제출률 배지 색을 원래 4단계로 되돌림(빨강 유지), 미정/공지 구분 유지, 단위 테스트 140개 통과)
-- `2026-11-27 23:02` — 프로덕션 배포 `dpl_GztdTQixRRgZTkoM8czRVjrd2heM` (커밋 `d719323`, `git push origin main` 자동 배포, 운영 주소: `https://okjinsoowebapp.vercel.app`, 디자인 1단계 바닥 깔기: 상태 색 토큰 5종, 제출률 배지 색 규칙(빨강 제거·미정/공지), 출석 초록·마지막 수업 노랑, Pretendard, 단위 테스트 140개 통과)
 
 > 2026-03 ~ 2026-11 전체 상세 패치·배포 로그는 [`docs/project-status-archive.md`](file:///Users/okjinsoo/Project/TutorWEB/v1/docs/project-status-archive.md)에 보관되어 있습니다.
 
