@@ -13,7 +13,11 @@ describe("appNav", () => {
     expect(menuFor("/s/smain")).toBeNull();
     const admin = menuFor("/a/tmain/t1/smain/s1")!;
     expect(admin.filter((m) => isActive(m, "/a/tmain/t1/smain/s1")).map((m) => m.label)).toEqual(["관리자 메인"]);
-    expect(menuFor("/t/tmain")!.map((m) => m.label)).toEqual(["내 학생", "강의 저장소"]);
+    const activeOf = (path: string) => admin.filter((m) => isActive(m, path)).map((m) => m.label);
+    expect(activeOf("/a/tmain")).toEqual(["오늘의 수업"]);
+    expect(activeOf("/a/tmain/t1")).toEqual(["오늘의 수업"]);
+    expect(activeOf("/a/tmain/new")).toEqual(["관리자 메인"]);
+    expect(menuFor("/t/tmain")!.map((m) => m.label)).toEqual(["오늘의 수업", "강의 저장소"]);
   });
 
   it("위치: 선생님 › 학생 › 회차, 마지막 칸은 링크 없음", () => {
@@ -24,11 +28,11 @@ describe("appNav", () => {
       { label: "60회차" },
     ]);
     expect(buildCrumbs("/t/tmain/s1/edit", names, null)).toEqual([
-      { label: "내 학생", href: "/t/tmain" },
+      { label: "오늘의 수업", href: "/t/tmain" },
       { label: "조윤우", href: "/t/tmain/s1" },
       { label: "정보 수정" },
     ]);
-    expect(buildCrumbs("/t/smain/session/3", names, "s1").map((c) => c.label)).toEqual(["내 학생", "조윤우", "3회차"]);
+    expect(buildCrumbs("/t/smain/session/3", names, "s1").map((c) => c.label)).toEqual(["오늘의 수업", "조윤우", "3회차"]);
   });
 
   it("한 칸뿐인 화면은 위치 표시 없음", () => {

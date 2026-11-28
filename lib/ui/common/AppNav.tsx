@@ -20,8 +20,15 @@ export default function AppNav() {
       {menu.map((item) => {
         const active = isActive(item, pathname);
         return (
-          <Link key={item.href} href={item.href} className="app-nav-link" aria-current={active ? "page" : undefined}>
-            {item.label}
+          <Link
+            key={item.href}
+            href={item.href}
+            className="app-nav-link"
+            aria-label={item.label}
+            aria-current={active ? "page" : undefined}
+          >
+            <span className="app-nav-full">{item.label}</span>
+            <span className="app-nav-short" aria-hidden="true">{item.short}</span>
           </Link>
         );
       })}

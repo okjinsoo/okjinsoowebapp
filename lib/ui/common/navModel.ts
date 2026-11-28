@@ -1,22 +1,33 @@
 // 재구성 2단계: 주소(URL)만 보고 메뉴와 위치 표시(빵부스러기)를 만드는 순수 함수
 
-export type NavItem = { label: string; href: string; match: string[] };
+export type NavItem = { label: string; short: string; href: string; match: (path: string) => boolean };
 export type Crumb = { label: string; href?: string };
 export type NameLookup = {
   student: (token: string | null) => string | null;
   teacher: (token: string) => string | null;
 };
 
+const under = (path: string, base: string) => path === base || path.startsWith(`${base}/`);
+const parts = (path: string) => path.split("/").filter(Boolean);
+// 오늘의 수업 = 선생님 메인(/a/tmain, /a/tmain/선생님). 그 아래 학생 화면은 관리자 메인 쪽
+const isAdminTodayPath = (path: string) => under(path, "/a/tmain") && parts(path).length <= 3 && parts(path)[2] !== "new";
+
 const ADMIN_MENU: NavItem[] = [
-  { label: "관리자 메인", href: "/a/amain", match: ["/a/amain", "/a/tmain", "/a/smain"] },
-  { label: "학생 관리", href: "/a/students", match: ["/a/students"] },
-  { label: "선생님 관리", href: "/a/teachers", match: ["/a/teachers"] },
-  { label: "강의 저장소", href: "/lib/lectures", match: ["/lib/lectures"] },
+  { label: "오늘의 수업", short: "오늘", href: "/a/tmain", match: isAdminTodayPath },
+  {
+    label: "관리자 메인",
+    short: "메인",
+    href: "/a/amain",
+    match: (p) => under(p, "/a/amain") || under(p, "/a/smain") || (under(p, "/a/tmain") && !isAdminTodayPath(p)),
+  },
+  { label: "학생 관리", short: "학생", href: "/a/students", match: (p) => under(p, "/a/students") },
+  { label: "선생님 관리", short: "선생님", href: "/a/teachers", match: (p) => under(p, "/a/teachers") },
+  { label: "강의 저장소", short: "강의", href: "/lib/lectures", match: (p) => under(p, "/lib/lectures") },
 ];
 
 const TEACHER_MENU: NavItem[] = [
-  { label: "내 학생", href: "/t/tmain", match: ["/t/tmain", "/t/smain"] },
-  { label: "강의 저장소", href: "/t/lectures", match: ["/t/lectures"] },
+  { label: "오늘의 수업", short: "오늘", href: "/t/tmain", match: (p) => under(p, "/t/tmain") || under(p, "/t/smain") },
+  { label: "강의 저장소", short: "강의", href: "/t/lectures", match: (p) => under(p, "/t/lectures") },
 ];
 
 /** 관리자(/a, /lib)·선생님(/t) 화면에만 메뉴. 학생·공개 화면은 null */
@@ -27,7 +38,7 @@ export function menuFor(pathname: string): NavItem[] | null {
 }
 
 export function isActive(item: NavItem, pathname: string): boolean {
-  return item.match.some((m) => pathname === m || pathname.startsWith(`${m}/`));
+  return item.match(pathname);
 }
 
 /** 학생 화면 아래쪽(정보 수정·수업 목록·N회차) 꼬리 */
@@ -69,11 +80,11 @@ export function buildCrumbs(pathname: string, names: NameLookup, selectedStudent
     else if (p[2] === "edit") crumbs.push({ label: "선생님 정보 수정" });
     else if (p[2]) crumbs.push({ label: `${names.teacher(p[2]) ?? "선생님"} 정보 수정` });
   } else if (p[0] === "t" && p[1] === "tmain") {
-    crumbs = [{ label: "내 학생", href: "/t/tmain" }];
+    crumbs = [{ label: "오늘의 수업", href: "/t/tmain" }];
     if (p[2] === "new") crumbs.push({ label: "학생 등록" });
     else if (p[2]) crumbs.push(...studentTail(p.slice(3), `/t/tmain/${encodeURIComponent(p[2])}`, studentLabel(p[2])));
   } else if ((p[0] === "a" || p[0] === "t") && p[1] === "smain") {
-    const home = p[0] === "a" ? { label: "관리자 메인", href: "/a/amain" } : { label: "내 학생", href: "/t/tmain" };
+    const home = p[0] === "a" ? { label: "관리자 메인", href: "/a/amain" } : { label: "오늘의 수업", href: "/t/tmain" };
     crumbs = [home, ...studentTail(p.slice(2), `/${p[0]}/smain`, studentLabel(selectedStudentToken))];
   }
 

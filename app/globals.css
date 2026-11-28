@@ -867,6 +867,15 @@ textarea::placeholder {
     padding: 0 4px;
     font-size: 14px;
     text-align: center;
+    white-space: nowrap;
+  }
+  .app-nav-full {
+    display: none;
+  }
+}
+@media (min-width: 900px) {
+  .app-nav-short {
+    display: none;
   }
 }
 
