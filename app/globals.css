@@ -190,7 +190,7 @@ body {
 
 .app-content {
   width: 100%;
-  max-width: 980px;
+  max-width: 960px;
   box-sizing: border-box;
   margin: 0 auto;
   padding: 12px 16px 24px;
@@ -791,4 +791,147 @@ textarea::placeholder {
   border-radius: 12px;
   padding: 14px;
   background: var(--surface-bg);
+}
+
+/* 재구성 1단계: 화면 폭 3가지 — 보통 960(목록·상세), 좁게 720(입력), 넓게 1200(표) */
+.page {
+  width: 100%;
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 20px;
+}
+.page-narrow { max-width: 720px; }
+.page-wide { max-width: 1200px; }
+.app-content:has(.page-wide) { max-width: 1200px; }
+
+/* 재구성 2단계: 공통 틀 — 노트북은 왼쪽 메뉴, 휴대폰은 아래 탭 */
+.app-nav-link {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 12px;
+  border-radius: 8px;
+  color: var(--text-muted);
+  font-size: 15px;
+  font-weight: 600;
+  text-decoration: none;
+  transition: background-color 150ms ease, color 150ms ease;
+}
+.app-nav-link:hover {
+  background: var(--surface-hover);
+  color: var(--foreground);
+}
+.app-nav-link[aria-current="page"] {
+  background: var(--brand-soft-bg);
+  color: var(--brand-strong);
+}
+@media (min-width: 900px) {
+  body:has(.app-nav) {
+    padding-left: 200px;
+  }
+  .app-nav {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 70;
+    width: 200px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 64px 12px 16px;
+    border-right: 1px solid var(--surface-border);
+    background: var(--surface-bg);
+  }
+}
+@media (max-width: 899px) {
+  body:has(.app-nav) {
+    padding-bottom: calc(60px + env(safe-area-inset-bottom));
+  }
+  .app-nav {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 70;
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: 1fr;
+    gap: 4px;
+    padding: 6px 8px calc(6px + env(safe-area-inset-bottom));
+    border-top: 1px solid var(--surface-border);
+    background: var(--surface-bg);
+  }
+  .app-nav-link {
+    justify-content: center;
+    padding: 0 4px;
+    font-size: 14px;
+    text-align: center;
+  }
+}
+
+/* 지금 위치: 관리자 메인 › 선생님 › 학생 › 60회차 */
+.app-crumbs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 20px 0;
+  font-size: 14px;
+  color: var(--text-muted);
+}
+.app-crumb {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.app-crumb a {
+  color: var(--brand-strong);
+  text-decoration: none;
+}
+.app-crumb a:hover {
+  text-decoration: underline;
+}
+.app-crumb [aria-current="page"] {
+  color: var(--foreground);
+  font-weight: 600;
+}
+.app-crumb-sep {
+  color: var(--text-muted);
+}
+@media (prefers-reduced-motion: reduce) {
+  .app-nav-link { transition: none; }
+}
+
+/* 재구성 3단계: '현재 선택' 카드를 한 줄로 접기 (관리자만 보임) */
+.gate-bar {
+  border: 1px solid var(--surface-border);
+  border-radius: 12px;
+  padding: 8px 12px;
+  background: var(--surface-bg);
+}
+.gate-bar > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  cursor: pointer;
+  list-style: none;
+}
+.gate-bar > summary::-webkit-details-marker {
+  display: none;
+}
+.gate-bar-current {
+  font-weight: 600;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.gate-bar[open] {
+  padding-bottom: 12px;
+}
+.gate-bar[open] .gate-bar-toggle {
+  background: var(--brand-soft-bg);
+  color: var(--brand-strong);
 }

@@ -783,7 +783,7 @@ export default function StudentHubCore({
 
   if (!token) {
     return (
-      <main style={{ padding: 20, maxWidth: 980, margin: "0 auto" }}>
+      <main className="page">
         <h1 className="page-title">학생 페이지</h1>
         <p style={{ marginTop: 8, color: "var(--text-muted)" }}>token이 없습니다.</p>
       </main>
@@ -792,7 +792,7 @@ export default function StudentHubCore({
 
   if (!isInitialLoaded) {
     return (
-      <main style={{ padding: 20, maxWidth: 980, margin: "0 auto" }}>
+      <main className="page">
         <h1 className="page-title">학생 페이지</h1>
         <p style={{ marginTop: 8, color: "var(--text-muted)" }}>학생 정보를 불러오는 중입니다...</p>
       </main>
@@ -801,7 +801,7 @@ export default function StudentHubCore({
 
   if (!student) {
     return (
-      <main style={{ padding: 20, maxWidth: 980, margin: "0 auto" }}>
+      <main className="page">
         <h1 className="page-title">학생 페이지</h1>
         <p style={{ marginTop: 8, color: "var(--text-muted)" }}>
           학생을 찾지 못했습니다. <code>{token}</code>
@@ -1538,7 +1538,7 @@ export default function StudentHubCore({
   }
 
   return (
-    <main style={{ padding: 20, maxWidth: 980, margin: "0 auto" }}>
+    <main className="page">
       <section style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
         {backToTmain ? (
           <div

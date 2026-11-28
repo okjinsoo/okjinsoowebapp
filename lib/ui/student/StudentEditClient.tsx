@@ -289,7 +289,7 @@ export default function StudentEditClient(props: {
 
   if (loadingStudent) {
     return (
-      <main style={{ padding: 20, maxWidth: 860, margin: "0 auto" }}>
+      <main className="page page-narrow">
         <button onClick={() => router.push(onDoneGoTo)} className="btn btn-bold">
           돌아가기
         </button>
@@ -303,7 +303,7 @@ export default function StudentEditClient(props: {
 
   if (!student) {
     return (
-      <main style={{ padding: 20, maxWidth: 860, margin: "0 auto" }}>
+      <main className="page page-narrow">
         <button onClick={() => router.push(onDoneGoTo)} className="btn btn-bold">
           돌아가기
         </button>
@@ -316,7 +316,7 @@ export default function StudentEditClient(props: {
   }
 
   return (
-    <main style={{ padding: 20, maxWidth: 860, margin: "0 auto" }}>
+    <main className="page page-narrow">
       <div>
         <button onClick={() => router.push(onDoneGoTo)} className="btn btn-bold" title="돌아가기">
           돌아가기

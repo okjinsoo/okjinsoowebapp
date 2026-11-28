@@ -4,6 +4,7 @@ import AuthControl from "@/lib/ui/common/AuthControl";
 import SharedSnapshotAgent from "@/lib/ui/common/SharedSnapshotAgent";
 import PageTitleAgent from "@/lib/ui/common/PageTitleAgent";
 import AppFooter from "@/lib/ui/common/AppFooter";
+import AppNav, { AppBreadcrumb } from "@/lib/ui/common/AppNav";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -44,7 +45,9 @@ export default function RootLayout({
             </div>
           </div>
         </div>
+        <AppNav />
         <div className="app-content flex-1">
+          <AppBreadcrumb />
           {children}
         </div>
         <AppFooter />

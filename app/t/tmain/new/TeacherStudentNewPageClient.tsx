@@ -38,7 +38,7 @@ export default function TeacherStudentNewPageClient({ basePath = buildTmainBaseP
 
   if (!loaded) {
     return (
-      <main className="p-6" style={{ maxWidth: 720, margin: "0 auto" }}>
+      <main className="page page-narrow">
         <h1 className="page-title">신규 학생 등록 (선생님)</h1>
         <p className="mt-2 text-sm opacity-70">로딩 중...</p>
       </main>
@@ -47,7 +47,7 @@ export default function TeacherStudentNewPageClient({ basePath = buildTmainBaseP
 
   if (!teacherId) {
     return (
-      <main className="p-6" style={{ maxWidth: 720, margin: "0 auto" }}>
+      <main className="page page-narrow">
         <h1 className="page-title">신규 학생 등록 (선생님)</h1>
         <p className="mt-2 text-sm opacity-70">선생님이 선택되지 않았습니다. 먼저 선생님을 선택해주세요.</p>
         <button
@@ -61,7 +61,7 @@ export default function TeacherStudentNewPageClient({ basePath = buildTmainBaseP
   }
 
   return (
-    <main className="p-6" style={{ maxWidth: 980, margin: "0 auto" }}>
+    <main className="page page-narrow">
       <div className="mb-3 text-sm opacity-70">
         현재 선생님: <b>{teacherName || teacherId}</b>
       </div>

@@ -482,7 +482,7 @@ export default function StudentNewClient(props: {
   }
 
   return (
-    <main style={{ padding: 20, maxWidth: 860, margin: "0 auto"}}>
+    <main className="page page-narrow">
       <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
         <div>
           <h1 className="page-title">신규 학생 등록 ({mode === "admin" ? "원장" : "선생님"})</h1>

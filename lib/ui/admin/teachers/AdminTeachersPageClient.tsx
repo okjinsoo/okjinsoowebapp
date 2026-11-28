@@ -31,7 +31,7 @@ export default function AdminTeachersPageClient() {
   };
 
   return (
-    <main style={{ padding: 20, maxWidth: 960, margin: "0 auto" }}>
+    <main className="page">
       <div style={{ marginBottom: 8 }}>
         <button className="btn" onClick={() => router.push("/a/amain")}>
           관리자 페이지

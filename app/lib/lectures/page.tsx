@@ -234,7 +234,7 @@ export default function LecturesPage() {
   const headerStyle = { borderColor: "var(--surface-border)", background: "var(--surface-hover)" };
 
   return (
-    <div className="p-6 space-y-6" style={{ maxWidth: 1100, margin: "0 auto" }}>
+    <div className="page page-wide space-y-6">
       <header className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <h1 className="page-title">강의 저장소</h1>

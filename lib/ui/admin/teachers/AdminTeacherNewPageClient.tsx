@@ -25,7 +25,7 @@ export default function AdminTeacherNewPageClient() {
   });
 
   return (
-    <main style={{ padding: 20, maxWidth: 860, margin: "0 auto" }}>
+    <main className="page page-narrow">
       <div>
         <button className="btn" onClick={() => router.push("/a/teachers")}>
           돌아가기

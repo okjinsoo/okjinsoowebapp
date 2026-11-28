@@ -33,7 +33,7 @@ export function SkeletonBox({
  */
 export function TeacherMainSkeleton() {
   return (
-    <main className="p-6" style={{ maxWidth: 1200, margin: "0 auto" }}>
+    <main className="page">
       {/* 상단 역할 / 제어 바 */}
       <div style={{ marginBottom: 16 }}>
         <div
@@ -154,7 +154,7 @@ export function TeacherMainSkeleton() {
  */
 export function StudentHubSkeleton() {
   return (
-    <main className="p-6" style={{ maxWidth: 1200, margin: "0 auto" }}>
+    <main className="page">
       {/* 상단 프로필 헤더 뼈대 */}
       <div
         style={{

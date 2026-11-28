@@ -14,7 +14,7 @@ export default function AdminTeacherEditLegacyPage() {
   }, [router]);
 
   return (
-    <main style={{ padding: 20, maxWidth: 860, margin: "0 auto" }}>
+    <main className="page page-narrow">
       <div style={{ marginTop: 8, textAlign: "center" }} className="page-title">
         선생님 정보 수정
       </div>

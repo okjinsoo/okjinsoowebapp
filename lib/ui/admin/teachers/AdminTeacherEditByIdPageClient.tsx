@@ -36,7 +36,7 @@ export default function AdminTeacherEditByIdPageClient() {
 
   if (!loaded) {
     return (
-      <main style={{ padding: 20, maxWidth: 860, margin: "0 auto" }}>
+      <main className="page page-narrow">
         <button className="btn" onClick={() => router.push("/a/teachers")}>
           관리자 페이지
         </button>
@@ -50,7 +50,7 @@ export default function AdminTeacherEditByIdPageClient() {
 
   if (!teacher) {
     return (
-      <main style={{ padding: 20, maxWidth: 860, margin: "0 auto" }}>
+      <main className="page page-narrow">
         <button className="btn" onClick={() => router.push("/a/teachers")}>
           관리자 페이지
         </button>
@@ -65,7 +65,7 @@ export default function AdminTeacherEditByIdPageClient() {
   }
 
   return (
-    <main style={{ padding: 20, maxWidth: 860, margin: "0 auto" }}>
+    <main className="page page-narrow">
       <div>
         <button className="btn" onClick={() => router.push("/a/teachers")}>
           관리자 페이지

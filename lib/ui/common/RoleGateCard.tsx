@@ -18,6 +18,8 @@ type Props = {
   title?: string;
   onTeacherChange?: (teacherId: string) => void;
   onStudentChange?: (token: string) => void;
+  /** 처음부터 펼쳐 둘지 (기본: 선생님이 아직 없을 때만) */
+  startOpen?: boolean;
 };
 
 function replaceRolePath(pathname: string, role: Role) {
@@ -42,6 +44,7 @@ export default function RoleGateCard({
   title = "현재 선택",
   onTeacherChange,
   onStudentChange,
+  startOpen,
 }: Props) {
   const pathname = usePathname();
 
@@ -50,7 +53,7 @@ export default function RoleGateCard({
   const selectStyle = {
     height: 40,
     padding: 10,
-    border: "1px solid #ccc",
+    border: "1px solid var(--surface-border)",
     borderRadius: 8,
   };
 
@@ -58,13 +61,15 @@ export default function RoleGateCard({
   const currentStudentName = students.find((s) => s.token === studentToken)?.name ?? "미선택";
 
   return (
-    <div className="card-box">
-      <div className="card-title">{title}</div>
-      <div style={{ marginTop: 6 }}>
-        <span style={{ fontWeight: 700 }}>현재 역할</span> · {role}
-        <span style={{ fontWeight: 700, marginLeft: 8 }}>현재 선생님</span> · {currentTeacherName}
-        <span style={{ fontWeight: 700, marginLeft: 8 }}>현재 학생</span> · {currentStudentName}
-      </div>
+    // 재구성 3단계: 평소엔 한 줄로 접어 두고, 누르면 역할·선생님·학생 선택이 펼쳐짐
+    <details className="gate-bar" open={startOpen ?? !teacherId}>
+      <summary aria-label={title}>
+        <span className="gate-bar-current">
+          {currentTeacherName}
+          {studentToken ? ` · ${currentStudentName}` : ""}
+        </span>
+        <span className="btn gate-bar-toggle">학생 바꾸기</span>
+      </summary>
       <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 8, alignItems: "center" }}>
         <div style={{ display: "grid", gap: 6 }}>
           <div className="text-muted">역할</div>
@@ -128,6 +133,6 @@ export default function RoleGateCard({
           </select>
         </div>
       </div>
-    </div>
+    </details>
   );
 }

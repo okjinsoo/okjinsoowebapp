@@ -75,7 +75,7 @@ export default function AdminMainPage() {
   ];
 
   return (
-    <main style={{ padding: 20, width: "100%", maxWidth: 960, margin: "0 auto" }}>
+    <main className="page">
       <h1 className="page-title">관리자 메인</h1>
       <div style={{ marginTop: 12, display: "flex", gap: 10, flexWrap: "wrap" }}>
         <Link className="btn btn-blue" href="/a/students" style={{ padding: "10px 14px", fontWeight: 800, textDecoration: "none" }}>

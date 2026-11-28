@@ -34,6 +34,7 @@ export default function StudentMainClient({ role }: { role: "a" | "t" | "s" }) {
           studentToken={studentToken}
           onTeacherChange={(next) => setTeacherId(next)}
           onStudentChange={(next) => setStudentToken(next)}
+          startOpen={!studentToken}
         />
       </div>
 
