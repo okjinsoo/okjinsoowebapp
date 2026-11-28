@@ -1,14 +1,15 @@
 # Project Status (Latest)
 
-기준 시각: 2026-11-29 00:02 (KST)  
+기준 시각: 2026-11-29 00:10 (KST)  
 대상 프로젝트: `v1`  
 운영 주소: `https://okjinsoowebapp.vercel.app`  
-최신 운영 배포본: `2026-11-29 00:01 (KST)` (`dpl_H6KXrQrpprR2Nhy8X8kRB3TTknZ9`, 커밋 `9479537`)
+최신 운영 배포본: `2026-11-29 00:09 (KST)` (`dpl_BmVW4SJzg9QZg9jQ8nijEagZ23Ft`, 커밋 `c486fed`)
 
 ---
 
 ## 1분 요약 (현재 확정 상태)
 
+- **회차 줄 뱃지 재배치 (2026-11-29, 운영 배포 완료 `dpl_BmVW4SJzg9QZg9jQ8nijEagZ23Ft`)**: `SessionCardRow` 왼쪽은 D-day·회차만, 날짜 뒤에 과제 제출률·출결·변경/이월 순서 (오늘의 수업 줄도 날짜 뒤 제출률)
 - **제출률 뱃지·다음 수업 카드 (2026-11-29, 운영 배포 완료 `dpl_H6KXrQrpprR2Nhy8X8kRB3TTknZ9`)**: 오늘의 수업/다음 수업 줄에 과제 제출률 뱃지(`AchievementBadge`) 추가, 학생 정보 '다음 수업'을 예정 수업과 같은 `SessionCardRow` 카드로(카드 클릭 → 회차), 두 영역 높이 맞춤. 미정: 관리자 메인 '이번 달 결제' 칸 활용 방안(추후 논의)
 - **디자인 재구성 4단계 (2026-11-28, 운영 배포 완료 `dpl_M27YwvJQD1vfhkptWevfNPcKXVRL`)**: 공용 화면 머리 `PageHeader`/`MoreMenu`(`lib/ui/common/PageHeader.tsx`, 왼쪽 제목 + 오른쪽 버튼) 적용 — 오늘의 수업·학생 정보·수업 목록·관리자 메인·학생/선생님 관리. 메뉴와 겹치는 '관리자 페이지'·'학생 관리' 버튼 제거, 제목 24px·왼쪽 정렬 통일. 회차 상세 머리와 버튼·카드 인라인 스타일 정리는 남음. 남은 단계: 5 아이콘·사업자 정보 정리
 - **왼쪽 메뉴 '오늘의 수업' (2026-11-28, 운영 배포 완료 `dpl_HDydiXRE7dspCjULFHhzNWuuUwQt`)**: 관리자 메뉴 맨 위에 `오늘의 수업`(`/a/tmain`) 추가, 선생님 메뉴 '내 학생'→'오늘의 수업' 이름 통일, 휴대폰 아래 탭은 짧은 이름(오늘·메인·학생·선생님·강의)
@@ -103,6 +104,7 @@
 
 ## 최근 주요 배포 이력 (최신 5건)
 
+- `2026-11-29 00:09` — 프로덕션 배포 `dpl_BmVW4SJzg9QZg9jQ8nijEagZ23Ft` (커밋 `c486fed`, `git push origin main` 자동 배포, 운영 주소: `https://okjinsoowebapp.vercel.app`, 회차 줄 제출률·출결 뱃지 날짜 뒤로, 단위 테스트 152개 통과)
 - `2026-11-29 00:01` — 프로덕션 배포 `dpl_H6KXrQrpprR2Nhy8X8kRB3TTknZ9` (커밋 `9479537`, `git push origin main` 자동 배포, 운영 주소: `https://okjinsoowebapp.vercel.app`, 제출률 뱃지·다음 수업 카드, 단위 테스트 152개 통과)
 - `2026-11-28 23:51` — 프로덕션 배포 `dpl_M27YwvJQD1vfhkptWevfNPcKXVRL` (커밋 `4ccba2f`, `git push origin main` 자동 배포, 운영 주소: `https://okjinsoowebapp.vercel.app`, 디자인 재구성 4단계 화면 머리 통일, 단위 테스트 152개 통과)
 - `2026-11-28 23:30` — 프로덕션 배포 `dpl_HDydiXRE7dspCjULFHhzNWuuUwQt` (커밋 `0846d50`, `git push origin main` 자동 배포, 운영 주소: `https://okjinsoowebapp.vercel.app`, 왼쪽 메뉴 '오늘의 수업' 추가, 단위 테스트 152개 통과)
