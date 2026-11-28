@@ -715,7 +715,7 @@ textarea::placeholder {
 @media (min-width: 720px) {
   .hub-grid {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    align-items: start;
+    align-items: stretch;
   }
 }
 .next-class-card .btn {

@@ -5,7 +5,6 @@ import { loadAuthSession } from "@/lib/auth/supabaseAuth";
 
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import PageHeader, { MoreMenu } from "@/lib/ui/common/PageHeader";
 import {
   saveStudentsAndResyncCalendar,
@@ -46,7 +45,6 @@ import { fmtKST_yyyyMMdd_TimeRange } from "@/lib/factories/format";
 import Badge from "@/lib/ui/common/Badge";
 import SessionCardRow from "@/lib/ui/session/SessionCardRow";
 import SessionQuickActions from "@/lib/ui/session/SessionQuickActions";
-import AchievementBadge from "@/lib/ui/common/AchievementBadge";
 import { buildSessionContextBadges } from "@/lib/ui/common/sessionExtraBadge";
 import { buildSessionCardViewModel } from "@/lib/ui/session/sessionCardFactory";
 import {
@@ -1538,6 +1536,27 @@ export default function StudentHubCore({
     void handleRestoreBackupFile(file);
   }
 
+  // 다음 수업·예정 수업이 같은 카드를 씀: 카드 아무 곳이나 누르면 그 회차로 이동
+  const renderSessionCard = (item: (typeof upcomingSessions)[number]) => {
+    const dday = getDdayMeta(item.iso, new Date());
+    const model = buildSessionCardViewModel({
+      index: item.index,
+      dateTimeText: fmtKST_yyyyMMdd_TimeRange(item.iso, item.durationMin),
+      dday: dday && dday.diff !== null ? dday : null,
+      status: (item.status as "present" | "absent" | "planned" | undefined) ?? "planned",
+      submission: item.submission,
+      extraBadges: item.badges,
+    });
+    return (
+      <SessionCardRow
+        key={`${item.index}-${item.iso}`}
+        model={model}
+        onClick={() => router.push(`${sessionListHref}/${item.index}`)}
+        rightSlot={<SessionQuickActions role={accessRole} token={token} index={item.index} />}
+      />
+    );
+  };
+
   return (
     <main className="page">
       <PageHeader
@@ -1578,34 +1597,14 @@ export default function StudentHubCore({
       />
 
       <div className="hub-grid">
-        <div style={{ display: "grid", gap: 12, alignContent: "start" }}>
-          <section className="card-box next-class-card">
-            <div className="card-title">다음 수업</div>
-            {nextSession ? (
-              <>
-                <Link
-                  href={`${sessionListHref}/${nextSession.index}`}
-                  style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginTop: 8, color: "inherit", textDecoration: "none" }}
-                >
-                  {(() => {
-                    const dday = getDdayMeta(nextSession.iso, new Date());
-                    return dday.diff !== null ? <Badge className={`text-white ${dday.className}`}>{dday.label}</Badge> : null;
-                  })()}
-                  <span style={{ fontSize: 22, fontWeight: 800 }}>{nextSession.index}회차</span>
-                  <AchievementBadge submission={nextSession.submission} />
-                </Link>
-                <div style={{ marginTop: 4, color: "var(--text-subtle)" }}>
-                  {fmtKST_yyyyMMdd_TimeRange(nextSession.iso, nextSession.durationMin)}
-                </div>
-                <div style={{ marginTop: 12 }}>
-                  <SessionQuickActions role={accessRole} token={token} index={nextSession.index} />
-                </div>
-              </>
-            ) : (
-              <div className="text-muted" style={{ marginTop: 8 }}>예정 수업이 없습니다. 수업 목록을 확인하세요.</div>
-            )}
-          </section>
-        </div>
+        <section className="card-box next-class-card">
+          <div className="card-title">다음 수업</div>
+          {nextSession ? (
+            <div style={{ marginTop: 8 }}>{renderSessionCard(nextSession)}</div>
+          ) : (
+            <div className="text-muted" style={{ marginTop: 8 }}>예정 수업이 없습니다. 수업 목록을 확인하세요.</div>
+          )}
+        </section>
 
         <section className="card-box">
           <div className="card-title">예정 수업</div>
@@ -1615,25 +1614,7 @@ export default function StudentHubCore({
             </div>
           ) : (
             <div style={{ marginTop: 8, display: "grid", gap: 8 }}>
-              {upcomingSessions.slice(1).map((item) => {
-                const dday = getDdayMeta(item.iso, new Date());
-                const model = buildSessionCardViewModel({
-                  index: item.index,
-                  dateTimeText: fmtKST_yyyyMMdd_TimeRange(item.iso, item.durationMin),
-                  dday: dday && dday.diff !== null ? dday : null,
-                  status: (item.status as "present" | "absent" | "planned" | undefined) ?? "planned",
-                  submission: item.submission,
-                  extraBadges: item.badges,
-                });
-                return (
-                  <SessionCardRow
-                    key={`${item.index}-${item.iso}`}
-                    model={model}
-                    onClick={() => router.push(`${sessionListHref}/${item.index}`)}
-                    rightSlot={<SessionQuickActions role={accessRole} token={token} index={item.index} />}
-                  />
-                );
-              })}
+              {upcomingSessions.slice(1).map(renderSessionCard)}
             </div>
           )}
         </section>
