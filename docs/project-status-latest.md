@@ -1,14 +1,15 @@
 # Project Status (Latest)
 
-기준 시각: 2026-11-28 18:04 (KST)  
+기준 시각: 2026-11-28 21:37 (KST)  
 대상 프로젝트: `v1`  
 운영 주소: `https://okjinsoowebapp.vercel.app`  
-최신 운영 배포본: `2026-11-28 18:03 (KST)` (`dpl_DwvTjQChgWraSgL7gv7VHA64oSeY`, 커밋 `d05b7df`)
+최신 운영 배포본: `2026-11-28 21:36 (KST)` (`dpl_6TpvHQYCDbuAPDJPBZc8YGEswTYQ`, 커밋 `47927fa`)
 
 ---
 
 ## 1분 요약 (현재 확정 상태)
 
+- **회차 줄 뱃지 위치 (2026-11-28, 운영 배포 완료 `dpl_6TpvHQYCDbuAPDJPBZc8YGEswTYQ`)**: `SessionCardRow` 공용 부품에서 과제 제출률·출결 뱃지는 회차 옆(앞 칸 220px), 변경·이월 뱃지는 날짜 옆으로 이동. 학생 정보·수업 목록·오늘 수업·회차 상세 4곳 공통
 - **디자인 마감 정리 (2026-11-28, 운영 배포 완료 `dpl_DwvTjQChgWraSgL7gv7VHA64oSeY`)**: 터치 기기(`pointer: coarse`)에서만 `.btn` 44px·15px, 키보드 `:focus-visible` 파란 테두리, 직접 적은 색 93줄 → 토큰(`--brand-strong`, `--*-soft-bg/border` 등, 다크 값 포함), 반복 카드 16곳 → `.card-box`, 흰 카드·드라이브 패널 다크 대응, 11px 글자 → 12px. 남김: 구글 로고 색, 홈 청록·보라 버튼. 실제 패드·다크 실기기 미확인
 - **디자인 5단계 관리자 메인 (2026-11-28, 운영 배포 완료 `dpl_2Pcf4z1xg2zRETy37rvYiLv3vLkq`)**: 숫자 4칸(재학생·이번 주 수업(월~일, 결석 제외)·연장 필요·이번 달 결제(이번 달 만든 회차 추가 기록)) → 처리할 일(연장 필요, D-9 기준, 마지막 수업 빠른 순) → 신규·재학 목록(회차 막대) → 드라이브 패널. 재학(active) 학생만 표시. 계산은 `lib/factories/adminSummary.ts`. 연장 필요 줄 실제 모습은 미확인
 - **학생 정보 페이지 수업 기록 카드 제거 (2026-11-28, 운영 배포 완료 `dpl_Eu1avQVLH6XHPomYsk7H6ZgfeMx8`)**: 사용자 결정으로 학생 메인의 회차 막대 카드 삭제. 선생님 메인 학생 목록 회차 막대는 유지
@@ -98,6 +99,7 @@
 
 ## 최근 주요 배포 이력 (최신 5건)
 
+- `2026-11-28 21:36` — 프로덕션 배포 `dpl_6TpvHQYCDbuAPDJPBZc8YGEswTYQ` (커밋 `47927fa`, `git push origin main` 자동 배포, 운영 주소: `https://okjinsoowebapp.vercel.app`, 회차 줄 뱃지 위치 변경, 단위 테스트 149개 통과)
 - `2026-11-28 18:03` — 프로덕션 배포 `dpl_DwvTjQChgWraSgL7gv7VHA64oSeY` (커밋 `d05b7df`, `git push origin main` 자동 배포, 운영 주소: `https://okjinsoowebapp.vercel.app`, 디자인 마감 정리: 터치 버튼·포커스·색 토큰·카드 공용 클래스·다크 모드, 단위 테스트 149개 통과)
 - `2026-11-28 15:44` — 프로덕션 배포 `dpl_2Pcf4z1xg2zRETy37rvYiLv3vLkq` (커밋 `330bb91`, `git push origin main` 자동 배포, 운영 주소: `https://okjinsoowebapp.vercel.app`, 디자인 5단계 관리자 메인, 단위 테스트 149개 통과)
 - `2026-11-28 15:11` — 프로덕션 배포 `dpl_Eu1avQVLH6XHPomYsk7H6ZgfeMx8` (커밋 `377c94f`, `git push origin main` 자동 배포, 운영 주소: `https://okjinsoowebapp.vercel.app`, 학생 정보 페이지 수업 기록 카드 제거, 단위 테스트 147개 통과)
