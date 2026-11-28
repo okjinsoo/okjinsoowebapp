@@ -714,3 +714,31 @@ textarea::placeholder {
   display: grid !important;
   grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
 }
+
+/* 관리자 메인 (5단계): 숫자 4칸 + 학생 줄 */
+.admin-stats {
+  margin-top: 16px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px;
+}
+.admin-row {
+  display: grid;
+  grid-template-columns: 1fr 0.8fr 2fr 1.3fr;
+  gap: 12px;
+  align-items: center;
+  padding: 8px 10px;
+  border: 1px solid var(--surface-border);
+  border-radius: 8px;
+  background: var(--surface-bg);
+  color: inherit;
+  text-decoration: none;
+}
+.admin-row:hover {
+  background: var(--surface-hover);
+}
+@media (max-width: 640px) {
+  .admin-row {
+    grid-template-columns: 1fr auto;
+  }
+}
