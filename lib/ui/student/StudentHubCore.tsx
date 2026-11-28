@@ -46,8 +46,6 @@ import Badge from "@/lib/ui/common/Badge";
 import SessionCardRow from "@/lib/ui/session/SessionCardRow";
 import SessionQuickActions from "@/lib/ui/session/SessionQuickActions";
 import AchievementBadge from "@/lib/ui/common/AchievementBadge";
-import RoundBarView from "@/lib/ui/common/RoundBarView";
-import { buildRoundBar } from "@/lib/factories/roundBar";
 import { buildSessionContextBadges } from "@/lib/ui/common/sessionExtraBadge";
 import { buildSessionCardViewModel } from "@/lib/ui/session/sessionCardFactory";
 import {
@@ -718,16 +716,6 @@ export default function StudentHubCore({
       });
     };
   }, [token, progressTick]);
-
-  const roundBar = useMemo(() => {
-    if (!student) return null;
-    const list = [];
-    for (let i = 1; i <= (student.planCount || 12); i += 1) {
-      const { effectiveISO, meta } = computeEffectiveISO({ token, index: i, baseDatesISO, metaMap });
-      list.push({ index: i, effectiveISO, meta });
-    }
-    return buildRoundBar({ student, sessions: list, nowMs: Date.now() });
-  }, [student, token, baseDatesISO, metaMap]);
 
   const upcomingSessions = useMemo(() => {
     if (!student) return [];
@@ -1635,15 +1623,6 @@ export default function StudentHubCore({
               <div className="text-muted" style={{ marginTop: 8 }}>예정 수업이 없습니다. 수업 목록을 확인하세요.</div>
             )}
           </section>
-
-          {roundBar ? (
-            <section style={{ border: "1px solid var(--surface-border)", borderRadius: 12, padding: 14, background: "var(--surface-bg)" }}>
-              <div className="card-title">{accessRole === "s" ? "내 수업 기록" : "수업 기록"}</div>
-              <div style={{ marginTop: 8 }}>
-                <RoundBarView bar={roundBar} size={14} />
-              </div>
-            </section>
-          ) : null}
         </div>
 
         <section style={{ border: "1px solid var(--surface-border)", borderRadius: 12, padding: 14, background: "var(--surface-bg)" }}>
