@@ -134,7 +134,7 @@ export default function AdminMainPage() {
         const sectionCards = statusCards.filter((c) => c.status === sectionType);
         if (sectionCards.length === 0) return null;
         return (
-          <section key={sectionType} style={{ marginTop: 16, border: "1px solid var(--surface-border)", borderRadius: 12, padding: 14, background: "var(--surface-bg)" }}>
+          <section key={sectionType} className="card-box" style={{ marginTop: 16 }}>
             <div className="card-title" style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <span>{getStudentStatusSectionLabel(sectionType as StudentStatusKind)}</span>
               <Badge tone={getStudentStatusMeta(sectionType as StudentStatusKind).tone}>{sectionCards.length}명</Badge>

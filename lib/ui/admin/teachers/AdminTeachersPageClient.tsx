@@ -48,7 +48,7 @@ export default function AdminTeachersPageClient() {
       </section>
 
       {error ? (
-        <div style={{ marginTop: 12, color: "#b42318", fontWeight: 700 }}>{error}</div>
+        <div style={{ marginTop: 12, color: "var(--alert-strong)", fontWeight: 700 }}>{error}</div>
       ) : null}
 
       <TeacherListSection

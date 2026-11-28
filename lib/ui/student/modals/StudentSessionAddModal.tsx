@@ -181,17 +181,17 @@ function SessionAddModalInner({
             }}
           >
             <div style={{ fontWeight: 700, color: "var(--foreground)" }}>
-              📅 적용 시간표: <span style={{ color: "var(--primary-color, #2563eb)" }}>{formatRuleSummary(currentRules)}</span>
+              📅 적용 시간표: <span style={{ color: "var(--brand)" }}>{formatRuleSummary(currentRules)}</span>
             </div>
             <div style={{ color: "var(--text-muted)", fontSize: "0.82rem" }}>
               * 현재 학생에게 설정된 시간표 패턴을 이어받아 총 {normalizeSessionAddCount(addedCount)}회차가 생성됩니다.
             </div>
-            <div style={{ color: "#2563eb", fontSize: "0.82rem", marginTop: 2, fontWeight: 500 }}>
+            <div style={{ color: "var(--brand)", fontSize: "0.82rem", marginTop: 2, fontWeight: 500 }}>
               💡 수업 요일이나 시간을 변경하시려면 상단의 [시간 변경] 버튼을 이용해 주세요.
             </div>
           </div>
 
-          {error ? <div style={{ color: "#dc2626", fontSize: "0.9rem" }}>{error}</div> : null}
+          {error ? <div style={{ color: "var(--alert)", fontSize: "0.9rem" }}>{error}</div> : null}
 
           <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 8 }}>
             <button
@@ -206,7 +206,7 @@ function SessionAddModalInner({
               style={{
                 ...boxButton,
                 padding: "8px 18px",
-                background: "var(--primary-color, #2563eb)",
+                background: "var(--brand)",
                 color: "#ffffff",
                 border: "none",
                 fontWeight: 700,

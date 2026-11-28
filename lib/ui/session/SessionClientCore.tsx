@@ -1047,9 +1047,9 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
                               style={{
                                 padding: "6px 12px",
                                 borderRadius: 8,
-                                background: isSaving ? "#f3f4f6" : "#fee2e2",
-                                border: "1px solid #fecaca",
-                                color: isSaving ? "#9ca3af" : "#dc2626",
+                                background: isSaving ? "var(--surface-hover)" : "var(--alert-soft-bg)",
+                                border: "1px solid var(--alert-soft-border)",
+                                color: isSaving ? "var(--text-muted)" : "var(--alert)",
                                 fontSize: 12,
                                 fontWeight: 700,
                                 cursor: isSaving ? "not-allowed" : "pointer",
@@ -1079,9 +1079,9 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
                               style={{
                                 padding: "6px 12px",
                                 borderRadius: 8,
-                                background: isSaving ? "#f3f4f6" : "#fee2e2",
-                                border: "1px solid #fecaca",
-                                color: isSaving ? "#9ca3af" : "#dc2626",
+                                background: isSaving ? "var(--surface-hover)" : "var(--alert-soft-bg)",
+                                border: "1px solid var(--alert-soft-border)",
+                                color: isSaving ? "var(--text-muted)" : "var(--alert)",
                                 fontSize: 12,
                                 fontWeight: 700,
                                 cursor: isSaving ? "not-allowed" : "pointer",
@@ -1111,9 +1111,9 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
                               style={{
                                 padding: "6px 12px",
                                 borderRadius: 8,
-                                background: isSaving ? "#f3f4f6" : "#fee2e2",
-                                border: "1px solid #fecaca",
-                                color: isSaving ? "#9ca3af" : "#dc2626",
+                                background: isSaving ? "var(--surface-hover)" : "var(--alert-soft-bg)",
+                                border: "1px solid var(--alert-soft-border)",
+                                color: isSaving ? "var(--text-muted)" : "var(--alert)",
                                 fontSize: 12,
                                 fontWeight: 700,
                                 cursor: isSaving ? "not-allowed" : "pointer",
@@ -1435,7 +1435,7 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
                             }}
                           >
                             <div style={{ fontWeight: 500, fontSize: 13 }}>📁 {folder.title}</div>
-                            <div style={{ fontSize: 11, color: "var(--text-muted)" }}>강의 {leafCount}개</div>
+                            <div style={{ fontSize: 12, color: "var(--text-muted)" }}>강의 {leafCount}개</div>
                           </button>
                         );
                       })
@@ -1517,11 +1517,11 @@ export default function SessionClientCore({ token, sessionIndex, role, headerSlo
                                 >
                                   <div style={{ fontWeight: 600, fontSize: 13 }}>{leaf.title}</div>
                                   {leaf.lectureUrl && (
-                                    <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                    <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                                       {leaf.lectureUrl}
                                     </div>
                                   )}
-                                  {disabled && <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>이미 추가됨</div>}
+                                  {disabled && <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>이미 추가됨</div>}
                                 </button>
                               );
                             })

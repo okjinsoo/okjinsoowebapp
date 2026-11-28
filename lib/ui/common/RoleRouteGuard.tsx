@@ -98,7 +98,7 @@ export default function RoleRouteGuard({ requiredRole, children }: Props) {
         style={{
           width: "100%",
           maxWidth: 540,
-          border: "1px solid #e5e7eb",
+          border: "1px solid var(--surface-border)",
           borderRadius: 12,
           padding: 16,
           background: "var(--surface-bg)",
@@ -107,7 +107,7 @@ export default function RoleRouteGuard({ requiredRole, children }: Props) {
         <h1 style={{ fontSize: 24, fontWeight: 900 }}>
           {status === "checking" ? "권한 확인 중..." : "접근 제한"}
         </h1>
-        <p style={{ marginTop: 8, color: "#475569", lineHeight: 1.6 }}>
+        <p style={{ marginTop: 8, color: "var(--text-subtle)", lineHeight: 1.6 }}>
           {status === "checking"
             ? "로그인 상태를 확인하고 있어요."
             : reason === "login"

@@ -549,8 +549,8 @@ export default function SessionTopBarCore({ role, token, index }: Props) {
             left: 0,
             right: 0,
             zIndex: 100,
-            background: "#fff1f2",
-            border: "1px solid #fecaca",
+            background: "var(--alert-soft-bg)",
+            border: "1px solid var(--alert-soft-border)",
             padding: "8px 12px",
             marginTop: 8,
             borderRadius: 10,
@@ -562,7 +562,7 @@ export default function SessionTopBarCore({ role, token, index }: Props) {
             animation: "slideIn 0.3s ease-out"
           }}
         >
-          <div style={{ display: "flex", alignItems: "center", gap: 8, color: "#e11d48", fontSize: 13, fontWeight: 600 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, color: "var(--alert)", fontSize: 13, fontWeight: 600 }}>
             <span style={{ fontSize: 16 }}>⚠️</span>
             <span>구글 캘린더 작업 중 권한 오류가 발생했습니다. (사유: {authError.substring(0, 40)}...)</span>
           </div>
@@ -576,7 +576,7 @@ export default function SessionTopBarCore({ role, token, index }: Props) {
                 if (url) window.location.href = url;
               }}
               style={{
-                background: "#e11d48",
+                background: "var(--alert)",
                 color: "white",
                 border: "none",
                 padding: "6px 12px",
@@ -592,9 +592,9 @@ export default function SessionTopBarCore({ role, token, index }: Props) {
             <button
               onClick={() => setAuthError(null)}
               style={{
-                background: "white",
-                color: "#64748b",
-                border: "1px solid #e2e8f0",
+                background: "var(--surface-bg)",
+                color: "var(--text-muted)",
+                border: "1px solid var(--surface-border)",
                 padding: "6px 10px",
                 borderRadius: 8,
                 fontSize: 12,

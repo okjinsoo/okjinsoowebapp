@@ -436,9 +436,9 @@ export default function HomePage() {
                       width: "100%",
                       minHeight: 44,
                       borderRadius: 10,
-                      border: "1px dashed #2563eb",
-                      background: "#eff6ff",
-                      color: "#1d4ed8",
+                      border: "1px dashed var(--brand)",
+                      background: "var(--brand-soft-bg)",
+                      color: "var(--brand-strong)",
                       fontWeight: 800,
                       cursor: busy ? "not-allowed" : "pointer",
                     }}
@@ -473,7 +473,7 @@ export default function HomePage() {
           ) : (
             <>
               <div style={{ fontWeight: 700 }}>
-                로그인 완료: <span style={{ color: "#2563eb" }}>{session?.email ?? "-"}</span>
+                로그인 완료: <span style={{ color: "var(--brand)" }}>{session?.email ?? "-"}</span>
               </div>
               <div style={{ marginTop: 6, fontSize: 13, color: "var(--text-subtle)" }}>
                 현재 권한: <b>{roleLoading ? "확인 중..." : roleLabel(role)}</b>
@@ -499,12 +499,12 @@ export default function HomePage() {
                       alignItems: "center",
                       justifyContent: "center",
                       padding: "10px 16px",
-                      border: "1px solid #1d4ed8",
+                      border: "1px solid var(--brand-strong)",
                       borderRadius: 10,
-                      color: "#1d4ed8",
+                      color: "var(--brand-strong)",
                       fontWeight: 800,
                       textDecoration: "none",
-                      background: "#eff6ff",
+                      background: "var(--brand-soft-bg)",
                       cursor: "pointer",
                       userSelect: "none",
                       minHeight: 44,
@@ -569,10 +569,10 @@ export default function HomePage() {
                     alignItems: "center",
                     justifyContent: "center",
                     padding: "10px 16px",
-                    border: "1px solid #be123c",
+                    border: "1px solid var(--alert-strong)",
                     borderRadius: 10,
-                    background: "#fff1f2",
-                    color: "#be123c",
+                    background: "var(--alert-soft-bg)",
+                    color: "var(--alert-strong)",
                     fontWeight: 800,
                     cursor: "pointer",
                     userSelect: "none",
@@ -608,9 +608,9 @@ export default function HomePage() {
                   style={{
                     marginTop: 16,
                     borderRadius: 12,
-                    border: "1px solid #fca5a5",
-                    background: "#fef2f2",
-                    color: "#991b1b",
+                    border: "1px solid var(--alert-soft-border)",
+                    background: "var(--alert-soft-bg)",
+                    color: "var(--alert-strong)",
                     padding: "12px 14px",
                     fontSize: 14,
                     fontWeight: 600,
@@ -628,9 +628,9 @@ export default function HomePage() {
               style={{
                 marginTop: 10,
                 borderRadius: 8,
-                border: "1px solid #fecaca",
-                background: "#fef2f2",
-                color: "#b91c1c",
+                border: "1px solid var(--alert-soft-border)",
+                background: "var(--alert-soft-bg)",
+                color: "var(--alert-strong)",
                 padding: "8px 10px",
                 fontSize: 13,
               }}
@@ -643,9 +643,9 @@ export default function HomePage() {
               style={{
                 marginTop: 10,
                 borderRadius: 8,
-                border: "1px solid #fde68a",
-                background: "#fffbeb",
-                color: "#92400e",
+                border: "1px solid var(--wait-soft-border)",
+                background: "var(--wait-soft-bg)",
+                color: "var(--wait-strong)",
                 padding: "8px 10px",
                 fontSize: 13,
               }}
@@ -658,9 +658,9 @@ export default function HomePage() {
               style={{
                 marginTop: 10,
                 borderRadius: 8,
-                border: "1px solid #fecaca",
-                background: "#fef2f2",
-                color: "#991b1b",
+                border: "1px solid var(--alert-soft-border)",
+                background: "var(--alert-soft-bg)",
+                color: "var(--alert-strong)",
                 padding: "8px 10px",
                 fontSize: 13,
               }}
@@ -690,20 +690,20 @@ export default function HomePage() {
               width: "100%",
               maxWidth: 520,
               borderRadius: 14,
-              border: "1px solid #cbd5e1",
-              background: "#fff",
+              border: "1px solid var(--surface-border)",
+              background: "var(--surface-bg)",
               padding: 18,
               boxShadow: "0 16px 40px rgba(15, 23, 42, 0.28)",
               textAlign: "center",
             }}
           >
-            <h2 style={{ fontSize: 20, fontWeight: 900, color: "#0f172a" }}>
+            <h2 style={{ fontSize: 20, fontWeight: 900, color: "var(--foreground)" }}>
               재로그인을 위해 홈으로 이동했습니다.
             </h2>
-            <p style={{ marginTop: 10, color: "#334155", fontWeight: 700 }}>
+            <p style={{ marginTop: 10, color: "var(--text-subtle)", fontWeight: 700 }}>
               잠시만 기다려 주세요.
             </p>
-            <p style={{ marginTop: 8, fontSize: 13, color: "#64748b" }}>
+            <p style={{ marginTop: 8, fontSize: 13, color: "var(--text-muted)" }}>
               자동으로 Google 로그인 화면으로 이동 중입니다.
             </p>
           </section>

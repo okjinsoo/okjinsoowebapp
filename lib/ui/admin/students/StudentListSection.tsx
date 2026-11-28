@@ -22,7 +22,7 @@ export default function StudentListSection(props: StudentListSectionProps) {
   } = props;
 
   return (
-    <section style={{ marginTop: 16, border: "1px solid var(--surface-border)", borderRadius: 12, padding: 14, background: "var(--surface-bg)" }}>
+    <section className="card-box" style={{ marginTop: 16 }}>
       <div className="card-title">{title}</div>
       {cards.length === 0 ? (
         <div className="text-muted" style={{ marginTop: 8 }}>

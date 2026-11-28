@@ -393,7 +393,7 @@ export default function StudentHubCore({
   }, [student]);
 
   const studentStatusView = useMemo(() => {
-    if (!student) return { label: "-", bg: "#6b7280", color: "#fff" };
+    if (!student) return { label: "-", bg: "var(--quiet)", color: "#fff" };
 
     const today = todayYmdKST();
     const pauseLifecycle = "none" as const;
@@ -1597,7 +1597,7 @@ export default function StudentHubCore({
 
       <div className="hub-grid">
         <div style={{ display: "grid", gap: 12, alignContent: "start" }}>
-          <section className="next-class-card" style={{ border: "1px solid var(--surface-border)", borderRadius: 12, padding: 14, background: "var(--surface-bg)" }}>
+          <section className="card-box next-class-card">
             <div className="card-title">다음 수업</div>
             {nextSession ? (
               <>
@@ -1625,7 +1625,7 @@ export default function StudentHubCore({
           </section>
         </div>
 
-        <section style={{ border: "1px solid var(--surface-border)", borderRadius: 12, padding: 14, background: "var(--surface-bg)" }}>
+        <section className="card-box">
           <div className="card-title">예정 수업</div>
           {upcomingSessions.length <= 1 ? (
             <div className="text-muted" style={{ marginTop: 8 }}>
@@ -1657,7 +1657,7 @@ export default function StudentHubCore({
         </section>
       </div>
 
-      <section style={{ marginTop: 12, border: "1px solid var(--surface-border)", borderRadius: 12, padding: 14, background: "var(--surface-bg)" }}>
+      <section className="card-box" style={{ marginTop: 12 }}>
         <div className="info-grid" style={{ display: "grid", gap: 10 }}>
           <div
             style={{
@@ -1779,9 +1779,9 @@ export default function StudentHubCore({
                 onClick={onClickLockerResync}
                 disabled={isLockerSyncing}
                 style={{ 
-                  background: "#fdf2f2", 
-                  border: "1px solid #fecaca", 
-                  color: "#dc2626",
+                  background: "var(--alert-soft-bg)", 
+                  border: "1px solid var(--alert-soft-border)", 
+                  color: "var(--alert)",
                   fontWeight: 700
                 }}
               >
@@ -1793,9 +1793,9 @@ export default function StudentHubCore({
               onClick={onClickCalendarResync}
               disabled={calendarSyncing}
               style={{ 
-                background: "#fdf2f2", 
-                border: "1px solid #fecaca", 
-                color: "#dc2626",
+                background: "var(--alert-soft-bg)", 
+                border: "1px solid var(--alert-soft-border)", 
+                color: "var(--alert)",
                 fontWeight: 700
               }}
               title="현재 학생의 고유 미트 링크 및 캘린더 일정을 다시 동기화합니다"

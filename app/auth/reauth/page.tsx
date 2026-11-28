@@ -71,32 +71,32 @@ export default function ReauthPage() {
         style={{
           width: "100%",
           maxWidth: 560,
-          border: "1px solid #cbd5e1",
+          border: "1px solid var(--surface-border)",
           borderRadius: 14,
-          background: "#fff",
+          background: "var(--surface-bg)",
           padding: 20,
           boxShadow: "0 16px 40px rgba(15, 23, 42, 0.2)",
           textAlign: "center",
         }}
       >
-        <h1 style={{ fontSize: 24, fontWeight: 900, color: "#0f172a" }}>
+        <h1 style={{ fontSize: 24, fontWeight: 900, color: "var(--foreground)" }}>
           권한을 다시 연결하고 있어요
         </h1>
-        <p style={{ marginTop: 10, color: "#334155", fontWeight: 700 }}>
+        <p style={{ marginTop: 10, color: "var(--text-subtle)", fontWeight: 700 }}>
           권한이 만료되어 재로그인을 진행합니다. 잠시만 기다려 주세요.
         </p>
         {error ? (
           <>
-            <p style={{ marginTop: 10, color: "#b91c1c", fontSize: 14 }}>{error}</p>
+            <p style={{ marginTop: 10, color: "var(--alert-strong)", fontSize: 14 }}>{error}</p>
             <Link
               href="/"
               style={{
                 marginTop: 12,
                 display: "inline-block",
-                border: "1px solid #cbd5e1",
+                border: "1px solid var(--surface-border)",
                 borderRadius: 10,
                 padding: "8px 12px",
-                color: "#0f172a",
+                color: "var(--foreground)",
                 textDecoration: "none",
                 fontWeight: 700,
               }}
@@ -105,7 +105,7 @@ export default function ReauthPage() {
             </Link>
           </>
         ) : (
-          <p style={{ marginTop: 8, fontSize: 13, color: "#64748b" }}>
+          <p style={{ marginTop: 8, fontSize: 13, color: "var(--text-muted)" }}>
             자동으로 Google 로그인 화면으로 이동 중입니다.
           </p>
         )}

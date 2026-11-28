@@ -327,7 +327,7 @@ export default function StudentEditClient(props: {
       </div>
 
       <section style={{ marginTop: 14, display: "grid", gap: 14 }}>
-        <div style={{ border: "1px solid var(--surface-border)", borderRadius: 10, padding: 12, background: "var(--surface-bg)" }}>
+        <div className="card-box">
           <div className="card-title">시작일</div>
           {mode === "admin" ? (
             <input
@@ -363,7 +363,7 @@ export default function StudentEditClient(props: {
           )}
         </div>
 
-        <div style={{ border: "1px solid var(--surface-border)", borderRadius: 10, padding: 12, background: "var(--surface-bg)" }}>
+        <div className="card-box">
           <div className="card-title">배정 선생님</div>
 
           {mode === "admin" ? (
@@ -406,7 +406,7 @@ export default function StudentEditClient(props: {
           )}
         </div>
 
-        <div style={{ border: "1px solid var(--surface-border)", borderRadius: 10, padding: 12, background: "var(--surface-bg)" }}>
+        <div className="card-box">
           <div className="card-title">학생 정보</div>
 
           <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
@@ -533,7 +533,7 @@ export default function StudentEditClient(props: {
               />
               <div style={{ color: "var(--text-muted)", marginTop: 6, fontSize: "0.85rem" }}>
                 저장 값: <code>{googleEmail.trim() || "입력 필요"}</code>
-                <div style={{ color: "#2563eb", marginTop: 4, fontWeight: 500 }}>
+                <div style={{ color: "var(--brand)", marginTop: 4, fontWeight: 500 }}>
                   💡 구글 미트 수업 시 승인 대기 없이 바로 입장할 수 있도록 학생의 실제 구글 계정(Gmail)을 입력해주세요.
                 </div>
               </div>
@@ -548,9 +548,9 @@ export default function StudentEditClient(props: {
                     onClick={() => setPermanentMeetUrl("")}
                     style={{
                       fontSize: "0.75rem",
-                      color: "#dc2626",
+                      color: "var(--alert)",
                       background: "none",
-                      border: "1px solid #fca5a5",
+                      border: "1px solid var(--alert-soft-border)",
                       borderRadius: 4,
                       padding: "2px 8px",
                       cursor: "pointer",
@@ -575,9 +575,9 @@ export default function StudentEditClient(props: {
               />
               <div style={{ color: "var(--text-muted)", marginTop: 6, fontSize: "0.85rem" }}>
                 {permanentMeetUrl.trim() ? (
-                  <div>현재 등록된 링크: <code style={{ color: "#16a34a" }}>{permanentMeetUrl.trim()}</code></div>
+                  <div>현재 등록된 링크: <code style={{ color: "var(--ok)" }}>{permanentMeetUrl.trim()}</code></div>
                 ) : (
-                  <div style={{ color: "#2563eb", fontWeight: 500 }}>
+                  <div style={{ color: "var(--brand)", fontWeight: 500 }}>
                     ✨ 링크가 비어있으면 캘린더 동기화 시 구글에서 <strong>완전 새로운 고유 미트 방</strong>을 자동으로 발급받아 모든 회차에 통일 적용합니다.
                   </div>
                 )}
@@ -636,7 +636,7 @@ export default function StudentEditClient(props: {
           </div>
         </div>
 
-        <div style={{ border: "1px solid var(--surface-border)", borderRadius: 10, padding: 12, background: "var(--surface-bg)" }}>
+        <div className="card-box">
           <div className="card-title">회차 수</div>
           <input
             type="number"
@@ -655,7 +655,7 @@ export default function StudentEditClient(props: {
           />
         </div>
 
-        {error ? <div style={{ color: "#dc2626" }}>{error}</div> : null}
+        {error ? <div style={{ color: "var(--alert)" }}>{error}</div> : null}
 
         <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
           <div>

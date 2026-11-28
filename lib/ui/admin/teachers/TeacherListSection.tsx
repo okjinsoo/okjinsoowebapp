@@ -13,7 +13,7 @@ export default function TeacherListSection(props: TeacherListSectionProps) {
   const { teachers, onOpenTeacherView, onEditTeacher, onRemoveTeacher } = props;
 
   return (
-    <section style={{ marginTop: 16, border: "1px solid var(--surface-border)", borderRadius: 12, padding: 14, background: "var(--surface-bg)" }}>
+    <section className="card-box" style={{ marginTop: 16 }}>
       <h2 className="card-title">선생님 목록</h2>
       <div style={{ display: "grid", gap: 10, marginTop: 10 }}>
         {teachers.map((teacher) => (

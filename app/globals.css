@@ -46,6 +46,17 @@
   --wait: #d97706;
   --alert: #dc2626;
   --quiet: #64748b;
+
+  /* 상태 색의 진한 글자·연한 바탕·테두리 (화면에 색 코드를 직접 적지 않도록) */
+  --brand-strong: #1d4ed8;
+  --brand-soft-bg: #eff6ff;
+  --brand-soft-border: #bfdbfe;
+  --alert-strong: #b91c1c;
+  --alert-soft-bg: #fef2f2;
+  --alert-soft-border: #fecaca;
+  --wait-strong: #92400e;
+  --wait-soft-bg: #fffbeb;
+  --wait-soft-border: #fde68a;
 }
 
 @theme inline {
@@ -125,6 +136,16 @@
     --status-locked-bg: #111827;
     --status-locked-border: #334155;
     --status-locked-text: #94a3b8;
+
+    --brand-strong: #93c5fd;
+    --brand-soft-bg: #172554;
+    --brand-soft-border: #1e40af;
+    --alert-strong: #fca5a5;
+    --alert-soft-bg: #2a1215;
+    --alert-soft-border: #7f1d1d;
+    --wait-strong: #fcd34d;
+    --wait-soft-bg: #2a1f0a;
+    --wait-soft-border: #78350f;
   }
 
   .skeleton-shimmer {
@@ -741,4 +762,33 @@ textarea::placeholder {
   .admin-row {
     grid-template-columns: 1fr auto;
   }
+}
+
+/* 손가락으로 누르는 기기(휴대폰·패드)에서만 버튼을 44px로. 마우스 쓰는 노트북은 그대로 */
+@media (pointer: coarse) {
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 44px;
+    font-size: 15px !important;
+    padding: 8px 14px !important;
+  }
+  .session-row-actions .btn {
+    min-height: 44px;
+  }
+}
+
+/* 키보드(Tab)로 움직일 때만 지금 위치를 파란 테두리로 보여 줌. 마우스 클릭에는 안 보임 */
+:where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
+
+/* 공용 카드 상자: 테두리·둥근 모서리·여백·바탕을 한 곳에서 관리 */
+.card-box {
+  border: 1px solid var(--surface-border);
+  border-radius: 12px;
+  padding: 14px;
+  background: var(--surface-bg);
 }

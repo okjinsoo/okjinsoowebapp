@@ -491,7 +491,7 @@ export function StudentPaymentPanel({
                   background: "var(--background)",
                   border: "1px solid var(--surface-border)",
                   fontSize: "0.85rem",
-                  color: "#2563eb",
+                  color: "var(--brand)",
                   fontWeight: 500,
                   marginTop: 2,
                 }}
@@ -501,14 +501,14 @@ export function StudentPaymentPanel({
 
               <div style={{ color: "var(--text-muted)" }}>생성 회차 범위 : {editingRangeLabel}</div>
 
-              {editError ? <div style={{ color: "#dc2626" }}>{editError}</div> : null}
+              {editError ? <div style={{ color: "var(--alert)" }}>{editError}</div> : null}
 
               <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
                 <button
-                  onMouseEnter={(e) => (e.currentTarget.style.background = "#b91c1c")}
-                  onMouseLeave={(e) => (e.currentTarget.style.background = "#dc2626")}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = "var(--alert-strong)")}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = "var(--alert)")}
                   onClick={onDeleteEdit}
-                  style={{ ...boxButton, padding: "8px 12px", color: "#fff", background: "#dc2626" }}
+                  style={{ ...boxButton, padding: "8px 12px", color: "#fff", background: "var(--alert)" }}
                   disabled={editSaving}
                 >
                   삭제
@@ -584,7 +584,7 @@ export function StudentPaymentPanel({
               자동 생성 회차추가: +{splitAddedCount}회
             </div>
 
-            {splitError ? <div style={{ color: "#dc2626" }}>{splitError}</div> : null}
+            {splitError ? <div style={{ color: "var(--alert)" }}>{splitError}</div> : null}
 
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
               <button

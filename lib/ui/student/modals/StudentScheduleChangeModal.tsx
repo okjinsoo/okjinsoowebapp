@@ -398,7 +398,7 @@ function ScheduleChangeModalInner({
             현재 적용중인 시간표 : {currentScheduleText}
           </div>
 
-          {error ? <div style={{ color: "#dc2626", fontSize: "0.9rem" }}>{error}</div> : null}
+          {error ? <div style={{ color: "var(--alert)", fontSize: "0.9rem" }}>{error}</div> : null}
 
           <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 6 }}>
             <button
@@ -413,7 +413,7 @@ function ScheduleChangeModalInner({
               style={{
                 ...boxButton,
                 padding: "8px 16px",
-                background: "var(--primary-color, #2563eb)",
+                background: "var(--brand)",
                 color: "#ffffff",
                 border: "none",
                 fontWeight: 700,

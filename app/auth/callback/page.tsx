@@ -98,7 +98,7 @@ export default function AuthCallbackPage() {
         style={{
           width: "100%",
           maxWidth: 560,
-          border: "1px solid #e5e7eb",
+          border: "1px solid var(--surface-border)",
           borderRadius: 14,
           background: "var(--surface-bg)",
           padding: 20,
@@ -107,17 +107,17 @@ export default function AuthCallbackPage() {
         <h1 style={{ fontSize: 24, fontWeight: 900 }}>
           {status === "loading" ? "로그인 확인 중" : status === "done" ? "로그인 성공" : "로그인 오류"}
         </h1>
-        <p style={{ marginTop: 10, color: "#475569", lineHeight: 1.6 }}>{message}</p>
+        <p style={{ marginTop: 10, color: "var(--text-subtle)", lineHeight: 1.6 }}>{message}</p>
         {status === "error" ? (
           <Link
             href="/"
             style={{
               marginTop: 12,
               display: "inline-block",
-              border: "1px solid #cbd5e1",
+              border: "1px solid var(--surface-border)",
               borderRadius: 10,
               padding: "8px 12px",
-              color: "#0f172a",
+              color: "var(--foreground)",
               textDecoration: "none",
               fontWeight: 700,
             }}

@@ -48,7 +48,7 @@ export default function TeacherEditForm(props: TeacherEditFormProps) {
 
   return (
     <>
-      <section style={{ marginTop: 14, border: "1px solid var(--surface-border)", borderRadius: 10, padding: 12, background: "var(--surface-bg)" }}>
+      <section className="card-box" style={{ marginTop: 14 }}>
         <div style={{ display: "grid", gap: 10 }}>
           <div>
             <div style={{ fontWeight: 700 }}>이름 *</div>
@@ -84,7 +84,7 @@ export default function TeacherEditForm(props: TeacherEditFormProps) {
         </div>
       </section>
 
-      {error ? <div style={{ marginTop: 10, color: "#dc2626" }}>{error}</div> : null}
+      {error ? <div style={{ marginTop: 10, color: "var(--alert)" }}>{error}</div> : null}
 
       <div style={{ marginTop: 12, display: "flex", justifyContent: "flex-end", gap: 8 }}>
         <button className="btn" onClick={onCancel} disabled={saving}>

@@ -372,7 +372,7 @@ export default function TeacherMainClient({
           onAddStudent={() => router.push(buildTmainNewPath(initialRole))}
         />
       ) : (
-        <section style={{ marginTop: 14, border: "1px solid var(--surface-border)", borderRadius: 10, padding: 12, background: "var(--surface-bg)" }}>
+        <section className="card-box" style={{ marginTop: 14 }}>
           <div className="text-muted">
             {initialRole === "t" ? "로그인 정보와 일치하는 선생님을 찾지 못했습니다." : "선생님을 선택해주세요."}
           </div>

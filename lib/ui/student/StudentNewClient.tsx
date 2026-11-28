@@ -519,9 +519,9 @@ export default function StudentNewClient(props: {
           style={{
             marginTop: 10,
             borderRadius: 8,
-            border: "1px solid #bfdbfe",
-            background: "#eff6ff",
-            color: "#1d4ed8",
+            border: "1px solid var(--brand-soft-border)",
+            background: "var(--brand-soft-bg)",
+            color: "var(--brand-strong)",
             padding: "8px 10px",
             fontSize: 13,
             fontWeight: 700,
@@ -533,7 +533,7 @@ export default function StudentNewClient(props: {
 
       <section style={{ marginTop: 14, display: "grid", gap: 14 }}>
         {/* start date */}
-        <div style={{ border: "1px solid var(--surface-border)", borderRadius: 10, padding: 12, background: "var(--surface-bg)" }}>
+        <div className="card-box">
           <div className="card-title">시작일</div>
           <input
             type="date"
@@ -542,7 +542,7 @@ export default function StudentNewClient(props: {
           />
         </div>
         {/* teacher */}
-        <div style={{ border: "1px solid var(--surface-border)", borderRadius: 10, padding: 12, background: "var(--surface-bg)" }}>
+        <div className="card-box">
           <div className="card-title">배정 선생님</div>
 
           {mode === "admin" ? (
@@ -586,7 +586,7 @@ export default function StudentNewClient(props: {
         </div>
 
         {/* 학생 기본 */}
-        <div style={{ border: "1px solid var(--surface-border)", borderRadius: 10, padding: 12, background: "var(--surface-bg)" }}>
+        <div className="card-box">
           <div className="card-title">학생 정보</div>
 
           <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
@@ -714,7 +714,7 @@ export default function StudentNewClient(props: {
               />
               <div style={{ color: "var(--text-muted)", marginTop: 6, fontSize: "0.85rem" }}>
                 저장 값: <code>{googleEmail.trim() || "입력 필요"}</code>
-                <div style={{ color: "#2563eb", marginTop: 4, fontWeight: 500 }}>
+                <div style={{ color: "var(--brand)", marginTop: 4, fontWeight: 500 }}>
                   💡 구글 미트 수업 시 승인 대기 없이 바로 입장할 수 있도록 학생의 실제 구글 계정(Gmail)을 입력해주세요.
                 </div>
               </div>
@@ -773,7 +773,7 @@ export default function StudentNewClient(props: {
         </div>
 
         {/* 초기 회차 설정 */}
-        <div style={{ border: "1px solid var(--surface-border)", borderRadius: 10, padding: 12, background: "var(--surface-bg)" }}>
+        <div className="card-box">
           <div className="card-title">초기 회차 설정 *</div>
           <div style={{ marginTop: 6, color: "var(--text-muted)" }}>
             주당 횟수만큼 박스를 채우면, 생성 시 1주치 회차가 자동 계산됩니다.
@@ -902,16 +902,16 @@ export default function StudentNewClient(props: {
               width: "100%",
               maxWidth: 640,
               borderRadius: 14,
-              border: "1px solid #cbd5e1",
-              background: "#fff",
+              border: "1px solid var(--surface-border)",
+              background: "var(--surface-bg)",
               padding: 16,
               boxShadow: "0 16px 40px rgba(15, 23, 42, 0.28)",
             }}
           >
-            <h2 style={{ margin: 0, fontSize: 20, fontWeight: 900, color: "#0f172a" }}>
+            <h2 style={{ margin: 0, fontSize: 20, fontWeight: 900, color: "var(--foreground)" }}>
               시트값 입력
             </h2>
-            <p style={{ marginTop: 8, marginBottom: 0, color: "#334155", fontWeight: 700 }}>
+            <p style={{ marginTop: 8, marginBottom: 0, color: "var(--text-subtle)", fontWeight: 700 }}>
               파란 셀값을 붙혀넣으시오.
             </p>
 
@@ -927,7 +927,7 @@ export default function StudentNewClient(props: {
                 minHeight: 220,
                 resize: "vertical",
                 borderRadius: 10,
-                border: "1px solid #cbd5e1",
+                border: "1px solid var(--surface-border)",
                 padding: 12,
                 fontSize: 14,
                 lineHeight: 1.45,
@@ -939,9 +939,9 @@ export default function StudentNewClient(props: {
                 style={{
                   marginTop: 10,
                   borderRadius: 8,
-                  border: "1px solid #fecaca",
-                  background: "#fef2f2",
-                  color: "#b91c1c",
+                  border: "1px solid var(--alert-soft-border)",
+                  background: "var(--alert-soft-bg)",
+                  color: "var(--alert-strong)",
                   padding: "8px 10px",
                   fontSize: 13,
                   fontWeight: 700,

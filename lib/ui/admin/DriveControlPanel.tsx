@@ -109,9 +109,9 @@ export default function DriveControlPanel() {
   };
 
   return (
-    <section className="mt-3 p-4 border border-red-200 rounded-2xl bg-red-50 relative">
+    <section className="mt-3 p-4 border border-[var(--alert-soft-border)] rounded-2xl bg-[var(--alert-soft-bg)] relative">
       <div className="flex items-center gap-2 mb-3">
-        <span className="text-red-600 font-extrabold text-sm">🔥 구글 드라이브 본진 설정 (핵심)</span>
+        <span className="text-[var(--alert-strong)] font-extrabold text-sm">🔥 구글 드라이브 본진 설정 (핵심)</span>
       </div>
 
       <div className="flex flex-wrap gap-2">
@@ -124,7 +124,7 @@ export default function DriveControlPanel() {
         </button>
 
         <button
-          className="px-4 py-2 bg-white border border-red-200 text-red-700 rounded-xl text-xs font-bold shadow-sm hover:bg-red-100 disabled:opacity-50"
+          className="px-4 py-2 bg-[var(--surface-bg)] border border-[var(--alert-soft-border)] text-[var(--alert-strong)] rounded-xl text-xs font-bold shadow-sm hover:bg-[var(--surface-hover)] disabled:opacity-50"
           onClick={() => setShowIdInput(true)}
           disabled={isBusy}
         >
@@ -133,7 +133,7 @@ export default function DriveControlPanel() {
 
         {driveRootId && (
           <button
-            className="px-4 py-2 bg-red-100 text-red-900 rounded-xl text-xs font-bold hover:bg-red-200"
+            className="px-4 py-2 bg-[var(--alert-soft-bg)] text-[var(--alert-strong)] rounded-xl text-xs font-bold hover:bg-[var(--surface-hover)]"
             onClick={handleResetDriveRoot}
             disabled={isBusy}
           >
@@ -143,14 +143,14 @@ export default function DriveControlPanel() {
       </div>
 
       {driveRootId && (
-        <div className="mt-4 p-3 bg-white border border-red-100 rounded-xl flex flex-col gap-1">
-          <span className="text-[10px] text-red-500 font-bold uppercase tracking-wider">현재 연결된 폴더 ID</span>
+        <div className="mt-4 p-3 bg-[var(--surface-bg)] border border-[var(--alert-soft-border)] rounded-xl flex flex-col gap-1">
+          <span className="text-[12px] text-[var(--alert-strong)] font-bold uppercase tracking-wider">현재 연결된 폴더 ID</span>
           <div className="flex items-center gap-2">
-            <code className="text-xs font-mono break-all text-gray-700 bg-gray-50 px-2 py-1 rounded border overflow-hidden">
+            <code className="text-xs font-mono break-all text-[var(--foreground)] bg-[var(--surface-hover)] px-2 py-1 rounded border overflow-hidden">
               {driveRootId}
             </code>
             <button 
-              className="text-[11px] text-blue-600 font-bold hover:underline whitespace-nowrap"
+              className="text-[12px] text-[var(--brand)] font-bold hover:underline whitespace-nowrap"
               onClick={() => {
                 void navigator.clipboard.writeText(driveRootId);
                 window.alert("ID가 복사되었습니다.");
@@ -163,9 +163,9 @@ export default function DriveControlPanel() {
       {/* ID 입력 모달 */}
       {showIdInput && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl animate-in zoom-in-95 duration-200">
+          <div className="bg-[var(--surface-bg)] rounded-2xl p-6 w-full max-w-md shadow-2xl animate-in zoom-in-95 duration-200">
             <h3 className="text-lg font-bold mb-4">기존 구글 폴더 ID 입력</h3>
-            <p className="text-sm text-gray-600 mb-4 leading-relaxed">
+            <p className="text-sm text-[var(--text-subtle)] mb-4 leading-relaxed">
               사용하고 계신 구글 드라이브 폴더의 주소창에서 무작위 문자로 된 ID 값을 복사하여 붙여넣어 주세요.
             </p>
             <input
@@ -184,7 +184,7 @@ export default function DriveControlPanel() {
                 {isBusy ? "확인 중..." : "설정 완료"}
               </button>
               <button
-                className="flex-1 py-3 bg-gray-100 text-gray-700 rounded-xl font-bold text-sm hover:bg-gray-200"
+                className="flex-1 py-3 bg-[var(--surface-hover)] text-[var(--foreground)] rounded-xl font-bold text-sm hover:bg-[var(--surface-border)]"
                 onClick={() => { setShowIdInput(false); setManualDriveId(""); }}
               >
                 취소
@@ -195,7 +195,7 @@ export default function DriveControlPanel() {
       )}
 
       {batchProgress && !showIdInput && (
-        <div className="mt-3 p-3 bg-white border border-red-200 rounded-xl text-red-600 text-xs font-bold animate-pulse">
+        <div className="mt-3 p-3 bg-[var(--surface-bg)] border border-[var(--alert-soft-border)] rounded-xl text-[var(--alert-strong)] text-xs font-bold animate-pulse">
           ⏳ {batchProgress}
         </div>
       )}
