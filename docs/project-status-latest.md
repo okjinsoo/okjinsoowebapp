@@ -1,14 +1,15 @@
 # Project Status (Latest)
 
-기준 시각: 2026-11-28 15:12 (KST)  
+기준 시각: 2026-11-28 15:45 (KST)  
 대상 프로젝트: `v1`  
 운영 주소: `https://okjinsoowebapp.vercel.app`  
-최신 운영 배포본: `2026-11-28 15:11 (KST)` (`dpl_Eu1avQVLH6XHPomYsk7H6ZgfeMx8`, 커밋 `377c94f`)
+최신 운영 배포본: `2026-11-28 15:44 (KST)` (`dpl_2Pcf4z1xg2zRETy37rvYiLv3vLkq`, 커밋 `330bb91`)
 
 ---
 
 ## 1분 요약 (현재 확정 상태)
 
+- **디자인 5단계 관리자 메인 (2026-11-28, 운영 배포 완료 `dpl_2Pcf4z1xg2zRETy37rvYiLv3vLkq`)**: 숫자 4칸(재학생·이번 주 수업(월~일, 결석 제외)·연장 필요·이번 달 결제(이번 달 만든 회차 추가 기록)) → 처리할 일(연장 필요, D-9 기준, 마지막 수업 빠른 순) → 신규·재학 목록(회차 막대) → 드라이브 패널. 재학(active) 학생만 표시. 계산은 `lib/factories/adminSummary.ts`. 연장 필요 줄 실제 모습은 미확인
 - **학생 정보 페이지 수업 기록 카드 제거 (2026-11-28, 운영 배포 완료 `dpl_Eu1avQVLH6XHPomYsk7H6ZgfeMx8`)**: 사용자 결정으로 학생 메인의 회차 막대 카드 삭제. 선생님 메인 학생 목록 회차 막대는 유지
 - **디자인 4단계 학생 메인 (2026-11-28, 운영 배포 완료 `dpl_XqNVbBqJnT56h6xJ2hg1KeGh1tU3`)**: 순서 다음 수업(큰 버튼) → 수업 기록(회차 막대, `RoundBarView` 공용) → 예정 수업 → 학생 정보(펼친 채) → 선생님 버튼·회차 추가 기록. 720px 이상 2열, 휴대폰 1열, 선생님·관리자 보기도 동일. 연습용 모드 3개 크기·운영 화면 확인, 실기기 미확인
 - **자정 자동 출석 첫 실행 확인 (2026-11-28 00:00)**: 실행 뒤 운영 dryRun 대상 0건 → 186회차 출석 반영 완료(크론 로그는 직접 미확인)
@@ -96,6 +97,7 @@
 
 ## 최근 주요 배포 이력 (최신 5건)
 
+- `2026-11-28 15:44` — 프로덕션 배포 `dpl_2Pcf4z1xg2zRETy37rvYiLv3vLkq` (커밋 `330bb91`, `git push origin main` 자동 배포, 운영 주소: `https://okjinsoowebapp.vercel.app`, 디자인 5단계 관리자 메인, 단위 테스트 149개 통과)
 - `2026-11-28 15:11` — 프로덕션 배포 `dpl_Eu1avQVLH6XHPomYsk7H6ZgfeMx8` (커밋 `377c94f`, `git push origin main` 자동 배포, 운영 주소: `https://okjinsoowebapp.vercel.app`, 학생 정보 페이지 수업 기록 카드 제거, 단위 테스트 147개 통과)
 - `2026-11-28 01:02` — 프로덕션 배포 `dpl_XqNVbBqJnT56h6xJ2hg1KeGh1tU3` (커밋 `210d112`, `git push origin main` 자동 배포, 운영 주소: `https://okjinsoowebapp.vercel.app`, 디자인 4단계 학생 메인: 다음 수업·수업 기록 우선, 720px 이상 2열, 단위 테스트 147개 통과)
 - `2026-11-27 23:54` — 프로덕션 배포 `dpl_6YpdtodYh2UgWz26RHgBWUXB8QhU` (커밋 `4e25c8d`, `git push origin main` 자동 배포, 운영 주소: `https://okjinsoowebapp.vercel.app`, 디자인 3단계 회차 상세: 버튼·카드 제목 이모티콘, leafId 관리자 전용, 단위 테스트 147개 통과)
