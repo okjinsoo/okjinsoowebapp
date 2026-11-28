@@ -6,6 +6,7 @@ import { loadAuthSession } from "@/lib/auth/supabaseAuth";
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import PageHeader, { MoreMenu } from "@/lib/ui/common/PageHeader";
 import {
   saveStudentsAndResyncCalendar,
   saveStudentsServerFirstAndResyncCalendar,
@@ -1539,61 +1540,42 @@ export default function StudentHubCore({
 
   return (
     <main className="page">
-      <section style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-        {backToTmain ? (
-          <div
-            style={{
-              width: "100%",
-              marginBottom: 8,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              gap: 8,
-              flexWrap: "wrap",
-            }}
-          >
-            <button onClick={() => router.push(backToTmain)} className="btn btn-bold">
-              학생 관리
-            </button>
-            {canEdit ? (
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <button
-                  onClick={handleDownloadStudentBackup}
-                  className="btn"
-                  disabled={isBackupWorking || isRestoreWorking}
-                  title="현재 학생의 전체 데이터를 JSON 파일로 저장"
-                >
-                  {isBackupWorking ? "백업 중..." : "데이터 백업"}
-                </button>
-                {localOnlyMode ? (
-                  <>
-                    <button
-                      onClick={openRestoreFilePicker}
-                      className="btn"
-                      disabled={isRestoreWorking || isBackupWorking}
-                      title="로컬 테스트 서버 전용: 백업 JSON 파일 복원"
-                    >
-                      {isRestoreWorking ? "복원 중..." : "데이터 복원"}
-                    </button>
-                    <input
-                      ref={restoreInputRef}
-                      type="file"
-                      accept="application/json,.json"
-                      onChange={onRestoreFileInputChange}
-                      style={{ display: "none" }}
-                    />
-                  </>
-                ) : null}
-              </div>
-            ) : null}
-          </div>
-        ) : null}
-        <div style={{ width: "100%" }}>
-          <h1 className="page-title" style={{ textAlign: "center" }}>
-            {student?.name ?? "-"} 학생 정보
-          </h1>
-        </div>
-      </section>
+      <PageHeader
+        title={`${student?.name ?? "-"} 학생 정보`}
+        actions={
+          canEdit && backToTmain ? (
+            <MoreMenu>
+              <button
+                onClick={handleDownloadStudentBackup}
+                className="btn"
+                disabled={isBackupWorking || isRestoreWorking}
+                title="현재 학생의 전체 데이터를 JSON 파일로 저장"
+              >
+                {isBackupWorking ? "백업 중..." : "데이터 백업"}
+              </button>
+              {localOnlyMode ? (
+                <>
+                  <button
+                    onClick={openRestoreFilePicker}
+                    className="btn"
+                    disabled={isRestoreWorking || isBackupWorking}
+                    title="로컬 테스트 서버 전용: 백업 JSON 파일 복원"
+                  >
+                    {isRestoreWorking ? "복원 중..." : "데이터 복원"}
+                  </button>
+                  <input
+                    ref={restoreInputRef}
+                    type="file"
+                    accept="application/json,.json"
+                    onChange={onRestoreFileInputChange}
+                    style={{ display: "none" }}
+                  />
+                </>
+              ) : null}
+            </MoreMenu>
+          ) : null
+        }
+      />
 
       <div className="hub-grid">
         <div style={{ display: "grid", gap: 12, alignContent: "start" }}>

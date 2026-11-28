@@ -1,5 +1,6 @@
 "use client";
 
+import PageHeader from "@/lib/ui/common/PageHeader";
 import React, { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { findTeacherByLoginEmail } from "@/lib/auth/loginSelection";
@@ -328,19 +329,7 @@ export default function TeacherMainClient({
         />
       </div>
 
-      {initialRole === "a" && (
-        <div style={{ marginBottom: 8 }}>
-          <button className="btn btn-bold" onClick={() => router.push("/a/amain")}>관리자 페이지</button>
-        </div>
-      )}
-
-      <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", alignItems: "end", gap: 12 }}>
-        <div />
-        <div style={{ textAlign: "center" }}>
-          <h1 className="page-title">{currentTeacherName ? `${currentTeacherName} · 학생 관리` : "학생 관리"}</h1>
-        </div>
-        <div />
-      </div>
+      <PageHeader title={currentTeacherName ? `${currentTeacherName} 선생님 · 오늘의 수업` : "오늘의 수업"} />
 
       <TodaySessionsCard rows={todayRows} role={initialRole} />
       <TodaySessionsCard

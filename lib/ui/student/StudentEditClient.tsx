@@ -293,7 +293,7 @@ export default function StudentEditClient(props: {
         <button onClick={() => router.push(onDoneGoTo)} className="btn btn-bold">
           돌아가기
         </button>
-        <div style={{ marginTop: 8, textAlign: "center" }} className="page-title">
+        <div style={{ marginTop: 8 }} className="page-title">
           학생 정보 수정
         </div>
         <div style={{ marginTop: 10, color: "var(--text-muted)" }}>학생 정보를 불러오는 중입니다...</div>
@@ -307,7 +307,7 @@ export default function StudentEditClient(props: {
         <button onClick={() => router.push(onDoneGoTo)} className="btn btn-bold">
           돌아가기
         </button>
-        <div style={{ marginTop: 8, textAlign: "center" }} className="page-title">
+        <div style={{ marginTop: 8 }} className="page-title">
           학생 정보 수정
         </div>
         <div style={{ marginTop: 10, color: "var(--text-muted)" }}>학생을 찾지 못했습니다.</div>
@@ -321,7 +321,7 @@ export default function StudentEditClient(props: {
         <button onClick={() => router.push(onDoneGoTo)} className="btn btn-bold" title="돌아가기">
           돌아가기
         </button>
-        <div style={{ marginTop: 8, textAlign: "center" }} className="page-title">
+        <div style={{ marginTop: 8 }} className="page-title">
           학생 정보 수정 ({mode === "admin" ? "원장" : "선생님"})
         </div>
       </div>

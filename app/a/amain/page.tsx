@@ -1,5 +1,6 @@
 "use client";
 
+import PageHeader from "@/lib/ui/common/PageHeader";
 import { useMemo } from "react";
 import Link from "next/link";
 import {
@@ -76,15 +77,7 @@ export default function AdminMainPage() {
 
   return (
     <main className="page">
-      <h1 className="page-title">관리자 메인</h1>
-      <div style={{ marginTop: 12, display: "flex", gap: 10, flexWrap: "wrap" }}>
-        <Link className="btn btn-blue" href="/a/students" style={{ padding: "10px 14px", fontWeight: 800, textDecoration: "none" }}>
-          학생 관리
-        </Link>
-        <Link className="btn btn-green" href="/a/teachers" style={{ padding: "10px 14px", fontWeight: 800, textDecoration: "none" }}>
-          선생님 관리
-        </Link>
-      </div>
+      <PageHeader title="관리자 메인" />
 
       <section className="admin-stats" aria-label="요약 숫자">
         {stats.map((it) => (

@@ -15,7 +15,7 @@ export default function AdminTeacherEditLegacyPage() {
 
   return (
     <main className="page page-narrow">
-      <div style={{ marginTop: 8, textAlign: "center" }} className="page-title">
+      <div style={{ marginTop: 8 }} className="page-title">
         선생님 정보 수정
       </div>
       <div style={{ marginTop: 10, color: "var(--text-muted)", textAlign: "center" }}>

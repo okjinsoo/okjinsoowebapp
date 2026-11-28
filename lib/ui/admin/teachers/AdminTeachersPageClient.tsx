@@ -1,5 +1,6 @@
 "use client";
 
+import PageHeader from "@/lib/ui/common/PageHeader";
 import { useRouter } from "next/navigation";
 import type { Teacher } from "@/lib/types/index";
 import TeacherListSection from "@/lib/ui/admin/teachers/TeacherListSection";
@@ -32,20 +33,14 @@ export default function AdminTeachersPageClient() {
 
   return (
     <main className="page">
-      <div style={{ marginBottom: 8 }}>
-        <button className="btn" onClick={() => router.push("/a/amain")}>
-          관리자 페이지
-        </button>
-      </div>
-
-      <section style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-        <h1 className="page-title">선생님 관리 (원장)</h1>
-        <div>
-          <button className="btn btn-bold" onClick={() => router.push("/a/teachers/new")}>
+      <PageHeader
+        title="선생님 관리"
+        actions={
+          <button className="btn btn-black" onClick={() => router.push("/a/teachers/new")}>
             + 선생님 추가
           </button>
-        </div>
-      </section>
+        }
+      />
 
       {error ? (
         <div style={{ marginTop: 12, color: "var(--alert-strong)", fontWeight: 700 }}>{error}</div>

@@ -30,7 +30,7 @@ export default function AdminTeacherNewPageClient() {
         <button className="btn" onClick={() => router.push("/a/teachers")}>
           돌아가기
         </button>
-        <div style={{ marginTop: 8, textAlign: "center" }} className="page-title">
+        <div style={{ marginTop: 8 }} className="page-title">
           선생님 추가
         </div>
       </div>

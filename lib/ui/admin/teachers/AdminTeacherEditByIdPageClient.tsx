@@ -40,7 +40,7 @@ export default function AdminTeacherEditByIdPageClient() {
         <button className="btn" onClick={() => router.push("/a/teachers")}>
           관리자 페이지
         </button>
-        <div style={{ marginTop: 8, textAlign: "center" }} className="page-title">
+        <div style={{ marginTop: 8 }} className="page-title">
           선생님 정보 수정
         </div>
         <div style={{ marginTop: 10, color: "var(--text-muted)" }}>불러오는 중...</div>
@@ -54,7 +54,7 @@ export default function AdminTeacherEditByIdPageClient() {
         <button className="btn" onClick={() => router.push("/a/teachers")}>
           관리자 페이지
         </button>
-        <div style={{ marginTop: 8, textAlign: "center" }} className="page-title">
+        <div style={{ marginTop: 8 }} className="page-title">
           선생님 정보 수정
         </div>
         <div style={{ marginTop: 10, color: "var(--text-muted)" }}>
@@ -70,7 +70,7 @@ export default function AdminTeacherEditByIdPageClient() {
         <button className="btn" onClick={() => router.push("/a/teachers")}>
           관리자 페이지
         </button>
-        <div style={{ marginTop: 8, textAlign: "center" }} className="page-title">
+        <div style={{ marginTop: 8 }} className="page-title">
           선생님 정보 수정
         </div>
       </div>

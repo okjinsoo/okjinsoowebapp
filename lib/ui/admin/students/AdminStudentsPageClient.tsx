@@ -1,5 +1,6 @@
 "use client";
 
+import PageHeader from "@/lib/ui/common/PageHeader";
 import { useRef, useState, type ChangeEvent } from "react";
 import { useRouter } from "next/navigation";
 import { saveCurrentTeacherId } from "@/lib/storage/teachers";
@@ -194,15 +195,10 @@ export default function AdminStudentsPageClient() {
 
   return (
     <main className="page">
-      <div style={{ marginBottom: 8 }}>
-        <button className="btn" onClick={() => router.push("/a/amain")}>
-          관리자 페이지
-        </button>
-      </div>
-
-      <section style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-        <h1 className="page-title">학생 관리 (원장)</h1>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+      <PageHeader
+        title="학생 관리"
+        actions={
+          <>
           {localOnlyMode ? (
             <>
               <button
@@ -222,11 +218,12 @@ export default function AdminStudentsPageClient() {
               />
             </>
           ) : null}
-          <button onClick={() => router.push("/a/students/new")} style={{ padding: "8px 12px", fontWeight: 800 }}>
+          <button className="btn btn-black" onClick={() => router.push("/a/students/new")}>
             + 학생 추가
           </button>
-        </div>
-      </section>
+          </>
+        }
+      />
 
       <StudentListSection
         title="재학생 리스트"

@@ -228,7 +228,7 @@ h1 {
 }
 
  .page-title {
-  font-size: 30px !important;
+  font-size: 24px !important;
   font-weight: 800;
  }
 
@@ -943,4 +943,24 @@ textarea::placeholder {
 .gate-bar[open] .gate-bar-toggle {
   background: var(--brand-soft-bg);
   color: var(--brand-strong);
+}
+
+/* 재구성 4단계: 화면 머리 (왼쪽 제목 + 오른쪽 버튼) */
+.page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+.page-header .page-title {
+  margin: 0;
+  min-width: 0;
+}
+.page-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
 }

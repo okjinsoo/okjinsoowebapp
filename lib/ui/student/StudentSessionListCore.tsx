@@ -1,5 +1,6 @@
 "use client";
 
+import PageHeader from "@/lib/ui/common/PageHeader";
 import { BROWSER_STORAGE_EVENT } from "@/lib/storage/browserStorage";
 import { TUTORWEB_EVENTS } from "@/lib/events/tutorwebEvents";
 
@@ -188,11 +189,7 @@ export default function StudentSessionListCore({ role, token, prefix, hideTokenI
 
   return (
     <div className="space-y-3 p-4">
-      <div style={{ textAlign: "center" }}>
-        <div className="text-base font-normal">
-          <span className="page-title">{student ? student.name : "학생"} 수업 목록</span>
-        </div>
-      </div>
+      <PageHeader title={`${student ? student.name : "학생"} 수업 목록`} />
 
       <div className="space-y-5">
         <div
