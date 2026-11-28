@@ -1,7 +1,6 @@
 // lib/ui/teacher/TodaySessionsCard.tsx
 "use client";
 
-import AchievementBadge from "@/lib/ui/common/AchievementBadge";
 import Badge from "@/lib/ui/common/Badge";
 import { getSessionExtraBadgeStyle } from "@/lib/ui/common/sessionExtraBadge";
 import { saveCurrentStudentToken } from "@/lib/ui/common/roleGateStorage";
@@ -62,7 +61,7 @@ export default function TodaySessionsCard({
                 model={model.sessionCardModel}
                 href={model.detailHref}
                 onClick={handleSelectSession}
-                titleColumnWidth={220}
+                titleColumnWidth={170}
                 titleSlot={
                   <div
                     style={{
@@ -75,7 +74,6 @@ export default function TodaySessionsCard({
                   >
                     <span style={{ minWidth: 52 }}>{model.studentName}</span>
                     <span style={{ opacity: 0.7, fontWeight: 600 }}>{model.roundLabel}</span>
-                    <AchievementBadge submission={model.sessionCardModel.submission} />
                   </div>
                 }
                 inlineBadgeSlot={
