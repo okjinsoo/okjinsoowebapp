@@ -23,9 +23,36 @@ export default function SessionCardRow({
   rightSlot,
   inlineBadgeSlot,
   titleSlot,
-  titleColumnWidth = 110,
+  titleColumnWidth = 220,
 }: Props) {
-  const leadColumnWidth = Number.isFinite(titleColumnWidth) && titleColumnWidth > 0 ? `${titleColumnWidth}px` : "110px";
+  const leadColumnWidth = Number.isFinite(titleColumnWidth) && titleColumnWidth > 0 ? `${titleColumnWidth}px` : "220px";
+
+  // 왼쪽: D-day · 회차 · 과제 제출률 · 출결 / 오른쪽: 날짜 · 변경·이월 뱃지
+  const content = (
+    <>
+      {titleSlot ? (
+        <>{titleSlot}</>
+      ) : (
+        <div style={{ display: "flex", alignItems: "center", gap: 6, whiteSpace: "nowrap" }}>
+          {model.dday && model.dday.diff !== null ? (
+            <Badge className={`text-white ${model.dday.className}`}>{model.dday.label}</Badge>
+          ) : null}
+          <span style={{ fontWeight: 700 }}>{model.title}</span>
+          <AchievementBadge submission={model.submission} />
+          <Badge style={model.statusBadge.style}>{model.statusBadge.label}</Badge>
+        </div>
+      )}
+      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+        <div>{model.dateTimeText}</div>
+        {model.extraBadges.map((badge) => (
+          <Badge key={`${model.index}:${badge.label}`} style={badge.style}>
+            {badge.label}
+          </Badge>
+        ))}
+        {inlineBadgeSlot}
+      </div>
+    </>
+  );
 
   return (
     <div
@@ -51,34 +78,14 @@ export default function SessionCardRow({
           style={{
             display: "grid",
             gridTemplateColumns: `${leadColumnWidth} 1fr`,
-            gap: 30,
+            gap: 20,
             alignItems: "center",
             cursor: "pointer",
             color: "inherit",
             textDecoration: "none",
           }}
         >
-          {titleSlot ? (
-            <>{titleSlot}</>
-          ) : (
-            <div style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 700, whiteSpace: "nowrap" }}>
-              {model.dday && model.dday.diff !== null ? (
-                <Badge className={`text-white ${model.dday.className}`}>{model.dday.label}</Badge>
-              ) : null}
-              <span>{model.title}</span>
-            </div>
-          )}
-          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-            <div>{model.dateTimeText}</div>
-            <AchievementBadge submission={model.submission} />
-            <Badge style={model.statusBadge.style}>{model.statusBadge.label}</Badge>
-            {model.extraBadges.map((badge) => (
-              <Badge key={`${model.index}:${badge.label}`} style={badge.style}>
-                {badge.label}
-              </Badge>
-            ))}
-            {inlineBadgeSlot}
-          </div>
+          {content}
         </Link>
       ) : (
         <div
@@ -87,32 +94,12 @@ export default function SessionCardRow({
           style={{
             display: "grid",
             gridTemplateColumns: `${leadColumnWidth} 1fr`,
-            gap: 30,
+            gap: 20,
             alignItems: "center",
             cursor: onClick ? "pointer" : "default",
           }}
         >
-          {titleSlot ? (
-            <>{titleSlot}</>
-          ) : (
-            <div style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 700, whiteSpace: "nowrap" }}>
-              {model.dday && model.dday.diff !== null ? (
-                <Badge className={`text-white ${model.dday.className}`}>{model.dday.label}</Badge>
-              ) : null}
-              <span>{model.title}</span>
-            </div>
-          )}
-          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-            <div>{model.dateTimeText}</div>
-            <AchievementBadge submission={model.submission} />
-            <Badge style={model.statusBadge.style}>{model.statusBadge.label}</Badge>
-            {model.extraBadges.map((badge) => (
-              <Badge key={`${model.index}:${badge.label}`} style={badge.style}>
-                {badge.label}
-              </Badge>
-            ))}
-            {inlineBadgeSlot}
-          </div>
+          {content}
         </div>
       )}
       {rightSlot ? (
